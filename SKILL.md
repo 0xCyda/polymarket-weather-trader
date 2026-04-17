@@ -3,7 +3,7 @@ name: polymarket-weather-trader
 description: Trade Polymarket weather markets using an AIFS ENS (ECMWF AI ensemble) + 6-model global blend. Uses signal strength and model agreement to dynamically adjust confidence. Simmer API handles market discovery and execution. Inspired by gopfan2's $2M+ strategy.
 metadata:
   author: Jarvis (SoleBrace)
-  version: "2.0.0"
+  version: "1.17.2"
   displayName: Polymarket Weather Trader (AIFS ENS)
   difficulty: intermediate
   attribution: Strategy inspired by gopfan2; ensemble architecture by Jarvis
@@ -16,21 +16,21 @@ Trade temperature markets on Polymarket using an **AIFS ENS + 6-model global ens
 
 ## Signal Architecture
 
-The core change in v2.0: instead of single-source NOAA, the trader uses a **weighted multi-model ensemble**:
+The core change in v2.0: instead of single-source NOAA, the trader uses a **weighted multi-model ensemble** (weights sum to 1.0):
 
 | Model | Weight | Source |
 |-------|--------|--------|
-| aifs_ens | 25% | ECMWF AI ensemble mean (GRIB download, AWS S3 fallback) |
-| ecmwf_ifs025 | 35% | Open-Meteo |
-| gfs_seamless | 20% | Open-Meteo |
-| icon_global | 15% | Open-Meteo |
-| gem_global | 10% | Open-Meteo |
-| jma_seamless | 10% | Open-Meteo |
-| bom_access_global | 10% | Open-Meteo |
+| aifs_ens | 20% | ECMWF AI ensemble mean (GRIB download via AWS S3) |
+| ecmwf_ifs025 | 28% | Open-Meteo |
+| gfs_seamless | 16% | Open-Meteo |
+| icon_global | 12% | Open-Meteo |
+| gem_global | 8% | Open-Meteo |
+| jma_seamless | 8% | Open-Meteo |
+| bom_access_global | 8% | Open-Meteo |
 
-`weighted_temp` = weighted average across all models that return data. The ensemble also computes `max_delta` (worst disagreement in degrees) and `agreement_pct` (% of models within 3° of the weighted average).
+`weighted_temp` = weighted average across all models that return data (weights renormalize if some models fail). The ensemble also computes `max_delta` (worst disagreement in degrees) and `agreement_pct` (% of models within 3° of the weighted average).
 
-For same-day (D+0) markets, live **METAR station observations** are fetched as a ground-truth anchor. If METAR diverges >5° from the ensemble, the signal is downgraded.
+For same-day (D+0) markets, live **METAR station observations** are fetched as a ground-truth anchor (using the city's local timezone to determine D+0). If METAR diverges >5° from the ensemble, the signal is downgraded.
 
 ## When to Use This Skill
 
@@ -39,23 +39,23 @@ For same-day (D+0) markets, live **METAR station observations** are fetched as a
 - Check weather trading positions or P&L
 - Configure thresholds, locations, or signal parameters
 
-## What's New in v2.0.0
+## What's New
 
-- **AIFS ENS ensemble**: ECMWF AI-generated ensemble mean via GRIB download (primary) with AWS S3 fallback. Handles the forecast backbone.
+- **AIFS ENS ensemble**: ECMWF AI-generated ensemble with CF (control) + PF (perturbed, 5 members) GRIB download. True ensemble spread and agreement computed from all members.
 - **6-model global blend**: Weighted combination of major global forecast models via Open-Meteo. All models run concurrently via ThreadPoolExecutor.
 - **Signal strength confidence**: Dynamic confidence (0.70–0.88) based on ensemble agreement, not a hardcoded NOAA probability.
-  - `strong` (spread ≤5°): confidence = 0.88
-  - `moderate` (spread 5–10°): confidence = 0.80
-  - `weak` (spread >10°): confidence = 0.70 — **trade skipped**
+  - `strong` (≥4 models, agreement ≥70%, max_delta ≤5°): confidence = 0.88
+  - `moderate` (≥3 models, max_delta ≤8°): confidence = 0.80
+  - `weak` (otherwise): confidence = 0.70 — **trade skipped**
   - `single_source` / unknown: confidence = 0.72
-- **Cache per (location, date)**: Each market's ensemble result cached separately to prevent stale data across different dates for the same city.
+- **Cache per (location, date, metric)**: Each market's ensemble result cached separately to prevent stale data across different dates or high/low temp events for the same city.
 - **METAR ground truth**: Same-day markets get live airport station observations as an extra signal quality check.
 
 ## Setup Flow
 
-1. **Install the Simmer SDK**
+1. **Install dependencies**
    ```bash
-   pip install simmer-sdk
+   pip install -r requirements.txt
    ```
 
 2. **Set environment variables**
@@ -79,15 +79,16 @@ For same-day (D+0) markets, live **METAR station observations** are fetched as a
 | Smart sizing | `SIMMER_WEATHER_SIZING_PCT` | 0.05 | % of balance per trade (--smart-sizing) |
 | Slippage max | `SIMMER_WEATHER_SLIPPAGE_MAX` | 0.15 | Skip trades with slippage above this |
 | Min liquidity | `SIMMER_WEATHER_MIN_LIQUIDITY` | 0 | Skip markets with liquidity below this USD |
+| Order type | `SIMMER_WEATHER_ORDER_TYPE` | GTC | Order type (GTC or FAK) |
 | Vol targeting | `SIMMER_WEATHER_VOL_TARGETING` | false | Enable EWMA volatility targeting |
 | Target vol | `SIMMER_WEATHER_TARGET_VOL` | 0.20 | Target annualized volatility |
 | Vol max leverage | `SIMMER_WEATHER_VOL_MAX_LEVERAGE` | 2.0 | Max scale-up multiplier |
 | Vol min alloc | `SIMMER_WEATHER_VOL_MIN_ALLOC` | 0.2 | Min allocation floor |
 | Vol EWMA span | `SIMMER_WEATHER_VOL_SPAN` | 10 | EWMA responsiveness |
 
-**US locations** (via AIFS ENS + Open-Meteo GFS): NYC, Chicago, Seattle, Atlanta, Dallas, Miami
+**US locations** (AIFS ENS + Open-Meteo + METAR): NYC, Chicago, Seattle, Atlanta, Dallas, Miami, Houston, San Francisco, Phoenix, Los Angeles, Denver, Austin, Las Vegas
 
-**International locations** (via Open-Meteo): Tel Aviv, Munich, London, Tokyo, Seoul, Ankara, Lucknow, Wellington, Shanghai, Hong Kong, Toronto, Paris, Milan, Sao Paulo, Warsaw, Singapore
+**International locations** (AIFS ENS + Open-Meteo): Tel Aviv, Munich, London, Tokyo, Seoul, Ankara, Lucknow, Wellington, Toronto, Paris, Milan, Sao Paulo, Warsaw, Singapore, Shanghai, Beijing, Shenzhen, Chengdu, Chongqing, Wuhan
 
 ## Quick Commands
 
@@ -106,6 +107,9 @@ python weather_trader.py --positions
 
 # View config
 python weather_trader.py --config
+
+# Update config values
+python weather_trader.py --set entry_threshold=0.20
 
 # Disable safeguards (not recommended)
 python weather_trader.py --no-safeguards
@@ -126,17 +130,17 @@ Each cycle:
 
 1. **Market discovery** — Fetches active weather markets from Simmer API, groups by event
 2. **Ensemble fetch** — For each (location, date, metric):
-   - Downloads AIFS ENS GRIB from ECMWF open data API (AWS S3 fallback on failure)
+   - Downloads AIFS ENS GRIB (CF + PF members) from ECMWF open data via AWS S3
    - Fetches 6 global models concurrently via Open-Meteo
    - Computes weighted average (`weighted_temp`), spread (`max_delta`), agreement %
-   - For D+0 markets: fetches live METAR as ground-truth anchor
+   - For D+0 markets (local timezone): fetches live METAR as ground-truth anchor
 3. **Signal strength** — Classifies ensemble agreement:
-   - `strong`: spread ≤5°, confidence 0.88 — trade eligible
-   - `moderate`: spread 5–10°, confidence 0.80 — trade eligible
-   - `weak`: spread >10°, confidence 0.70 — **skipped**
+   - `strong`: ≥4 models, agreement ≥70%, max_delta ≤5°, confidence 0.88 — trade eligible
+   - `moderate`: ≥3 models, max_delta ≤8°, confidence 0.80 — trade eligible
+   - `weak`: otherwise, confidence 0.70 — **skipped**
    - `no_data`: models couldn't forecast date (too far ahead or missing data)
-4. **Bucket matching** — Finds the Polymarket bucket matching `weighted_temp`. Bucket values in Celsius are automatically converted to Fahrenheit before comparison (ensemble always returns °F). Exact buckets (e.g. "will it be 18°C on Apr 18?") require the forecast to fall exactly within that degree; range buckets (e.g. "53°F or below") are more tradeable. A `— nearest: [bucket]` suffix shows the closest non-matching bucket when the forecast is near a threshold.
-5. **Safeguards** — Checks flip-flop warnings, slippage, time decay, market status
+4. **Bucket matching** — Finds the Polymarket bucket matching `weighted_temp`. Two-pass algorithm: exact range match first, then threshold buckets ("X or higher" / "X or below") closest to forecast. Bucket values in Celsius are automatically converted to Fahrenheit before comparison (ensemble always returns °F). A `— nearest: [bucket]` suffix shows the closest non-matching bucket when the forecast is near a threshold.
+5. **Safeguards** — Checks flip-flop warnings, slippage, time decay, market status, liquidity
 6. **Trend detection** — Looks for recent price drops (stronger buy signal)
 7. **Entry** — If price < threshold and safeguards pass → BUY
 8. **Exit** — If open position and price > exit threshold → SELL
@@ -176,19 +180,22 @@ Each cycle:
 
 | Signal | Condition | Confidence | Action |
 |--------|-----------|------------|--------|
-| `strong` | spread ≤5°, agreement ≥80% | 0.88 | Trade eligible |
-| `moderate` | spread 5–10° | 0.80 | Trade eligible |
-| `weak` | spread >10° or agreement <67% | 0.70 | **Skipped** |
+| `strong` | ≥4 models, agreement ≥70%, max_delta ≤5° | 0.88 | Trade eligible |
+| `moderate` | ≥3 models, max_delta ≤8° | 0.80 | Trade eligible |
+| `weak` | fewer models or larger disagreement | 0.70 | **Skipped** |
 | `single_source` | only 1 model returned data | 0.72 | Trade eligible (degraded) |
 | `no_data` | no models returned data | — | **Skipped** |
+
+METAR divergence on D+0 markets can downgrade strong→moderate (>5°) or moderate→weak (>8°).
 
 ## Safeguards
 
 Before trading, the skill checks:
 - **Flip-flop warning**: Skips if direction reversals are excessive on this market
-- **Slippage**: Skips if estimated slippage > 15%
+- **Slippage**: Skips if estimated slippage > 15% (configurable)
 - **Time decay**: Skips if market resolves in < 2 hours
 - **Market status**: Skips if market already resolved
+- **Liquidity**: Skips if market liquidity below `SIMMER_WEATHER_MIN_LIQUIDITY`
 - **Signal strength**: Skips if `weak` or `no_data`
 - **Bucket match**: Skips if no Polymarket bucket matches the forecast temperature
 
@@ -196,7 +203,7 @@ Before trading, the skill checks:
 
 **"No ensemble forecast for [date] (signal: no_data)"**
 - Date is too far ahead for models to forecast (typically >10 days). This is expected for far-future markets.
-- Also check: is the GRIB cache stale? Delete `/home/brandon/.cache/aifs_ens/` if idx/grib mismatch errors appear.
+- Also check: is the GRIB cache stale? Delete `~/.cache/aifs_ens/` if idx/grib mismatch errors appear.
 
 **"Safeguard blocked: Severe flip-flop warning"**
 - Too many direction reversals on this market. Wait before trading again.
@@ -208,11 +215,11 @@ Before trading, the skill checks:
 - Elevated risk on imminent resolution. Skip.
 
 **"signal: weak — skipped"**
-- Ensemble spread >10° or agreement <67%. Signal is not confident enough. This is intentional — weak-signal trades are skipped to avoid noise.
+- Ensemble has fewer than 3 models, or `max_delta > 8°`. Signal is not confident enough. This is intentional — weak-signal trades are skipped to avoid noise.
 
 **"No bucket found for XX.X°F"**
 - The forecast temperature doesn't fall within any of the Polymarket buckets for that market. This is normal — it means the forecast doesn't align with the market's defined ranges.
-- If a Celsius market (e.g. Tokyo, Shanghai): the bucket value is converted from °C to °F before comparison. The ensemble always returns Fahrenheit; `parse_temperature_bucket` detects the market's unit and converts accordingly.
+- If a Celsius market (e.g. Tokyo, Shanghai): the bucket value is converted from °C to °F before comparison. The ensemble always returns Fahrenheit; `parse_temperature_bucket` detects the market's unit and converts accordingly. Sentinel values (-999/999) for "or higher"/"or below" buckets are preserved through conversion.
 - The output shows `— nearest: [bucket]` when the forecast is close to a bucket threshold — useful for seeing near-miss signals on tight Celsius markets.
 
 **"External wallet requires a pre-signed order"**
@@ -228,12 +235,19 @@ Before trading, the skill checks:
 
 ```
 polymarket-weather-trader/
-├── weather_trader.py          # Main entry point
+├── weather_trader.py             # Main entry point
+├── config.json                   # Runtime configuration overrides
+├── clawhub.json                  # Skill registration + tunables
+├── _meta.json                    # Version metadata
+├── requirements.txt              # Python dependencies
+├── README.md                     # Quick overview
+├── SKILL.md                      # This file
 └── scripts/
-    ├── aifs_forecast.py        # AIFS ENS GRIB download + parse (ECM open data API + AWS S3)
-    ├── ensemble_forecast.py   # Multi-model ensemble (weighted blend + METAR)
-    ├── forecast_validator.py  # Forecast consistency checks
-    └── status.py              # Balance and position checks
+    ├── aifs_forecast.py          # AIFS ENS GRIB download + parse (CF + PF members)
+    ├── ensemble_forecast.py      # Multi-model ensemble (weighted blend + METAR)
+    ├── forecast_validator.py     # Forecast consistency checks (standalone)
+    ├── paper_journal.py          # Local paper trading journal + P&L tracking
+    └── status.py                 # Balance and position checks
 ```
 
 ## Key Functions
@@ -243,11 +257,11 @@ polymarket-weather-trader/
 get_ensemble_forecast(city, date_str, metric, unit) -> dict
 # Returns:
 #   weighted_temp   # weighted average temperature
-#   model_temps      # {model_name: temp}
-#   models_count     # how many models returned data
-#   max_delta        # worst disagreement (degrees)
-#   agreement_pct    # % of models within 3° of weighted avg
-#   signal_strength  # "strong"|"moderate"|"weak"|"single_source"|"no_data"
-#   metar_temp       # live station obs (D+0 markets only)
-#   metar_delta      # abs(ensemble - METAR)
+#   model_temps     # {model_name: temp}
+#   models_count    # how many models returned data
+#   max_delta       # worst disagreement (degrees)
+#   agreement_pct   # % of models within 3° of weighted avg
+#   signal_strength # "strong"|"moderate"|"weak"|"single_source"|"no_data"
+#   metar_temp      # live station obs (D+0 markets only)
+#   metar_delta     # abs(ensemble - METAR)
 ```
