@@ -741,6 +741,7 @@ LOCATION_SEARCH_TERMS = {
     "CHENGDU":       ["temperature chengdu"],
     "CHONGQING":     ["temperature chongqing"],
     "WUHAN":         ["temperature wuhan"],
+    "HONG KONG":     ["temperature hong kong"],
 }
 
 
