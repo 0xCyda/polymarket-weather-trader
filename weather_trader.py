@@ -83,7 +83,7 @@ from simmer_sdk.skill import load_config, update_config, get_config_path
 CONFIG_SCHEMA = {
     "entry_threshold":   {"env": "SIMMER_WEATHER_ENTRY_THRESHOLD",   "default": 0.15,  "type": float},
     "exit_threshold":    {"env": "SIMMER_WEATHER_EXIT_THRESHOLD",    "default": 0.45,  "type": float},
-    "max_position_usd":  {"env": "SIMMER_WEATHER_MAX_POSITION_USD",  "default": 100.00, "type": float},
+    "max_position_usd":  {"env": "SIMMER_WEATHER_MAX_POSITION_USD",  "default": 200.00, "type": float},
     "sizing_pct":        {"env": "SIMMER_WEATHER_SIZING_PCT",        "default": 0.05,  "type": float},
     "max_trades_per_run":{"env": "SIMMER_WEATHER_MAX_TRADES_PER_RUN","default": 5,     "type": int},
     "paper_balance":     {"env": "SIMMER_WEATHER_PAPER_BALANCE",     "default": 10000.0,"type": float},
