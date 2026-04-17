@@ -33,11 +33,9 @@ def api_request(api_key: str, endpoint: str) -> dict:
             return json.loads(resp.read().decode())
     except HTTPError as e:
         error_body = e.read().decode() if e.fp else ""
-        print(f"❌ API Error {e.code}: {error_body}")
-        sys.exit(1)
+        raise RuntimeError(f"API Error {e.code}: {error_body}")
     except URLError as e:
-        print(f"❌ Connection error: {e.reason}")
-        sys.exit(1)
+        raise RuntimeError(f"Connection error: {e.reason}")
 
 def format_usd(amount: float) -> str:
     """Format as USD."""

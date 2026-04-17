@@ -35,7 +35,7 @@ def _load_trades() -> list:
             try:
                 trades.append(json.loads(line))
             except json.JSONDecodeError:
-                pass
+                print(f"Warning: skipping corrupt trade line: {line[:80]}", file=sys.stderr)
     return trades
 
 
@@ -118,7 +118,7 @@ def _fetch_market_resolution(market_id: str) -> dict | None:
 
 
 def _outcome_price(market_id: str) -> float | None:
-    """Get the final settlement price (0.00 or 1.00 scale) for a resolved market."""
+    """Get the YES token settlement price (0.00 or 1.00) for a resolved market."""
     try:
         resp = requests.get(
             f"https://clob.polymarket.com/markets/{market_id}",
@@ -129,16 +129,13 @@ def _outcome_price(market_id: str) -> float | None:
         m = resp.json()
         if not m.get("resolved"):
             return None
-        # outcomePrices is like ["1.00", "0.00"] for [yes_price, no_price]
+        # outcomePrices is ["1.00", "0.00"] if YES wins, ["0.00", "1.00"] if NO wins
+        # prices[0] is always the YES token settlement price
         prices = m.get("outcomePrices", [])
         if not prices:
             return None
-        outcome = m.get("outcome", "")
         try:
-            if outcome.lower() in ("yes", "true"):
-                return float(prices[0])
-            else:
-                return float(prices[1]) if len(prices) > 1 else 0.0
+            return float(prices[0])
         except (ValueError, IndexError):
             return None
     except Exception:
@@ -166,12 +163,9 @@ def update_resolved_trades() -> list:
         if not resolution or not resolution.get("resolved"):
             continue
 
-        # Market has resolved — get settlement price
-        exit_price = _outcome_price(market_id)
-        if exit_price is None:
-            # Fallback: use outcome directly
-            outcome = resolution.get("outcome", "")
-            exit_price = 1.0 if outcome.lower() in ("yes", "true") else 0.0
+        # Market has resolved — derive YES token settlement price from resolution
+        outcome = resolution.get("outcome", "")
+        exit_price = 1.0 if outcome.lower() in ("yes", "true") else 0.0
 
         # Calculate P&L
         side = trade.get("side", "yes")
@@ -233,7 +227,7 @@ def get_stats() -> dict:
         }
 
     wins = [t for t in resolved if t.get("pnl", 0) > 0]
-    losses = [t for t in resolved if t.get("pnl", 0) <= 0]
+    losses = [t for t in resolved if t.get("pnl", 0) < 0]
     pnls = [t.get("pnl", 0) for t in resolved]
 
     return {

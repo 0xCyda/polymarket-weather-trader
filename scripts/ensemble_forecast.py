@@ -4,14 +4,14 @@ Multi-Model Ensemble Forecast — Degen Doppler style.
 
 Fetches Open-Meteo models plus AIFS ENS and returns a weighted ensemble forecast.
 
-Models & weights:
-  aifs_ens          0.25  (ECMWF AIFS ensemble mean)
-  ecmwf_ifs025      0.35  (Open-Meteo ECMWF deterministic)
-  gfs_seamless      0.20  (NOAA GFS, good global coverage)
-  icon_global       0.15  (DWD ICON, strong in Europe)
-  gem_global        0.10  (Canadian GEM)
-  jma_seamless      0.10  (JMA, strong in Asia-Pacific)
-  bom_access_global 0.10  (BOM ACCESS, strong in Southern Hemisphere)
+Models & weights (normalized to 1.0):
+  aifs_ens          0.20  (ECMWF AIFS ensemble mean)
+  ecmwf_ifs025      0.28  (Open-Meteo ECMWF deterministic)
+  gfs_seamless      0.16  (NOAA GFS, good global coverage)
+  icon_global       0.12  (DWD ICON, strong in Europe)
+  gem_global        0.08  (Canadian GEM)
+  jma_seamless      0.08  (JMA, strong in Asia-Pacific)
+  bom_access_global 0.08  (BOM ACCESS, strong in Southern Hemisphere)
 
 Signal strength:
   "strong"        = >=4 models, agreement_pct>=70%, max_delta<=5°
@@ -87,6 +87,8 @@ METAR_STATIONS = {
     "Phoenix":       "KPHX",   # PHX
     "Los Angeles":   "KLAX",   # LAX
     "Denver":        "KDEN",   # Denver Intl
+    "Austin":        "KAUS",   # Austin-Bergstrom
+    "Las Vegas":     "KLAS",   # McCarran
     "Tokyo":         "RJTT",   # Haneda
     "Seoul":         "RKSS",   # Gimpo
     "Munich":        "EDDM",   # Munich Intl
@@ -105,15 +107,15 @@ METAR_STATIONS = {
 METAR_API_BASE = "https://aviationweather.gov/api/data/metar"
 OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast"
 
-# Model definitions: name -> base weight
+# Model definitions: name -> base weight (normalized to sum to 1.0)
 ENSEMBLE_MODELS = {
-    "aifs_ens":          0.25,
-    "ecmwf_ifs025":      0.35,
-    "gfs_seamless":      0.20,
-    "icon_global":       0.15,
-    "gem_global":        0.10,
-    "jma_seamless":      0.10,
-    "bom_access_global": 0.10,
+    "aifs_ens":          0.20,
+    "ecmwf_ifs025":      0.28,
+    "gfs_seamless":      0.16,
+    "icon_global":       0.12,
+    "gem_global":        0.08,
+    "jma_seamless":      0.08,
+    "bom_access_global": 0.08,
 }
 
 
@@ -209,7 +211,7 @@ def _fetch_model_temp(city: str, date_str: str, metric: str, unit: str,
 
     for d, t in zip(dates, temps):
         if d == date_str and t is not None:
-            return round(t)
+            return round(t, 1)
 
     return None
 
@@ -241,13 +243,20 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
         }
     """
     from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
 
     model_temps = {}
     metar_temp = None
     metar_delta = None
 
-    # Check if target date is today (D+0) — only then does METAR add value
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Check if target date is today (D+0) in the city's local timezone
+    loc = _loc(city)
+    city_tz_name = loc.get("tz", "UTC") if loc else "UTC"
+    try:
+        city_tz = ZoneInfo(city_tz_name)
+    except Exception:
+        city_tz = timezone.utc
+    today_str = datetime.now(city_tz).strftime("%Y-%m-%d")
     is_today = (date_str == today_str)
 
     # Fetch all models + METAR (if D+0) concurrently

@@ -26,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.request import urlopen, Request
 from urllib.error import HTTPError, URLError
 
-# All city coordinates (US + international)
+# All city coordinates (US + international) — synced with ensemble_forecast.py
 ALL_LOCATIONS = {
     # US cities
     "NYC":           {"lat": 40.7769, "lon": -73.8740, "tz": "America/New_York", "noaa_station": "KLGA"},
@@ -39,6 +39,9 @@ ALL_LOCATIONS = {
     "San Francisco": {"lat": 37.6213, "lon": -122.3790, "tz": "America/Los_Angeles", "noaa_station": "KSFO"},
     "Phoenix":       {"lat": 33.4373, "lon": -112.0078, "tz": "America/Phoenix", "noaa_station": "KPHX"},
     "Los Angeles":   {"lat": 33.9425, "lon": -118.4081, "tz": "America/Los_Angeles", "noaa_station": "KLAX"},
+    "Denver":        {"lat": 39.8561, "lon": -104.6737, "tz": "America/Denver", "noaa_station": "KDEN"},
+    "Austin":        {"lat": 30.1975, "lon": -97.6664, "tz": "America/Chicago", "noaa_station": "KAUS"},
+    "Las Vegas":     {"lat": 36.0840, "lon": -115.1537, "tz": "America/Los_Angeles", "noaa_station": "KLAS"},
     # International cities
     "Tel Aviv":      {"lat": 32.0853, "lon": 34.7818, "tz": "Asia/Jerusalem"},
     "Munich":        {"lat": 48.1351, "lon": 11.5820, "tz": "Europe/Berlin"},
@@ -54,6 +57,12 @@ ALL_LOCATIONS = {
     "Sao Paulo":     {"lat": -23.5505, "lon": -46.6333, "tz": "America/Sao_Paulo"},
     "Warsaw":        {"lat": 52.2297, "lon": 21.0122, "tz": "Europe/Warsaw"},
     "Singapore":     {"lat": 1.3521, "lon": 103.8198, "tz": "Asia/Singapore"},
+    "Shanghai":      {"lat": 31.2304, "lon": 121.4737, "tz": "Asia/Shanghai"},
+    "Beijing":       {"lat": 39.9042, "lon": 116.4074, "tz": "Asia/Shanghai"},
+    "Shenzhen":      {"lat": 22.5431, "lon": 114.0579, "tz": "Asia/Shanghai"},
+    "Chengdu":       {"lat": 30.5728, "lon": 104.0668, "tz": "Asia/Shanghai"},
+    "Chongqing":     {"lat": 29.4316, "lon": 106.9123, "tz": "Asia/Shanghai"},
+    "Wuhan":         {"lat": 30.5928, "lon": 114.3055, "tz": "Asia/Shanghai"},
 }
 
 NOAA_API_BASE = "https://api.weather.gov"
@@ -188,7 +197,7 @@ def _get_openmeteo_blend_temp(city: str, date_str: str, metric: str = "high",
 
     for d, t in zip(dates, temps):
         if d == date_str and t is not None:
-            return round(t)
+            return round(t, 1)
 
     return None
 
@@ -218,7 +227,7 @@ def validate_forecast(city: str, date_str: str, metric: str = "high",
             "ecmwf_temp": float or None (PRIMARY),
             "noaa_temp": float or None (US validator),
             "blend_temp": float or None (global validator),
-            "sources_agree": int (how many sources returned matching data),
+            "sources_count": int (how many sources returned matching data),
             "max_delta": float (worst disagreement in degrees),
             "signal_strength": "strong" | "moderate" | "weak" | "ecmwf_only" | "no_data"
         }
@@ -254,7 +263,7 @@ def validate_forecast(city: str, date_str: str, metric: str = "high",
         "ecmwf_temp": ecmwf_temp,
         "noaa_temp": noaa_temp,
         "blend_temp": blend_temp,
-        "sources_agree": 0,
+        "sources_count": 0,
         "max_delta": None,
         "signal_strength": "no_data",
     }
@@ -263,8 +272,8 @@ def validate_forecast(city: str, date_str: str, metric: str = "high",
         # No primary forecast — fall back to whatever we have
         if blend_temp is not None:
             result["ecmwf_temp"] = blend_temp  # use blend as fallback primary
-            result["signal_strength"] = "ecmwf_only"  # single source
-            result["sources_agree"] = 1
+            result["signal_strength"] = "blend_only"
+            result["sources_count"] = 1
         return result
 
     # Compare sources
@@ -274,14 +283,14 @@ def validate_forecast(city: str, date_str: str, metric: str = "high",
     if blend_temp is not None:
         temps.append(blend_temp)
 
-    result["sources_agree"] = len(temps)
+    result["sources_count"] = len(temps)
 
     if len(temps) == 1:
         result["signal_strength"] = "ecmwf_only"
         return result
 
-    # Calculate max disagreement
-    max_delta = max(abs(ecmwf_temp - t) for t in temps[1:])
+    # Calculate max disagreement across all source pairs
+    max_delta = max(temps) - min(temps)
     result["max_delta"] = round(max_delta, 1)
 
     if max_delta <= 3:
@@ -308,9 +317,9 @@ if __name__ == "__main__":
 
     s = result["signal_strength"]
     if s == "strong":
-        print(f"\nSignal: STRONG ({result['sources_agree']} sources agree within 3°, max delta={result['max_delta']}°)")
+        print(f"\nSignal: STRONG ({result['sources_count']} sources agree within 3°, max delta={result['max_delta']}°)")
     elif s == "moderate":
-        print(f"\nSignal: MODERATE ({result['sources_agree']} sources, delta={result['max_delta']}°)")
+        print(f"\nSignal: MODERATE ({result['sources_count']} sources, delta={result['max_delta']}°)")
     elif s == "weak":
         print(f"\nSignal: WEAK (delta={result['max_delta']}° — SKIP TRADE)")
     elif s == "ecmwf_only":

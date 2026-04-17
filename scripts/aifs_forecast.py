@@ -15,7 +15,6 @@ import argparse
 import json
 import os
 import shutil
-import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -27,7 +26,7 @@ AIFS_CACHE_DIR = Path.home() / ".cache" / "aifs_ens"
 AIFS_CACHE_MAX_AGE_HOURS = 24  # Re-download once per 24h window — ECMWF AIFS runs 00z and 12z; one download per day is sufficient
 # Covers next-day midnight forecasts at steps 12-36
 DEFAULT_STEPS = tuple(range(0, 73, 6))   # 0,6,12,18,24,30,36,42,48,54,60,66,72 (covers D+2 targets)
-DEFAULT_RUN_HOURS = (0, 6, 12, 18)
+DEFAULT_RUN_HOURS = (0, 12)
 
 
 def _load_aifs_dependencies():
@@ -148,7 +147,7 @@ def _download_aifs_grib(target_path: str,
 
     def _is_retryable_aifs_error(exc: Exception) -> bool:
         msg = str(exc).lower()
-        return any(token in msg for token in ("slowdown", "503", "service unavailable", "timed out", "timeout"))
+        return any(token in msg for token in ("slowdown", "503", "service unavailable", "timed out", "timeout", "connection", "reset", "broken pipe", "eof"))
 
     def _retrieve_with_backoff(date_str: str, hour: int, request: dict, path: str, min_bytes: int, label: str) -> tuple[bool, str | None]:
         max_attempts = 4
@@ -297,7 +296,6 @@ def _extract_member_daily_values(grib_path: str, lat: float, lon: float,
     lon_dim_idx = dim_map.get("longitude", 2)
 
     reducer = max if metric == "high" else min
-    member_values: list[float] = []
 
     # Shape check — verify indexing will work
     shape = temp_var.data.shape
@@ -395,22 +393,33 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
         age_hours = (datetime.now(timezone.utc) - datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)).total_seconds() / 3600
         return age_hours < AIFS_CACHE_MAX_AGE_HOURS
 
+    cfgrib_mod = deps["cfgrib"]
+    if cfgrib_mod is None:
+        return {
+            "ensemble_mean": None,
+            "spread": None,
+            "agreement_pct": 0.0,
+            "member_count": 0,
+            "run_date": run_date,
+            "run_hour": run_hour,
+            "source": "aifs_ens",
+            "error": f"Missing deps: {', '.join(deps['missing'])}",
+        }
+
     if _is_cache_fresh(cf_cache):
-        # Parse run metadata from GRIB file to get actual run time
-        import cfgrib as _cg
-        ds = _cg.open_file(str(cf_cache))
+        ds = cfgrib_mod.open_file(str(cf_cache))
         time_ts = float(ds.variables["time"].data)
         run_dt = datetime.fromtimestamp(time_ts, tz=timezone.utc)
         run_date_str = run_dt.strftime("%Y-%m-%d")
         run_hour_int = run_dt.hour
         download = {
             "cf_path": str(cf_cache),
+            "pf_path": str(pf_cache) if pf_cache.exists() else None,
             "cached": True,
             "run_date": run_date_str,
             "run_hour": run_hour_int,
         }
     else:
-        # Download to temp first, then move to cache
         import tempfile as _tmp
         with _tmp.TemporaryDirectory(prefix="aifs_ens_") as tmpdir:
             cf_tmp = str(Path(tmpdir) / "latest_cf.grib2")
@@ -432,10 +441,12 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
                     "source": "aifs_ens",
                     "error": str(exc),
                 }
-            # Promote to persistent cache
             cf_path = download.get("cf_path")
             if cf_path and Path(cf_path).exists():
                 shutil.copy2(cf_path, cf_cache)
+            pf_path = download.get("pf_path")
+            if pf_path and Path(pf_path).exists():
+                shutil.copy2(pf_path, pf_cache)
 
     member_values_c: list[float] = []
 
@@ -450,8 +461,19 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
     except Exception:
         pass
 
-    # Compute ensemble statistics — CF is single deterministic run (ensemble mean)
-    # spread is N/A without perturbed members; agreement_pct not meaningful for CF-only
+    # Extract from PF (perturbed forecast members) if available
+    pf_path = download.get("pf_path")
+    if pf_path and Path(pf_path).exists():
+        try:
+            pf_values = _extract_member_daily_values(
+                grib_path=pf_path,
+                lat=lat, lon=lon, date_str=date_str,
+                metric=metric, timezone_name=timezone_name,
+            )
+            member_values_c.extend(pf_values)
+        except Exception:
+            pass
+
     if not member_values_c:
         return {
             "ensemble_mean": None,
@@ -461,17 +483,24 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
             "run_date": download.get("run_date"),
             "run_hour": download.get("run_hour"),
             "source": "aifs_ens",
-            "error": f"No AIFS CF values for {date_str} at lat={lat}, lon={lon}",
+            "error": f"No AIFS values for {date_str} at lat={lat}, lon={lon}",
         }
 
     mean_value = float(np.mean(member_values_c))
     ensemble_mean = round(_convert_unit(mean_value, unit), 1)
-    spread = 0.0  # CF is single deterministic run — spread requires perturbed members
+
+    if len(member_values_c) > 1:
+        spread = round(float(np.max(member_values_c) - np.min(member_values_c)) * (9.0 / 5.0 if unit == "F" else 1.0), 1)
+        within_3c = sum(1 for v in member_values_c if abs(v - mean_value) <= (3 * 5.0 / 9.0 if unit == "F" else 3))
+        agreement_pct = round(100.0 * within_3c / len(member_values_c), 1)
+    else:
+        spread = 0.0
+        agreement_pct = 0.0
 
     return {
         "ensemble_mean": ensemble_mean,
         "spread": spread,
-        "agreement_pct": 0.0,
+        "agreement_pct": agreement_pct,
         "member_count": len(member_values_c),
         "run_date": download.get("run_date"),
         "run_hour": download.get("run_hour"),

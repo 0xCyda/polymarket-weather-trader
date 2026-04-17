@@ -2,7 +2,7 @@
 """
 Simmer Weather Trading Skill
 
-Trades Polymarket weather markets using NOAA forecasts.
+Trades Polymarket weather markets using AIFS ENS + multi-model ensemble forecasts.
 Inspired by gopfan2's $2M+ weather trading strategy.
 
 Usage:
@@ -116,22 +116,31 @@ ORDER_TYPE = (_config.get("order_type") or "GTC").upper()
 # SimmerClient singleton
 _client = None
 
+_client_live_mode = None
+
 def get_client(live=True):
     """Lazy-init SimmerClient singleton."""
-    global _client
-    if _client is None:
-        try:
-            from simmer_sdk import SimmerClient
-        except ImportError:
-            print("Error: simmer-sdk not installed. Run: pip install simmer-sdk")
-            sys.exit(1)
-        api_key = os.environ.get("SIMMER_API_KEY")
-        if not api_key:
-            print("Error: SIMMER_API_KEY environment variable not set")
-            print("Get your API key from: simmer.markets/dashboard -> SDK tab")
-            sys.exit(1)
-        venue = os.environ.get("TRADING_VENUE", "polymarket")
-        _client = SimmerClient(api_key=api_key, venue=venue, live=live)
+    global _client, _client_live_mode
+    if _client is not None:
+        if live != _client_live_mode:
+            raise RuntimeError(
+                f"SimmerClient already initialized with live={_client_live_mode}, "
+                f"but get_client called with live={live}"
+            )
+        return _client
+    try:
+        from simmer_sdk import SimmerClient
+    except ImportError:
+        print("Error: simmer-sdk not installed. Run: pip install simmer-sdk")
+        sys.exit(1)
+    api_key = os.environ.get("SIMMER_API_KEY")
+    if not api_key:
+        print("Error: SIMMER_API_KEY environment variable not set")
+        print("Get your API key from: simmer.markets/dashboard -> SDK tab")
+        sys.exit(1)
+    venue = os.environ.get("TRADING_VENUE", "polymarket")
+    _client = SimmerClient(api_key=api_key, venue=venue, live=live)
+    _client_live_mode = live
     return _client
 
 # Source tag for tracking
@@ -720,7 +729,7 @@ def discover_and_import_weather_markets(log=print):
     Discovery is cached: only runs once per hour to avoid Simmer 429s.
     """
     # Discovery cache: skip if ran within last 60 minutes
-    cache_file = _p.Path("data/discovery_cache.json")
+    cache_file = _p.Path(__file__).parent / "data" / "discovery_cache.json"
     try:
         if cache_file.exists():
             cache = json.loads(cache_file.read_text())
@@ -743,6 +752,7 @@ def discover_and_import_weather_markets(log=print):
 
         for term in search_terms:
             # Retry with exponential backoff on 429 from Simmer
+            results = []
             wait_time = 2
             for attempt in range(3):
                 try:
@@ -846,7 +856,7 @@ def execute_trade(market_id: str, side: str, amount: float, reasoning: str = Non
             print(f"  [GTC] Order placed on book — waiting for fill (trade {result.trade_id})")
         return out
     except Exception as e:
-        return {"error": str(e)}
+        return {"success": False, "error": str(e)}
 
 
 def execute_sell(market_id: str, shares: float) -> dict:
@@ -866,7 +876,7 @@ def execute_sell(market_id: str, shares: float) -> dict:
             print(f"  [GTC] Sell order placed on book — waiting for fill (trade {result.trade_id})")
         return out
     except Exception as e:
-        return {"error": str(e)}
+        return {"success": False, "error": str(e)}
 
 
 def get_positions(venue: str = None) -> list:
@@ -1159,12 +1169,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         # Determine forecast source: NOAA for US cities, Open-Meteo for international
         is_international = location in INTERNATIONAL_LOCATIONS
 
-        import sys as _sys
-        temp_unit = event_info.get("unit", "F")
-
         # Use multi-model ensemble: AIFS ENS (primary) + 6-model blend
-        # Cache key includes date_str since different dates for same location return different data
-        cache_key = (location, date_str)
+        cache_key = (location, date_str, metric)
         if cache_key not in forecast_cache:
             log(f"  Fetching ensemble forecast (AIFS ENS + 6-model blend)...")
             unit_for_ensemble = 'F'
@@ -1193,7 +1199,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
         # Pass 1: exact bucket range match (forecast falls within lo-hi)
         matching_market = None
-        threshold_market = None  # "or higher" / "or below" market for second pass
+        threshold_markets = []  # "or higher" / "or below" markets for second pass
         for market in event_markets:
             outcome_name = market.get("outcome_name") or market.get("question", "")
             bucket = parse_temperature_bucket(outcome_name)
@@ -1201,31 +1207,35 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             if bucket:
                 lo, hi, unit = bucket
                 # All ensemble temps are in Fahrenheit — convert Celsius buckets to °F
+                # Preserve sentinel values (-999, 999) used for threshold buckets
                 if unit == 'C':
-                    lo = lo * 9 / 5 + 32
-                    hi = hi * 9 / 5 + 32
+                    lo = lo * 9 / 5 + 32 if lo != -999 else -999
+                    hi = hi * 9 / 5 + 32 if hi != 999 else 999
                 if lo <= forecast_temp <= hi:
                     matching_market = market
                     break
-                # Capture "or higher" / "or below" buckets for threshold pass
+                # Collect "or higher" / "or below" buckets for threshold pass
                 if hi == 999 or lo == -999:
-                    threshold_market = (market, lo, hi, outcome_name)
+                    threshold_markets.append((market, lo, hi, outcome_name))
 
-        # Pass 2: threshold markets — "X or higher" / "X or below" (true threshold buckets, not exact ranges)
-        # For "X or higher" buckets (lo is meaningful, hi=999 sentinel):
-        #   forecast > lo → BUY YES (forecast is above threshold → YES likely)
-        # For "X or below" buckets (lo=-999 sentinel, hi is meaningful):
-        #   forecast < hi → BUY YES (forecast is below threshold → YES likely)
-        if not matching_market and threshold_market:
-            market, lo, hi, outcome_name = threshold_market
-            is_or_higher = (lo != -999 and hi == 999)  # true "X or higher" (lo set, hi=sentinel)
-            is_or_below = (lo == -999 and hi != 999)   # true "X or below" (lo=sentinel, hi set)
-            if is_or_higher and forecast_temp > lo:
-                # Forecast above lower bound → BUY YES
-                matching_market = market
-            elif is_or_below and forecast_temp < hi:
-                # Forecast below upper bound → BUY YES
-                matching_market = market
+        # Pass 2: threshold markets — pick the one closest to the forecast
+        if not matching_market and threshold_markets:
+            best_match = None
+            best_distance = float('inf')
+            for market, lo, hi, outcome_name in threshold_markets:
+                is_or_higher = (lo != -999 and hi == 999)
+                is_or_below = (lo == -999 and hi != 999)
+                if is_or_higher and forecast_temp > lo:
+                    distance = abs(forecast_temp - lo)
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_match = market
+                elif is_or_below and forecast_temp < hi:
+                    distance = abs(forecast_temp - hi)
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_match = market
+            matching_market = best_match
 
         if not matching_market:
             # Suggest nearest bucket — useful for understanding near-miss on tight Celsius markets
@@ -1236,8 +1246,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 if b:
                     lo, hi, unit = b
                     if unit == 'C':
-                        lo = lo * 9 / 5 + 32
-                        hi = hi * 9 / 5 + 32
+                        lo = lo * 9 / 5 + 32 if lo != -999 else -999
+                        hi = hi * 9 / 5 + 32 if hi != 999 else 999
                     all_buckets.append((lo, hi, m.get('outcome_name','')))
 
             nearest = None
@@ -1361,7 +1371,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 signal["vol_targeting"] = vol_meta
             result = execute_trade(
                 market_id, "yes", position_size,
-                reasoning=f"NOAA forecasts {forecast_temp}{unit_label} → bucket {outcome_name} underpriced at {price:.0%}",
+                reasoning=f"Ensemble forecasts {forecast_temp}{unit_label} → bucket {outcome_name} underpriced at {price:.0%}",
                 signal_data=signal,
             )
 
@@ -1374,17 +1384,16 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
                 # Log trade context for journal (skip for paper trades)
                 if trade_id and JOURNAL_AVAILABLE and not result.get("simulated"):
-                    # Confidence based on price gap from threshold (guard against div by zero)
                     if ENTRY_THRESHOLD > 0:
-                        confidence = min(0.95, (ENTRY_THRESHOLD - price) / ENTRY_THRESHOLD + 0.5)
+                        journal_confidence = min(0.95, (ENTRY_THRESHOLD - price) / ENTRY_THRESHOLD + 0.5)
                     else:
-                        confidence = 0.7  # Default confidence if threshold is zero
+                        journal_confidence = 0.7
                     log_trade(
                         trade_id=trade_id,
                         source=TRADE_SOURCE, skill_slug=SKILL_SLUG,
                         thesis=f"{'Open-Meteo' if is_international else 'NOAA'} forecasts {forecast_temp}{unit_label} for {location} on {date_str}, "
                                f"bucket '{outcome_name}' underpriced at ${price:.2f}",
-                        confidence=round(confidence, 2),
+                        confidence=round(journal_confidence, 2),
                         location=location,
                         forecast_temp=forecast_temp,
                         target_date=date_str,
@@ -1478,7 +1487,10 @@ if __name__ == "__main__":
                 if key in CONFIG_SCHEMA:
                     type_fn = CONFIG_SCHEMA[key].get("type", str)
                     try:
-                        value = type_fn(value)
+                        if type_fn == bool:
+                            value = value.lower() in ('true', '1', 'yes')
+                        else:
+                            value = type_fn(value)
                     except (ValueError, TypeError):
                         pass
                 updates[key] = value
