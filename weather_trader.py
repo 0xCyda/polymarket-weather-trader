@@ -116,17 +116,10 @@ ORDER_TYPE = (_config.get("order_type") or "GTC").upper()
 # SimmerClient singleton
 _client = None
 
-_client_live_mode = None
-
 def get_client(live=True):
     """Lazy-init SimmerClient singleton."""
-    global _client, _client_live_mode
+    global _client
     if _client is not None:
-        if live != _client_live_mode:
-            raise RuntimeError(
-                f"SimmerClient already initialized with live={_client_live_mode}, "
-                f"but get_client called with live={live}"
-            )
         return _client
     try:
         from simmer_sdk import SimmerClient
@@ -140,7 +133,6 @@ def get_client(live=True):
         sys.exit(1)
     venue = os.environ.get("TRADING_VENUE", "polymarket")
     _client = SimmerClient(api_key=api_key, venue=venue, live=live)
-    _client_live_mode = live
     return _client
 
 # Source tag for tracking
