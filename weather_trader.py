@@ -86,7 +86,7 @@ CONFIG_SCHEMA = {
     "max_position_usd":  {"env": "SIMMER_WEATHER_MAX_POSITION_USD",  "default": 100.00, "type": float},
     "sizing_pct":        {"env": "SIMMER_WEATHER_SIZING_PCT",        "default": 0.05,  "type": float},
     "max_trades_per_run":{"env": "SIMMER_WEATHER_MAX_TRADES_PER_RUN","default": 5,     "type": int},
-    "paper_balance":     {"env": "SIMMER_WEATHER_PAPER_BALANCE",     "default": 1000.0,"type": float},
+    "paper_balance":     {"env": "SIMMER_WEATHER_PAPER_BALANCE",     "default": 10000.0,"type": float},
     "locations":         {"env": "SIMMER_WEATHER_LOCATIONS",         "default": "NYC", "type": str},
     "binary_only":       {"env": "SIMMER_WEATHER_BINARY_ONLY",       "default": False, "type": bool},
     "slippage_max":      {"env": "SIMMER_WEATHER_SLIPPAGE_MAX",      "default": 0.15,  "type": float},
