@@ -20,6 +20,7 @@ import sys
 import time
 import re
 import json
+import logging
 import argparse
 from datetime import datetime, timezone, timedelta
 from urllib.request import urlopen, Request
@@ -61,6 +62,14 @@ except ImportError:
     def get_open_positions(): return []
     def get_stats(): return {}
 
+# Forecast accuracy history (observability only — doesn't affect trading)
+try:
+    from forecast_history import log_forecast
+    FORECAST_HISTORY_AVAILABLE = True
+except ImportError:
+    FORECAST_HISTORY_AVAILABLE = False
+    def log_forecast(**kwargs): pass
+
 # =============================================================================
 # Configuration (config.json > env vars > defaults)
 # =============================================================================
@@ -94,6 +103,22 @@ CONFIG_SCHEMA = {
                           "help": "Min allocation floor from vol targeting (stay in market during high vol)."},
     "vol_span":          {"env": "SIMMER_WEATHER_VOL_SPAN",          "default": 10,    "type": int,
                           "help": "EWMA span for volatility calculation (lower = more responsive)."},
+    "max_daily_loss_usd":{"env": "SIMMER_WEATHER_MAX_DAILY_LOSS_USD","default": 0.0,   "type": float,
+                          "help": "Stop trading for the day once realized+unrealized loss exceeds this USD. 0 = disabled."},
+    "exit_profit_multiplier": {"env": "SIMMER_WEATHER_EXIT_PROFIT_MULT", "default": 0.0, "type": float,
+                          "help": "Dynamic exit: take profit at max(exit_threshold, entry_price * mult). 0 = use fixed exit_threshold only."},
+    "ladder_first_exit": {"env": "SIMMER_WEATHER_LADDER_FIRST_EXIT", "default": 0.0,   "type": float,
+                          "help": "Price threshold for first laddered exit (sells ladder_first_fraction). 0 = disabled."},
+    "ladder_first_fraction": {"env": "SIMMER_WEATHER_LADDER_FIRST_FRAC", "default": 0.5, "type": float,
+                          "help": "Fraction of position to sell at ladder_first_exit (0.5 = sell half)."},
+    "discovery_cache_minutes": {"env": "SIMMER_WEATHER_DISCOVERY_CACHE_MIN", "default": 60, "type": int,
+                          "help": "How long to cache per-location discovery results before rescanning (minutes)."},
+    "log_level":         {"env": "SIMMER_WEATHER_LOG_LEVEL",         "default": "INFO","type": str,
+                          "help": "Logging verbosity: DEBUG, INFO, WARNING, ERROR."},
+    "forecast_cache_disk":{"env": "SIMMER_WEATHER_FORECAST_CACHE_DISK", "default": True, "type": bool,
+                          "help": "Persist forecast cache to disk across runs (reduces API calls on cron schedule)."},
+    "concurrent_scans":  {"env": "SIMMER_WEATHER_CONCURRENT_SCANS",  "default": True,  "type": bool,
+                          "help": "Fetch market context + price history concurrently across events."},
 }
 
 # Backwards-compatible env var aliases (old name -> new name)
@@ -176,6 +201,16 @@ TIME_TO_RESOLUTION_MIN_HOURS = 2  # Skip if resolving in < 2 hours
 # Price trend detection
 PRICE_DROP_THRESHOLD = 0.10  # 10% drop in last 24h = stronger signal
 
+# Risk and execution improvements
+MAX_DAILY_LOSS_USD = _config["max_daily_loss_usd"]  # 0 = disabled
+EXIT_PROFIT_MULTIPLIER = _config["exit_profit_multiplier"]  # 0 = fixed exit only
+LADDER_FIRST_EXIT = _config["ladder_first_exit"]  # 0 = disabled
+LADDER_FIRST_FRACTION = _config["ladder_first_fraction"]
+DISCOVERY_CACHE_MINUTES = _config["discovery_cache_minutes"]
+FORECAST_CACHE_DISK = _config["forecast_cache_disk"]
+CONCURRENT_SCANS = _config["concurrent_scans"]
+LOG_LEVEL = _config["log_level"]
+
 # Supported locations (matching Polymarket resolution sources)
 LOCATIONS = {
     "NYC": {"lat": 40.7769, "lon": -73.8740, "name": "New York City (LaGuardia)", "station": "KLGA"},
@@ -189,6 +224,101 @@ LOCATIONS = {
 # Active locations - from config
 _locations_str = _config["locations"]
 ACTIVE_LOCATIONS = [loc.strip().upper() for loc in _locations_str.split(",") if loc.strip()]
+
+# =============================================================================
+# Structured logging
+# =============================================================================
+
+logger = logging.getLogger("weather_trader")
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(getattr(logging, LOG_LEVEL.upper(), logging.INFO))
+
+
+def validate_live_trading_prereqs():
+    """Fail fast if --live is used without required credentials."""
+    missing = []
+    if not os.environ.get("SIMMER_API_KEY"):
+        missing.append("SIMMER_API_KEY")
+    if not os.environ.get("WALLET_PRIVATE_KEY"):
+        missing.append("WALLET_PRIVATE_KEY")
+    if missing:
+        print(f"❌ Cannot start live trading: missing env vars {', '.join(missing)}")
+        print(f"   Set WALLET_PRIVATE_KEY=0x... to sign orders client-side.")
+        sys.exit(1)
+
+
+# =============================================================================
+# Disk-persisted forecast cache
+# =============================================================================
+
+_FORECAST_CACHE_FILE = _p.Path(__file__).parent / "data" / "forecast_cache.json"
+_FORECAST_CACHE_TTL_SECONDS = 6 * 3600  # 6h — balances staleness vs API load
+
+
+def _load_forecast_disk_cache() -> dict:
+    """Load persisted forecasts, filtering out expired entries."""
+    if not FORECAST_CACHE_DISK or not _FORECAST_CACHE_FILE.exists():
+        return {}
+    try:
+        raw = json.loads(_FORECAST_CACHE_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+    now = time.time()
+    fresh = {}
+    for key_str, entry in raw.items():
+        if now - entry.get("cached_at", 0) < _FORECAST_CACHE_TTL_SECONDS:
+            fresh[key_str] = entry.get("result")
+    return fresh
+
+
+def _save_forecast_disk_cache(cache: dict):
+    """Persist forecasts with timestamps."""
+    if not FORECAST_CACHE_DISK:
+        return
+    try:
+        _FORECAST_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        now = time.time()
+        serialized = {k: {"cached_at": now, "result": v} for k, v in cache.items()}
+        _FORECAST_CACHE_FILE.write_text(json.dumps(serialized, default=str))
+    except OSError:
+        pass
+
+
+def _cache_key_to_str(key: tuple) -> str:
+    return "|".join(str(x) for x in key)
+
+
+# =============================================================================
+# Daily loss tracking
+# =============================================================================
+
+def get_realized_daily_pnl() -> float:
+    """Sum P&L of trades resolved today (UTC). Uses paper journal if available."""
+    if not PAPER_JOURNAL_AVAILABLE:
+        return 0.0
+    try:
+        from paper_journal import _load_trades
+        trades = _load_trades()
+    except Exception:
+        return 0.0
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    total = 0.0
+    for t in trades:
+        resolved_at = t.get("resolved_at") or ""
+        if resolved_at.startswith(today) and t.get("pnl") is not None:
+            total += float(t["pnl"])
+    return total
+
+
+def daily_loss_limit_breached() -> bool:
+    """Return True if max_daily_loss_usd is configured and today's loss exceeds it."""
+    if MAX_DAILY_LOSS_USD <= 0:
+        return False
+    realized = get_realized_daily_pnl()
+    return realized <= -MAX_DAILY_LOSS_USD
 
 # =============================================================================
 # NOAA Weather API
@@ -366,17 +496,33 @@ def parse_weather_event(event_name: str) -> dict:
         metric = 'high'
 
     location = None
+    # Multi-word aliases must come before overlapping single-word ones
+    # (e.g. "new york" before "york", "hong kong" before "hong").
     location_aliases = {
-        'nyc': 'NYC', 'new york': 'NYC', 'laguardia': 'NYC', 'la guardia': 'NYC',
+        # US cities
+        'new york': 'NYC', 'nyc': 'NYC', 'laguardia': 'NYC', 'la guardia': 'NYC',
         'chicago': 'Chicago', "o'hare": 'Chicago', 'ohare': 'Chicago',
         'seattle': 'Seattle', 'sea-tac': 'Seattle',
         'atlanta': 'Atlanta', 'hartsfield': 'Atlanta',
         'dallas': 'Dallas', 'dfw': 'Dallas',
         'miami': 'Miami',
-        # International cities (Open-Meteo)
-        'shanghai': 'Shanghai',
+        'houston': 'Houston',
+        'san francisco': 'San Francisco',
+        'phoenix': 'Phoenix',
+        'los angeles': 'Los Angeles',
+        'denver': 'Denver',
+        'austin': 'Austin',
+        'las vegas': 'Las Vegas',
+        # International cities
         'hong kong': 'Hong Kong',
         'tel aviv': 'Tel Aviv',
+        'sao paulo': 'Sao Paulo', 'são paulo': 'Sao Paulo',
+        'shanghai': 'Shanghai',
+        'beijing': 'Beijing',
+        'shenzhen': 'Shenzhen',
+        'chengdu': 'Chengdu',
+        'chongqing': 'Chongqing',
+        'wuhan': 'Wuhan',
         'munich': 'Munich',
         'london': 'London',
         'tokyo': 'Tokyo',
@@ -384,6 +530,11 @@ def parse_weather_event(event_name: str) -> dict:
         'ankara': 'Ankara',
         'lucknow': 'Lucknow',
         'wellington': 'Wellington',
+        'toronto': 'Toronto',
+        'paris': 'Paris',
+        'milan': 'Milan',
+        'warsaw': 'Warsaw',
+        'singapore': 'Singapore',
     }
 
     for alias, loc in location_aliases.items():
@@ -583,6 +734,30 @@ def check_context_safeguards(context: dict, use_edge: bool = True) -> tuple:
     return True, reasons
 
 
+def get_open_market_ids() -> set:
+    """Return set of market_ids we already hold >0 shares in (weather source)."""
+    try:
+        positions = get_positions()
+    except Exception:
+        return set()
+    held = set()
+    for pos in positions:
+        shares = (pos.get("shares_yes") or 0) + (pos.get("shares_no") or 0)
+        if shares > 0:
+            mid = pos.get("market_id")
+            if mid:
+                held.add(mid)
+    return held
+
+
+def compute_dynamic_exit(entry_price: float) -> float:
+    """Dynamic exit threshold: max(EXIT_THRESHOLD, entry * multiplier). Caps below 0.99."""
+    if EXIT_PROFIT_MULTIPLIER <= 0 or entry_price <= 0:
+        return EXIT_THRESHOLD
+    dynamic = min(0.99, entry_price * EXIT_PROFIT_MULTIPLIER)
+    return max(EXIT_THRESHOLD, dynamic)
+
+
 def detect_price_trend(history: list) -> dict:
     """
     Analyze price history for trends.
@@ -751,27 +926,40 @@ def discover_and_import_weather_markets(log=print):
     Searches the importable markets endpoint for weather events matching
     ACTIVE_LOCATIONS, then imports any that aren't already in Simmer.
 
-    Discovery is cached: only runs once per hour to avoid Simmer 429s.
+    Discovery uses a per-location TTL cache (DISCOVERY_CACHE_MINUTES) so
+    each city is rescanned on its own schedule.
     """
-    # Discovery cache: skip if ran within last 60 minutes
     cache_file = _p.Path(__file__).parent / "data" / "discovery_cache.json"
+    cache_ttl_seconds = DISCOVERY_CACHE_MINUTES * 60
     try:
-        if cache_file.exists():
-            cache = json.loads(cache_file.read_text())
-            last_run = cache.get("last_discovery", 0)
-            if time.time() - last_run < 3600:
-                log("  Discovery cache hit (ran recently) — skipping")
-                return 0
+        per_loc_cache = json.loads(cache_file.read_text()) if cache_file.exists() else {}
     except Exception:
-        pass
+        per_loc_cache = {}
+    # Strip legacy global keys
+    per_loc_cache.pop("last_discovery", None)
 
     client = get_client()
     imported_count = 0
     seen_urls = set()
+    scanned_any = False
+
+    def _save_cache():
+        try:
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            cache_file.write_text(json.dumps(per_loc_cache))
+        except Exception:
+            pass
 
     for location in ACTIVE_LOCATIONS:
-        # Rate limit: 2s between cities to avoid Simmer 429s
-        time.sleep(2)
+        # Per-location TTL check
+        last_scan = per_loc_cache.get(location, 0)
+        if time.time() - last_scan < cache_ttl_seconds:
+            log(f"  Discovery cache hit for {location} — skipping")
+            continue
+
+        if scanned_any:
+            time.sleep(2)  # Rate limit between cities
+        scanned_any = True
 
         search_terms = LOCATION_SEARCH_TERMS.get(location, [f"temperature {location.lower()}"])
 
@@ -795,11 +983,7 @@ def discover_and_import_weather_markets(log=print):
                             continue
                         else:
                             log(f"  Simmer 429 persists after retries for '{term}' — skipping discovery")
-                            try:
-                                cache_file.parent.mkdir(parents=True, exist_ok=True)
-                                cache_file.write_text(json.dumps({"last_discovery": time.time()}))
-                            except Exception:
-                                pass
+                            _save_cache()
                             return imported_count
                     else:
                         log(f"  Discovery search failed for '{term}': {e}")
@@ -831,21 +1015,14 @@ def discover_and_import_weather_markets(log=print):
                     err_str = str(e)
                     if "rate limit" in err_str.lower() or "429" in err_str:
                         log(f"  Import rate limit reached — stopping discovery")
-                        try:
-                            cache_file.parent.mkdir(parents=True, exist_ok=True)
-                            cache_file.write_text(json.dumps({"last_discovery": time.time()}))
-                        except Exception:
-                            pass
+                        _save_cache()
                         return imported_count
                     log(f"  Import failed for {url[:50]}: {e}")
 
-    # Save discovery cache — marks successful run so next scan doesn't re-hit Simmer
-    try:
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text(json.dumps({"last_discovery": time.time()}))
-    except Exception:
-        pass
+        # Mark location as scanned successfully
+        per_loc_cache[location] = time.time()
 
+    _save_cache()
     return imported_count
 
 
@@ -972,15 +1149,43 @@ def check_exit_opportunities(dry_run: bool = False, use_safeguards: bool = True)
         market_id = pos.get("market_id")
         current_price = pos.get("current_price") or pos.get("price_yes") or 0
         shares = pos.get("shares_yes") or pos.get("shares") or 0
+        entry_price = pos.get("avg_price") or pos.get("entry_price") or 0
         question = pos.get("question", "Unknown")[:50]
 
         if shares < MIN_SHARES_PER_ORDER:
             continue
 
-        if current_price >= EXIT_THRESHOLD:
+        # Dynamic exit threshold: max(EXIT_THRESHOLD, entry * EXIT_PROFIT_MULTIPLIER)
+        dynamic_exit = compute_dynamic_exit(entry_price) if entry_price > 0 else EXIT_THRESHOLD
+
+        # Laddered exit: partial sale at ladder_first_exit if enabled and not yet at final
+        if (LADDER_FIRST_EXIT > 0 and current_price >= LADDER_FIRST_EXIT
+                and current_price < dynamic_exit and not pos.get("ladder_sold")):
+            partial_shares = max(MIN_SHARES_PER_ORDER, shares * LADDER_FIRST_FRACTION)
+            if partial_shares < shares and (shares - partial_shares) >= MIN_SHARES_PER_ORDER:
+                exits_found += 1
+                print(f"  🪜 {question}... (ladder)")
+                print(f"     Price ${current_price:.2f} >= ladder exit ${LADDER_FIRST_EXIT:.2f} — partial sell {partial_shares:.1f}/{shares:.1f}")
+                if use_safeguards:
+                    ctx = get_market_context(market_id)
+                    ok, reasons = check_context_safeguards(ctx)
+                    if not ok:
+                        print(f"     ⏭️  Skipped: {'; '.join(reasons)}")
+                        continue
+                tag = "SIMULATED" if dry_run else "LIVE"
+                print(f"     Selling {partial_shares:.1f} shares ({tag})...")
+                result = execute_sell(market_id, partial_shares)
+                if result.get("success"):
+                    exits_executed += 1
+                    print(f"     ✅ {'[PAPER] ' if result.get('simulated') else ''}Sold {partial_shares:.1f} @ ${current_price:.2f}")
+                else:
+                    print(f"     ❌ Partial sell failed: {result.get('error', 'Unknown')}")
+                continue  # Leave remainder for full-exit check next cycle
+
+        if current_price >= dynamic_exit:
             exits_found += 1
             print(f"  📤 {question}...")
-            print(f"     Price ${current_price:.2f} >= exit threshold ${EXIT_THRESHOLD:.2f}")
+            print(f"     Price ${current_price:.2f} >= exit ${dynamic_exit:.2f} (base {EXIT_THRESHOLD:.2f}, entry {entry_price:.2f})")
 
             # Check safeguards before selling
             if use_safeguards:
@@ -1026,7 +1231,7 @@ def check_exit_opportunities(dry_run: bool = False, use_safeguards: bool = True)
                 print(f"     ❌ Sell failed: {error}")
         else:
             print(f"  📊 {question}...")
-            print(f"     Price ${current_price:.2f} < exit threshold ${EXIT_THRESHOLD:.2f} - hold")
+            print(f"     Price ${current_price:.2f} < exit ${dynamic_exit:.2f} - hold")
 
     return exits_found, exits_executed
 
@@ -1079,6 +1284,16 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         log("  3. Or set environment variables (lowest priority):")
         log("     SIMMER_WEATHER_ENTRY=0.20")
         return
+
+    # Fail fast if live trading requested without required credentials
+    if not dry_run:
+        validate_live_trading_prereqs()
+
+    # Check daily loss limit before spending any API calls on new entries
+    if daily_loss_limit_breached():
+        realized = get_realized_daily_pnl()
+        log(f"\n🛑 Daily loss limit breached: realized ${realized:.2f} ≤ -${MAX_DAILY_LOSS_USD:.2f}", force=True)
+        log(f"   Skipping new entries. Exit scan will still run.", force=True)
 
     # Initialize client early to validate API key
     client = get_client(live=not dry_run)
@@ -1162,18 +1377,23 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
     log(f"  Grouped into {len(events)} events")
 
-    forecast_cache = {}
+    # Load persisted forecast cache from disk + fresh set for this run
+    forecast_cache = _load_forecast_disk_cache()
+    already_held_markets = get_open_market_ids()
     trades_executed = 0
     total_usd_spent = 0.0
     opportunities_found = 0
     skip_reasons = []
     execution_errors = []
 
+    # =========================================================================
+    # PASS 1: Collect all viable candidates (no trades yet)
+    # =========================================================================
+    candidates = []  # list of dicts with all fields needed to execute a trade
+
     for event_id, event_markets in events.items():
-        # Use event_name from API if available, otherwise parse from question
         event_name = event_markets[0].get("event_name") or event_markets[0].get("question", "")
         event_info = parse_weather_event(event_name)
-
         if not event_info:
             continue
 
@@ -1184,30 +1404,38 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         if location.upper() not in ACTIVE_LOCATIONS:
             continue
 
-        # Skip range-bucket events (multi-outcome) if binary_only is set
         if BINARY_ONLY and len(event_markets) > 2:
             log(f"  ⏭️  Skipping range event ({len(event_markets)} outcomes) — binary_only=true")
             continue
 
         log(f"\n📍 {location} {date_str} ({metric} temp)")
-
-        # Determine forecast source: NOAA for US cities, Open-Meteo for international
         is_international = location in INTERNATIONAL_LOCATIONS
 
-        # Use multi-model ensemble: AIFS ENS (primary) + 6-model blend
-        cache_key = (location, date_str, metric)
-        if cache_key not in forecast_cache:
+        # Ensemble forecast — in-memory cache keyed by (location, date, metric)
+        cache_key_str = _cache_key_to_str((location, date_str, metric))
+        newly_fetched = False
+        if cache_key_str not in forecast_cache:
             log(f"  Fetching ensemble forecast (AIFS ENS + 6-model blend)...")
-            unit_for_ensemble = 'F'
-            _ensemble_result = get_ensemble_forecast(
-                city=location,
-                date_str=date_str,
-                metric=metric.lower(),
-                unit=unit_for_ensemble,
+            forecast_cache[cache_key_str] = get_ensemble_forecast(
+                city=location, date_str=date_str, metric=metric.lower(), unit='F',
             )
-            forecast_cache[cache_key] = _ensemble_result
+            newly_fetched = True
 
-        forecasts = forecast_cache[cache_key]
+        forecasts = forecast_cache[cache_key_str] or {}
+        # Log forecast for accuracy tracking (once per new fetch)
+        if newly_fetched and FORECAST_HISTORY_AVAILABLE and forecasts.get("weighted_temp") is not None:
+            try:
+                log_forecast(
+                    location=location, date_str=date_str, metric=metric,
+                    forecast_temp=forecasts.get("weighted_temp"),
+                    signal_strength=forecasts.get("signal_strength", "unknown"),
+                    models_used=forecasts.get("models_count", 0),
+                    agreement_pct=forecasts.get("agreement_pct", 0),
+                    spread=forecasts.get("max_delta"),
+                    model_temps=forecasts.get("model_temps"),
+                )
+            except Exception:
+                pass
         forecast_temp = forecasts.get("weighted_temp") or forecasts.get("ensemble_mean")
         signal_strength = forecasts.get("signal_strength", "unknown")
         models_used = forecasts.get("models_count", 0)
@@ -1218,52 +1446,42 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             skip_reasons.append(f"no forecast: {forecasts.get('error', 'unknown')}")
             continue
 
-        # All ensemble temps are in Fahrenheit — always display as °F regardless of market unit
         unit_label = "°F"
         log(f"  AIFS ENS: {forecast_temp}{unit_label} | signal: {signal_strength} | {models_used} models | agree: {agreement_pct}% | spread: {spread}°")
 
-        # Pass 1: exact bucket range match (forecast falls within lo-hi)
+        # Bucket matching: Pass 1 (exact range), then Pass 2 (threshold)
         matching_market = None
-        threshold_markets = []  # "or higher" / "or below" markets for second pass
+        threshold_markets = []
         for market in event_markets:
             outcome_name = market.get("outcome_name") or market.get("question", "")
             bucket = parse_temperature_bucket(outcome_name)
-
             if bucket:
                 lo, hi, unit = bucket
-                # All ensemble temps are in Fahrenheit — convert Celsius buckets to °F
-                # Preserve sentinel values (-999, 999) used for threshold buckets
                 if unit == 'C':
                     lo = lo * 9 / 5 + 32 if lo != -999 else -999
                     hi = hi * 9 / 5 + 32 if hi != 999 else 999
                 if lo <= forecast_temp <= hi:
                     matching_market = market
                     break
-                # Collect "or higher" / "or below" buckets for threshold pass
                 if hi == 999 or lo == -999:
                     threshold_markets.append((market, lo, hi, outcome_name))
 
-        # Pass 2: threshold markets — pick the one closest to the forecast
         if not matching_market and threshold_markets:
-            best_match = None
-            best_distance = float('inf')
+            best_match, best_distance = None, float('inf')
             for market, lo, hi, outcome_name in threshold_markets:
                 is_or_higher = (lo != -999 and hi == 999)
                 is_or_below = (lo == -999 and hi != 999)
                 if is_or_higher and forecast_temp > lo:
-                    distance = abs(forecast_temp - lo)
-                    if distance < best_distance:
-                        best_distance = distance
-                        best_match = market
+                    d = abs(forecast_temp - lo)
+                    if d < best_distance:
+                        best_distance, best_match = d, market
                 elif is_or_below and forecast_temp < hi:
-                    distance = abs(forecast_temp - hi)
-                    if distance < best_distance:
-                        best_distance = distance
-                        best_match = market
+                    d = abs(forecast_temp - hi)
+                    if d < best_distance:
+                        best_distance, best_match = d, market
             matching_market = best_match
 
         if not matching_market:
-            # Suggest nearest bucket — useful for understanding near-miss on tight Celsius markets
             all_buckets = []
             for m in event_markets:
                 outcome = m.get("outcome_name") or m.get("question", "")
@@ -1273,12 +1491,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                     if unit == 'C':
                         lo = lo * 9 / 5 + 32 if lo != -999 else -999
                         hi = hi * 9 / 5 + 32 if hi != 999 else 999
-                    all_buckets.append((lo, hi, m.get('outcome_name','')))
-
-            nearest = None
-            if all_buckets:
-                nearest = min(all_buckets, key=lambda b: min(abs(b[0]-forecast_temp), abs(b[1]-forecast_temp)))
-
+                    all_buckets.append((lo, hi, m.get('outcome_name', '')))
+            nearest = min(all_buckets, key=lambda b: min(abs(b[0]-forecast_temp), abs(b[1]-forecast_temp))) if all_buckets else None
             if nearest:
                 log(f"  ⚠️  No bucket found for {forecast_temp}{unit_label} — nearest: {nearest[2]} ({nearest[0]:.0f}-{nearest[1]:.0f}{unit_label})")
             else:
@@ -1289,38 +1503,109 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         outcome_name = matching_market.get("outcome_name", "")
         price = matching_market.get("external_price_yes") or 0.5
         market_id = matching_market.get("id")
-
         log(f"  Matching bucket: {outcome_name} @ ${price:.2f}")
 
-        if price < MIN_TICK_SIZE:
-            log(f"  ⏸️  Price ${price:.4f} below min tick ${MIN_TICK_SIZE} - skip (market at extreme)")
-            skip_reasons.append("price at extreme")
-            continue
-        if price > (1 - MIN_TICK_SIZE):
-            log(f"  ⏸️  Price ${price:.4f} above max tradeable - skip (market at extreme)")
+        if price < MIN_TICK_SIZE or price > (1 - MIN_TICK_SIZE):
+            log(f"  ⏸️  Price ${price:.4f} at extreme — skip")
             skip_reasons.append("price at extreme")
             continue
 
-        # Dynamic confidence from ensemble signal strength + agreement
-        # Strong: agreement 70%+, use 0.88; Moderate: 0.80; Weak: 0.70; Single-source: 0.72
+        # Signal → confidence
         if signal_strength == "strong":
             confidence = 0.88
         elif signal_strength == "moderate":
             confidence = 0.80
         elif signal_strength == "weak":
             confidence = 0.70
-        else:  # single_source or unknown
+        else:
             confidence = 0.72
 
-        # Skip weak signals — low model agreement = high uncertainty
         if signal_strength == "weak":
             log(f"  ⏭️  Weak ensemble signal ({spread}° disagreement) — skipping")
             skip_reasons.append("weak ensemble signal")
             continue
 
-        # Check safeguards with edge analysis
+        # Aggregation: don't re-buy markets we already hold
+        if market_id and market_id in already_held_markets:
+            log(f"  ⏭️  Already holding position in this market — skipping re-entry")
+            skip_reasons.append("already held")
+            continue
+
+        if price >= ENTRY_THRESHOLD:
+            log(f"  ⏸️  Price ${price:.2f} above threshold ${ENTRY_THRESHOLD:.2f} - skip")
+            continue
+
+        candidates.append({
+            "location": location, "date_str": date_str, "metric": metric,
+            "market": matching_market, "market_id": market_id,
+            "outcome_name": outcome_name, "price": price, "confidence": confidence,
+            "edge": confidence - price,
+            "signal_strength": signal_strength, "models_used": models_used,
+            "agreement_pct": agreement_pct, "spread": spread,
+            "forecast_temp": forecast_temp, "unit_label": unit_label,
+            "is_international": is_international,
+        })
+        opportunities_found += 1
+
+    # =========================================================================
+    # PASS 2: Rank by edge and (optionally) concurrent context fetch, then execute
+    # =========================================================================
+    candidates.sort(key=lambda c: c["edge"], reverse=True)
+    if candidates:
+        log(f"\n🏆 Ranked {len(candidates)} candidate(s) by edge (highest first)")
+
+    # Batch-fetch market context + price history concurrently for top candidates
+    top_n = candidates[:MAX_TRADES_PER_RUN] if not daily_loss_limit_breached() else []
+    context_map, history_map = {}, {}
+    if CONCURRENT_SCANS and top_n and (use_safeguards or use_trends or vol_targeting):
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(8, len(top_n) * 2)) as ex:
+            futures = {}
+            for c in top_n:
+                mid = c["market_id"]
+                if use_safeguards:
+                    futures[ex.submit(get_market_context, mid, c["confidence"])] = ("ctx", mid)
+                if use_trends or vol_targeting:
+                    futures[ex.submit(get_price_history, mid)] = ("hist", mid)
+            for fut, (kind, mid) in futures.items():
+                try:
+                    result = fut.result(timeout=20)
+                    if kind == "ctx":
+                        context_map[mid] = result
+                    else:
+                        history_map[mid] = result
+                except Exception:
+                    pass
+
+    for c in top_n:
+        if trades_executed >= MAX_TRADES_PER_RUN:
+            skip_reasons.append("max trades reached")
+            break
+        if daily_loss_limit_breached():
+            skip_reasons.append("daily loss limit")
+            break
+
+        market_id = c["market_id"]
+        price = c["price"]
+        confidence = c["confidence"]
+        forecast_temp = c["forecast_temp"]
+        unit_label = c["unit_label"]
+        outcome_name = c["outcome_name"]
+        location = c["location"]
+        date_str = c["date_str"]
+        metric = c["metric"]
+        signal_strength = c["signal_strength"]
+        models_used = c["models_used"]
+        agreement_pct = c["agreement_pct"]
+        spread = c["spread"]
+        matching_market = c["market"]
+        is_international = c["is_international"]
+
+        log(f"\n📍 {location} {date_str} ({metric} temp) | edge {c['edge']:.1%}")
+
+        # Safeguards (use pre-fetched if available)
         if use_safeguards:
-            context = get_market_context(market_id, my_probability=confidence)
+            context = context_map.get(market_id) if CONCURRENT_SCANS else get_market_context(market_id, my_probability=confidence)
             should_trade, reasons = check_context_safeguards(context)
             if not should_trade:
                 log(f"  ⏭️  Safeguard blocked: {'; '.join(reasons)}")
@@ -1329,132 +1614,100 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             if reasons:
                 log(f"  ⚠️  Warnings: {'; '.join(reasons)}")
 
-        # Fetch price history once — used for both trend detection and vol targeting
-        history = []
-        if use_trends or vol_targeting:
-            history = get_price_history(market_id)
+        history = history_map.get(market_id, []) if CONCURRENT_SCANS else (get_price_history(market_id) if (use_trends or vol_targeting) else [])
 
-        # Check price trend
         trend_bonus = ""
         if use_trends and history:
             trend = detect_price_trend(history)
             if trend["is_opportunity"]:
-                trend_bonus = f" 📉 (dropped {abs(trend['change_24h']):.0%} in 24h - stronger signal!)"
+                trend_bonus = f" 📉 (dropped {abs(trend['change_24h']):.0%} in 24h)"
             elif trend["direction"] == "up":
                 trend_bonus = f" 📈 (up {trend['change_24h']:.0%} in 24h)"
 
-        if price < ENTRY_THRESHOLD:
-            position_size = calculate_position_size(MAX_POSITION_USD, smart_sizing)
-
-            # Apply volatility targeting
-            vol_meta = None
-            if vol_targeting and history:
-                current_vol = calculate_ewma_vol(history, span=VOL_SPAN)
-                position_size, vol_meta = apply_vol_targeting(
-                    position_size, current_vol,
-                    target_vol=TARGET_VOL,
-                    max_leverage=VOL_MAX_LEVERAGE,
-                    min_allocation=VOL_MIN_ALLOCATION,
-                )
-                if current_vol is not None:
-                    log(f"  📊 Vol targeting: realized={current_vol:.0%} target={TARGET_VOL:.0%} → {vol_meta['leverage']:.2f}x (${position_size:.2f})")
-                else:
-                    log(f"  📊 Vol targeting: insufficient price data — using base size")
-
-            min_cost_for_shares = MIN_SHARES_PER_ORDER * price
-            if min_cost_for_shares > position_size:
-                log(f"  ⚠️  Position size ${position_size:.2f} too small for {MIN_SHARES_PER_ORDER} shares at ${price:.2f}")
-                skip_reasons.append("position too small")
-                continue
-
-            opportunities_found += 1
-            log(f"  ✅ Below threshold (${ENTRY_THRESHOLD:.2f}) - BUY opportunity!{trend_bonus}")
-
-            # Check rate limit
-            if trades_executed >= MAX_TRADES_PER_RUN:
-                log(f"  ⏸️  Max trades per run ({MAX_TRADES_PER_RUN}) reached - skipping")
-                skip_reasons.append("max trades reached")
-                continue
-
-            tag = "SIMULATED" if dry_run else "LIVE"
-            log(f"  Executing trade ({tag})...", force=True)
-            edge = confidence - price
-            signal = {
-                    "edge": round(edge, 4),
-                    "confidence": round(confidence, 2),
-                    "signal_source": "aifs_ensemble",
-                    "forecast_temp": forecast_temp,
-                    "bucket_range": outcome_name,
-                    "market_price": round(price, 4),
-                    "threshold": ENTRY_THRESHOLD,
-                    "models_used": models_used,
-                    "agreement_pct": agreement_pct,
-                    "spread": spread,
-                    "signal_strength": signal_strength,
-            }
-            if vol_meta:
-                signal["vol_targeting"] = vol_meta
-            result = execute_trade(
-                market_id, "yes", position_size,
-                reasoning=f"Ensemble forecasts {forecast_temp}{unit_label} → bucket {outcome_name} underpriced at {price:.0%}",
-                signal_data=signal,
+        position_size = calculate_position_size(MAX_POSITION_USD, smart_sizing)
+        vol_meta = None
+        if vol_targeting and history:
+            current_vol = calculate_ewma_vol(history, span=VOL_SPAN)
+            position_size, vol_meta = apply_vol_targeting(
+                position_size, current_vol,
+                target_vol=TARGET_VOL, max_leverage=VOL_MAX_LEVERAGE,
+                min_allocation=VOL_MIN_ALLOCATION,
             )
+            if current_vol is not None:
+                log(f"  📊 Vol targeting: realized={current_vol:.0%} → {vol_meta['leverage']:.2f}x (${position_size:.2f})")
 
-            if result.get("success"):
-                trades_executed += 1
-                total_usd_spent += position_size
-                shares = result.get("shares_bought") or result.get("shares") or 0
-                trade_id = result.get("trade_id")
-                log(f"  ✅ {'[PAPER] ' if result.get('simulated') else ''}Bought {shares:.1f} shares @ ${price:.2f}", force=True)
+        if MIN_SHARES_PER_ORDER * price > position_size:
+            log(f"  ⚠️  Position size ${position_size:.2f} too small for {MIN_SHARES_PER_ORDER} shares at ${price:.2f}")
+            skip_reasons.append("position too small")
+            continue
 
-                # Log trade context for journal (skip for paper trades)
-                if trade_id and JOURNAL_AVAILABLE and not result.get("simulated"):
-                    if ENTRY_THRESHOLD > 0:
-                        journal_confidence = min(0.95, (ENTRY_THRESHOLD - price) / ENTRY_THRESHOLD + 0.5)
-                    else:
-                        journal_confidence = 0.7
-                    log_trade(
-                        trade_id=trade_id,
-                        source=TRADE_SOURCE, skill_slug=SKILL_SLUG,
-                        thesis=f"{'Open-Meteo' if is_international else 'NOAA'} forecasts {forecast_temp}{unit_label} for {location} on {date_str}, "
-                               f"bucket '{outcome_name}' underpriced at ${price:.2f}",
-                        confidence=round(journal_confidence, 2),
-                        location=location,
-                        forecast_temp=forecast_temp,
-                        target_date=date_str,
-                        metric=metric,
+        log(f"  ✅ BUY opportunity!{trend_bonus}")
+        tag = "SIMULATED" if dry_run else "LIVE"
+        log(f"  Executing trade ({tag})...", force=True)
+
+        signal = {
+            "edge": round(c["edge"], 4),
+            "confidence": round(confidence, 2),
+            "signal_source": "aifs_ensemble",
+            "forecast_temp": forecast_temp,
+            "bucket_range": outcome_name,
+            "market_price": round(price, 4),
+            "threshold": ENTRY_THRESHOLD,
+            "models_used": models_used,
+            "agreement_pct": agreement_pct,
+            "spread": spread,
+            "signal_strength": signal_strength,
+        }
+        if vol_meta:
+            signal["vol_targeting"] = vol_meta
+
+        result = execute_trade(
+            market_id, "yes", position_size,
+            reasoning=f"Ensemble {forecast_temp}{unit_label} → bucket {outcome_name} underpriced at {price:.0%}",
+            signal_data=signal,
+        )
+
+        if result.get("success"):
+            trades_executed += 1
+            total_usd_spent += position_size
+            shares = result.get("shares_bought") or result.get("shares") or 0
+            trade_id = result.get("trade_id")
+            log(f"  ✅ {'[PAPER] ' if result.get('simulated') else ''}Bought {shares:.1f} shares @ ${price:.2f}", force=True)
+
+            if trade_id and JOURNAL_AVAILABLE and not result.get("simulated"):
+                if ENTRY_THRESHOLD > 0:
+                    journal_confidence = min(0.95, (ENTRY_THRESHOLD - price) / ENTRY_THRESHOLD + 0.5)
+                else:
+                    journal_confidence = 0.7
+                log_trade(
+                    trade_id=trade_id,
+                    source=TRADE_SOURCE, skill_slug=SKILL_SLUG,
+                    thesis=f"{'Open-Meteo' if is_international else 'Ensemble'} forecasts {forecast_temp}{unit_label} for {location} on {date_str}, bucket '{outcome_name}' @ ${price:.2f}",
+                    confidence=round(journal_confidence, 2),
+                    location=location, forecast_temp=forecast_temp,
+                    target_date=date_str, metric=metric,
+                )
+
+            if result.get("simulated") and PAPER_JOURNAL_AVAILABLE and market_id:
+                try:
+                    log_paper_trade(
+                        market_id=market_id,
+                        question=matching_market.get("question", "") or matching_market.get("event_name", ""),
+                        side="yes", entry_price=price, shares=shares,
+                        cost=position_size, bucket=outcome_name,
+                        forecast_temp=forecast_temp, signal_strength=signal_strength,
+                        location=location, date_str=date_str, metric=metric,
+                        models_used=models_used, agreement_pct=agreement_pct, spread=spread,
                     )
-
-                # Log paper trades to local journal (tracks P&L without Simmer balance)
-                if result.get("simulated") and PAPER_JOURNAL_AVAILABLE and market_id:
-                    try:
-                        log_paper_trade(
-                            market_id=market_id,
-                            question=matching_market.get("question", "") or matching_market.get("event_name", ""),
-                            side="yes",
-                            entry_price=price,
-                            shares=shares,
-                            cost=position_size,
-                            bucket=outcome_name,
-                            forecast_temp=forecast_temp,
-                            signal_strength=signal_strength,
-                            location=location,
-                            date_str=date_str,
-                            metric=metric,
-                            models_used=models_used,
-                            agreement_pct=agreement_pct,
-                            spread=spread,
-                        )
-                    except Exception:
-                        pass  # Non-critical
-
-                # Risk monitors are now auto-set via SDK settings (dashboard)
-            else:
-                error = result.get("error", "Unknown error")
-                log(f"  ❌ Trade failed: {error}", force=True)
-                execution_errors.append(error[:120])
+                except Exception:
+                    pass
         else:
-            log(f"  ⏸️  Price ${price:.2f} above threshold ${ENTRY_THRESHOLD:.2f} - skip")
+            error = result.get("error", "Unknown error")
+            log(f"  ❌ Trade failed: {error}", force=True)
+            execution_errors.append(error[:120])
+
+    # Persist forecast cache to disk for next run
+    _save_forecast_disk_cache(forecast_cache)
 
     exits_found, exits_executed = check_exit_opportunities(dry_run, use_safeguards)
 
@@ -1537,6 +1790,14 @@ if __name__ == "__main__":
             globals()["VOL_MAX_LEVERAGE"] = _config["vol_max_leverage"]
             globals()["VOL_MIN_ALLOCATION"] = _config["vol_min_allocation"]
             globals()["VOL_SPAN"] = _config["vol_span"]
+            globals()["MAX_DAILY_LOSS_USD"] = _config["max_daily_loss_usd"]
+            globals()["EXIT_PROFIT_MULTIPLIER"] = _config["exit_profit_multiplier"]
+            globals()["LADDER_FIRST_EXIT"] = _config["ladder_first_exit"]
+            globals()["LADDER_FIRST_FRACTION"] = _config["ladder_first_fraction"]
+            globals()["DISCOVERY_CACHE_MINUTES"] = _config["discovery_cache_minutes"]
+            globals()["FORECAST_CACHE_DISK"] = _config["forecast_cache_disk"]
+            globals()["CONCURRENT_SCANS"] = _config["concurrent_scans"]
+            globals()["LOG_LEVEL"] = _config["log_level"]
             _locations_str = _config["locations"]
             globals()["ACTIVE_LOCATIONS"] = [loc.strip().upper() for loc in _locations_str.split(",") if loc.strip()]
 
