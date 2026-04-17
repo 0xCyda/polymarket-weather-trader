@@ -709,14 +709,46 @@ def apply_vol_targeting(base_size: float, current_vol: float | None,
 # markets via GET /api/sdk/markets?tags=weather.
 # =============================================================================
 
-# Search terms per location (matching Polymarket event naming)
+# Search terms per location (matching Polymarket event naming).
+# Keys MUST be uppercase to match ACTIVE_LOCATIONS entries (which are upper-cased
+# in config parsing). If a location has no entry, a default "temperature {name}"
+# is used.
 LOCATION_SEARCH_TERMS = {
-    "NYC": ["temperature new york", "temperature nyc"],
-    "Chicago": ["temperature chicago"],
-    "Seattle": ["temperature seattle"],
-    "Atlanta": ["temperature atlanta"],
-    "Dallas": ["temperature dallas"],
-    "Miami": ["temperature miami"],
+    # US cities
+    "NYC":           ["temperature new york", "temperature nyc"],
+    "CHICAGO":       ["temperature chicago"],
+    "SEATTLE":       ["temperature seattle"],
+    "ATLANTA":       ["temperature atlanta"],
+    "DALLAS":        ["temperature dallas"],
+    "MIAMI":         ["temperature miami"],
+    "HOUSTON":       ["temperature houston"],
+    "SAN FRANCISCO": ["temperature san francisco", "temperature sf"],
+    "PHOENIX":       ["temperature phoenix"],
+    "LOS ANGELES":   ["temperature los angeles", "temperature la"],
+    "DENVER":        ["temperature denver"],
+    "AUSTIN":        ["temperature austin"],
+    "LAS VEGAS":     ["temperature las vegas", "temperature vegas"],
+    # International cities
+    "TEL AVIV":      ["temperature tel aviv"],
+    "MUNICH":        ["temperature munich"],
+    "LONDON":        ["temperature london"],
+    "TOKYO":         ["temperature tokyo"],
+    "SEOUL":         ["temperature seoul"],
+    "ANKARA":        ["temperature ankara"],
+    "LUCKNOW":       ["temperature lucknow"],
+    "WELLINGTON":    ["temperature wellington"],
+    "TORONTO":       ["temperature toronto"],
+    "PARIS":         ["temperature paris"],
+    "MILAN":         ["temperature milan"],
+    "SAO PAULO":     ["temperature sao paulo", "temperature são paulo"],
+    "WARSAW":        ["temperature warsaw"],
+    "SINGAPORE":     ["temperature singapore"],
+    "SHANGHAI":      ["temperature shanghai"],
+    "BEIJING":       ["temperature beijing"],
+    "SHENZHEN":      ["temperature shenzhen"],
+    "CHENGDU":       ["temperature chengdu"],
+    "CHONGQING":     ["temperature chongqing"],
+    "WUHAN":         ["temperature wuhan"],
 }
 
 
