@@ -160,6 +160,99 @@ def get_client(live=True):
     _client = SimmerClient(api_key=api_key, venue=venue, live=live)
     return _client
 
+# =============================================================================
+# Simmer request throttle + 429 backoff
+# =============================================================================
+# Every call to the Simmer API goes through `simmer_call()` which enforces:
+#   - A minimum interval between requests across the whole process
+#   - Automatic retry on 429 with jittered exponential backoff
+#   - Short-term result cache for read endpoints (context, price history)
+#   - Circuit breaker: pause all calls for a cooldown if 429s pile up
+# This is the single lever for tuning Simmer request pressure.
+
+import threading
+import random
+
+SIMMER_MIN_INTERVAL_SEC = 0.35   # ~3 req/sec ceiling across all threads
+SIMMER_MAX_RETRIES = 4
+SIMMER_BACKOFF_BASE = 1.0         # 1, 2, 4, 8 seconds (plus jitter)
+SIMMER_BREAKER_429_WINDOW = 60    # seconds
+SIMMER_BREAKER_THRESHOLD = 5       # N 429s in window → pause
+SIMMER_BREAKER_COOLDOWN = 45      # pause duration (s)
+
+_throttle_lock = threading.Lock()
+_last_request_ts = 0.0
+_recent_429_times = []
+_breaker_until = 0.0
+
+
+def _is_429(exc: Exception) -> bool:
+    s = str(exc).lower()
+    return "429" in s or "rate limit" in s or "too many requests" in s
+
+
+def _parse_retry_after(exc: Exception) -> float | None:
+    """Extract Retry-After seconds from the exception message if present."""
+    s = str(exc)
+    m = re.search(r"retry[- ]after[:\s]+(\d+(?:\.\d+)?)", s, re.IGNORECASE)
+    if m:
+        try:
+            return min(float(m.group(1)), 60.0)
+        except ValueError:
+            return None
+    return None
+
+
+def simmer_call(fn, *args, _label: str = None, **kwargs):
+    """Rate-limit + retry wrapper for any Simmer SDK call.
+
+    Args:
+        fn: The callable (e.g. client.trade, client.get_positions)
+        _label: Optional tag used for structured logs
+    """
+    global _last_request_ts, _breaker_until
+
+    # Circuit breaker check
+    now = time.time()
+    if now < _breaker_until:
+        wait = _breaker_until - now
+        logger.warning(f"Simmer circuit breaker open — sleeping {wait:.1f}s")
+        time.sleep(wait)
+
+    for attempt in range(1, SIMMER_MAX_RETRIES + 1):
+        with _throttle_lock:
+            elapsed = time.time() - _last_request_ts
+            if elapsed < SIMMER_MIN_INTERVAL_SEC:
+                time.sleep(SIMMER_MIN_INTERVAL_SEC - elapsed)
+            _last_request_ts = time.time()
+
+        try:
+            return fn(*args, **kwargs)
+        except Exception as exc:
+            if not _is_429(exc):
+                raise
+            # Record the 429 and check the breaker
+            with _throttle_lock:
+                now = time.time()
+                _recent_429_times[:] = [t for t in _recent_429_times if now - t < SIMMER_BREAKER_429_WINDOW]
+                _recent_429_times.append(now)
+                if len(_recent_429_times) >= SIMMER_BREAKER_THRESHOLD:
+                    _breaker_until = now + SIMMER_BREAKER_COOLDOWN
+                    _recent_429_times.clear()
+                    logger.warning(f"Simmer 429 flood — breaker open for {SIMMER_BREAKER_COOLDOWN}s")
+
+            if attempt >= SIMMER_MAX_RETRIES:
+                logger.error(f"Simmer 429 exhausted retries ({_label or fn.__name__})")
+                raise
+
+            # Honor Retry-After if the SDK surfaces it, else exponential + jitter
+            retry_after = _parse_retry_after(exc)
+            if retry_after is None:
+                retry_after = SIMMER_BACKOFF_BASE * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
+            logger.info(f"Simmer 429 ({_label or fn.__name__}) — sleeping {retry_after:.1f}s then retry {attempt+1}/{SIMMER_MAX_RETRIES}")
+            time.sleep(retry_after)
+
+
 # Source tag for tracking
 TRADE_SOURCE = "sdk:weather"
 SKILL_SLUG = "polymarket-weather-trader"
@@ -625,30 +718,62 @@ def parse_temperature_bucket(outcome_name: str):
 # Simmer API - Portfolio & Context
 # =============================================================================
 
+# Short-TTL in-memory caches — market context and price history don't change
+# fast enough to warrant hitting the API multiple times per run.
+_CONTEXT_CACHE_TTL = 60.0   # seconds
+_HISTORY_CACHE_TTL = 120.0
+_context_cache = {}   # market_id -> (expiry_ts, data)
+_history_cache = {}   # market_id -> (expiry_ts, data)
+_portfolio_cache = {"expiry": 0.0, "data": None}
+_PORTFOLIO_TTL = 30.0
+
+
 def get_portfolio() -> dict:
-    """Get portfolio summary from SDK."""
+    """Get portfolio summary from SDK (30s cache)."""
+    now = time.time()
+    if _portfolio_cache["data"] is not None and now < _portfolio_cache["expiry"]:
+        return _portfolio_cache["data"]
     try:
-        return get_client().get_portfolio()
+        data = simmer_call(get_client().get_portfolio, _label="portfolio")
+        _portfolio_cache["data"] = data
+        _portfolio_cache["expiry"] = now + _PORTFOLIO_TTL
+        return data
     except Exception as e:
         print(f"  ⚠️  Portfolio fetch failed: {e}")
         return None
 
 
 def get_market_context(market_id: str, my_probability: float = None) -> dict:
-    """Get market context with safeguards and optional edge analysis."""
+    """Get market context with safeguards. 60s TTL cache keyed by (market_id, probability)."""
+    cache_key = (market_id, round(my_probability, 2) if my_probability is not None else None)
+    now = time.time()
+    hit = _context_cache.get(cache_key)
+    if hit and now < hit[0]:
+        return hit[1]
     try:
         if my_probability is not None:
-            return get_client()._request("GET", f"/api/sdk/context/{market_id}",
-                                         params={"my_probability": my_probability})
-        return get_client().get_market_context(market_id)
+            data = simmer_call(
+                get_client()._request, "GET", f"/api/sdk/context/{market_id}",
+                params={"my_probability": my_probability}, _label="context",
+            )
+        else:
+            data = simmer_call(get_client().get_market_context, market_id, _label="context")
+        _context_cache[cache_key] = (now + _CONTEXT_CACHE_TTL, data)
+        return data
     except Exception:
         return None
 
 
 def get_price_history(market_id: str) -> list:
-    """Get price history for trend detection."""
+    """Get price history for trend detection. 120s TTL cache."""
+    now = time.time()
+    hit = _history_cache.get(market_id)
+    if hit and now < hit[0]:
+        return hit[1]
     try:
-        return get_client().get_price_history(market_id)
+        data = simmer_call(get_client().get_price_history, market_id, _label="price_history")
+        _history_cache[market_id] = (now + _HISTORY_CACHE_TTL, data)
+        return data
     except Exception:
         return []
 
@@ -969,8 +1094,10 @@ def discover_and_import_weather_markets(log=print):
             wait_time = 2
             for attempt in range(3):
                 try:
-                    results = client.list_importable_markets(
-                        q=term, venue="polymarket", min_volume=1000, limit=20
+                    results = simmer_call(
+                        client.list_importable_markets,
+                        q=term, venue="polymarket", min_volume=1000, limit=20,
+                        _label="list_importable",
                     )
                     break  # success
                 except Exception as e:
@@ -1004,7 +1131,7 @@ def discover_and_import_weather_markets(log=print):
 
                 # Try to import
                 try:
-                    result = client.import_market(url)
+                    result = simmer_call(client.import_market, url, _label="import_market")
                     status = result.get("status", "") if result else ""
                     if status == "imported":
                         imported_count += 1
@@ -1033,8 +1160,11 @@ def discover_and_import_weather_markets(log=print):
 def fetch_weather_markets():
     """Fetch weather-tagged markets from Simmer API."""
     try:
-        result = get_client()._request("GET", "/api/sdk/markets",
-                                       params={"tags": "weather", "status": "active", "limit": 100})
+        result = simmer_call(
+            get_client()._request, "GET", "/api/sdk/markets",
+            params={"tags": "weather", "status": "active", "limit": 100},
+            _label="markets",
+        )
         return result.get("markets", [])
     except Exception:
         print("  Failed to fetch markets from Simmer API")
@@ -1044,9 +1174,11 @@ def fetch_weather_markets():
 def execute_trade(market_id: str, side: str, amount: float, reasoning: str = None, signal_data: dict = None) -> dict:
     """Execute a buy trade via Simmer SDK with source tagging."""
     try:
-        result = get_client().trade(
+        result = simmer_call(
+            get_client().trade,
             market_id=market_id, side=side, amount=amount, source=TRADE_SOURCE, skill_slug=SKILL_SLUG,
             reasoning=reasoning, signal_data=signal_data, order_type=ORDER_TYPE,
+            _label="trade_buy",
         )
         out = {
             "success": result.success, "trade_id": result.trade_id,
@@ -1064,10 +1196,12 @@ def execute_trade(market_id: str, side: str, amount: float, reasoning: str = Non
 def execute_sell(market_id: str, shares: float) -> dict:
     """Execute a sell trade via Simmer SDK with source tagging."""
     try:
-        result = get_client().trade(
+        result = simmer_call(
+            get_client().trade,
             market_id=market_id, side="yes", action="sell",
             shares=shares, source=TRADE_SOURCE, skill_slug=SKILL_SLUG,
             order_type=ORDER_TYPE,
+            _label="trade_sell",
         )
         out = {
             "success": result.success, "trade_id": result.trade_id,
@@ -1081,15 +1215,28 @@ def execute_sell(market_id: str, shares: float) -> dict:
         return {"success": False, "error": str(e)}
 
 
-def get_positions(venue: str = None) -> list:
-    """Get current positions as list of dicts, filtered by venue."""
+_positions_cache = {"expiry": 0.0, "data": None, "venue": None}
+_POSITIONS_TTL = 30.0
+
+
+def get_positions(venue: str = None, force_fresh: bool = False) -> list:
+    """Get current positions as list of dicts, filtered by venue. 30s cache."""
+    now = time.time()
+    client = get_client()
+    effective_venue = venue or client.venue
+    if (not force_fresh
+            and _positions_cache["data"] is not None
+            and _positions_cache["venue"] == effective_venue
+            and now < _positions_cache["expiry"]):
+        return _positions_cache["data"]
     try:
-        client = get_client()
-        # Default to the client's configured venue to avoid cross-venue positions
-        effective_venue = venue or client.venue
-        positions = client.get_positions(venue=effective_venue)
+        positions = simmer_call(client.get_positions, venue=effective_venue, _label="positions")
         from dataclasses import asdict
-        return [asdict(p) for p in positions]
+        data = [asdict(p) for p in positions]
+        _positions_cache["data"] = data
+        _positions_cache["venue"] = effective_venue
+        _positions_cache["expiry"] = now + _POSITIONS_TTL
+        return data
     except Exception as e:
         print(f"  Error fetching positions: {e}")
         return []
@@ -1198,7 +1345,7 @@ def check_exit_opportunities(dry_run: bool = False, use_safeguards: bool = True)
                     print(f"     ⚠️  Warnings: {'; '.join(reasons)}")
 
             # Re-fetch fresh share count to avoid selling more than available
-            fresh_positions = get_positions()
+            fresh_positions = get_positions(force_fresh=True)
             fresh_pos = next((p for p in fresh_positions if p.get("market_id") == market_id), None)
             if fresh_pos:
                 fresh_shares = fresh_pos.get("shares_yes") or fresh_pos.get("shares") or 0
@@ -1300,7 +1447,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
     # Redeem any winning positions before starting the cycle
     try:
-        redeemed = client.auto_redeem()
+        redeemed = simmer_call(client.auto_redeem, _label="auto_redeem")
         for r in redeemed:
             if r.get("success"):
                 log(f"  💰 Redeemed {r['market_id'][:8]}... ({r.get('side', '?')})")
@@ -1559,7 +1706,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
     context_map, history_map = {}, {}
     if CONCURRENT_SCANS and top_n and (use_safeguards or use_trends or vol_targeting):
         from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=min(8, len(top_n) * 2)) as ex:
+        # Keep concurrency low to avoid Simmer 429s — the simmer_call throttle
+        # will serialize requests anyway, but fewer workers = less coordination cost
+        with ThreadPoolExecutor(max_workers=3) as ex:
             futures = {}
             for c in top_n:
                 mid = c["market_id"]

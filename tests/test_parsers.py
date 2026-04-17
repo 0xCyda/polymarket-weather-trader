@@ -169,5 +169,64 @@ class TestVolTargeting(unittest.TestCase):
         self.assertAlmostEqual(size, 2.0)
 
 
+class TestSimmerThrottle(unittest.TestCase):
+    def test_min_interval_enforced(self):
+        """Consecutive calls should honor SIMMER_MIN_INTERVAL_SEC between them."""
+        import time
+        import weather_trader as wt
+        # Reset state
+        wt._last_request_ts = 0.0
+        wt._recent_429_times[:] = []
+        wt._breaker_until = 0.0
+
+        calls = []
+        def fake_call():
+            calls.append(time.time())
+            return "ok"
+
+        # Tight loop of three calls
+        t0 = time.time()
+        for _ in range(3):
+            wt.simmer_call(fake_call, _label="test")
+        elapsed = time.time() - t0
+
+        # Three calls at 0.35s min interval = at least 0.70s (first immediate, then 2 waits)
+        # Allow slack since first call has no prior timestamp to gate against
+        self.assertGreaterEqual(elapsed, 0.65)
+
+    def test_retries_on_429(self):
+        import weather_trader as wt
+        wt._last_request_ts = 0.0
+        wt._recent_429_times[:] = []
+        wt._breaker_until = 0.0
+
+        # Temporarily shrink backoff so the test runs quickly
+        original_base = wt.SIMMER_BACKOFF_BASE
+        wt.SIMMER_BACKOFF_BASE = 0.01
+        try:
+            attempts = {"n": 0}
+            def flaky():
+                attempts["n"] += 1
+                if attempts["n"] < 2:
+                    raise RuntimeError("HTTP 429 Too Many Requests")
+                return "ok"
+
+            result = wt.simmer_call(flaky, _label="flaky")
+            self.assertEqual(result, "ok")
+            self.assertEqual(attempts["n"], 2)
+        finally:
+            wt.SIMMER_BACKOFF_BASE = original_base
+
+    def test_non_429_error_propagates(self):
+        import weather_trader as wt
+        wt._last_request_ts = 0.0
+
+        def broken():
+            raise ValueError("some other error")
+
+        with self.assertRaises(ValueError):
+            wt.simmer_call(broken, _label="broken")
+
+
 if __name__ == "__main__":
     unittest.main()
