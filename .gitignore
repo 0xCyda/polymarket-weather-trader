@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+data/*.json
+data/*.jsonl
+logs/
+*.log
+.DS_Store
+data/paper_trades.jsonl
+data/*.jsonl
+scripts/__pycache__/
+data/
