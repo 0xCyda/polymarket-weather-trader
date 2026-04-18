@@ -41,9 +41,11 @@ def run_scan():
     env = dict(os.environ)
     # Ensure all major locations are scanned (not just the NYC default)
     LOCATIONS = (
-        "NYC,Seattle,San Francisco,Atlanta,Dallas,Miami,Houston,"
-        "Denver,Austin,Las Vegas,Tel Aviv,Munich,London,Tokyo,Seoul,"
-        "Wellington,Toronto,Paris,Milan,Lucknow"
+        "NYC,Chicago,Seattle,Atlanta,Dallas,Miami,Houston,San Francisco,"
+        "Phoenix,Los Angeles,Denver,Austin,Las Vegas,"
+        "Tel Aviv,Munich,London,Tokyo,Seoul,Ankara,Lucknow,"
+        "Wellington,Toronto,Paris,Milan,Sao Paulo,Warsaw,Singapore,"
+        "Shanghai,Beijing,Shenzhen,Chengdu,Chongqing,Wuhan,Hong Kong"
     )
     env["SIMMER_WEATHER_LOCATIONS"] = env.get("SIMMER_WEATHER_LOCATIONS", LOCATIONS)
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
