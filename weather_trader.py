@@ -882,18 +882,32 @@ def check_context_safeguards(context: dict, use_edge: bool = True) -> tuple:
 
 
 def get_open_market_ids() -> set:
-    """Return set of market_ids we already hold >0 shares in (weather source)."""
+    """Return set of market_ids we already hold >0 shares in (weather source).
+
+    Tries Simmer API first; falls back to local paper journal if that fails.
+    """
+    held = set()
+    # Try Simmer API first
     try:
         positions = get_positions()
+        for pos in positions:
+            shares = (pos.get("shares_yes") or 0) + (pos.get("shares_no") or 0)
+            if shares > 0:
+                mid = pos.get("market_id")
+                if mid:
+                    held.add(mid)
     except Exception:
-        return set()
-    held = set()
-    for pos in positions:
-        shares = (pos.get("shares_yes") or 0) + (pos.get("shares_no") or 0)
-        if shares > 0:
-            mid = pos.get("market_id")
-            if mid:
-                held.add(mid)
+        pass
+    # Fall back to local paper journal
+    if not held:
+        try:
+            from paper_journal import get_open_positions
+            for pos in get_open_positions():
+                mid = pos.get("market_id")
+                if mid:
+                    held.add(mid)
+        except Exception:
+            pass
     return held
 
 
@@ -1633,21 +1647,38 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 if lo <= forecast_temp <= hi:
                     matching_market = market
                     break
-                if hi == 999 or lo == -999:
+                # Also treat single-point buckets (lo == hi) as threshold boundaries
+                # e.g. "59°F" on a "Will it be 59°F or above?" market
+                if hi == 999 or lo == -999 or lo == hi:
                     threshold_markets.append((market, lo, hi, outcome_name))
 
+        # Threshold markets: "X°F or above" (lo != -999, hi == 999)
+        # and "X°F or below" (lo == -999, hi != 999).
+        # Also match if forecast is within BUCKET_DISTANCE of the boundary
+        # (e.g. 58.2°F forecast vs 59°F "or above" bucket — within 0.8°).
+        BUCKET_DISTANCE = 2.0  # degrees F tolerance to accept a threshold bucket
         if not matching_market and threshold_markets:
             best_match, best_distance = None, float('inf')
             for market, lo, hi, outcome_name in threshold_markets:
                 is_or_higher = (lo != -999 and hi == 999)
                 is_or_below = (lo == -999 and hi != 999)
-                if is_or_higher and forecast_temp > lo:
+                if is_or_higher:
+                    # "X°F or above" — match if forecast is at or near the threshold
+                    if forecast_temp >= lo - BUCKET_DISTANCE:
+                        d = abs(forecast_temp - lo)
+                        if d < best_distance:
+                            best_distance, best_match = d, market
+                elif is_or_below:
+                    # "X°F or below" — match if forecast is at or near the threshold
+                    if forecast_temp <= hi + BUCKET_DISTANCE:
+                        d = abs(forecast_temp - hi)
+                        if d < best_distance:
+                            best_distance, best_match = d, market
+                elif lo == hi:
+                    # Single-point bucket (lo == hi) — match if forecast is near the point
+                    # e.g. "59-59°F" on a "59°F or above" market: forecast 58.2° is close enough
                     d = abs(forecast_temp - lo)
-                    if d < best_distance:
-                        best_distance, best_match = d, market
-                elif is_or_below and forecast_temp < hi:
-                    d = abs(forecast_temp - hi)
-                    if d < best_distance:
+                    if d <= BUCKET_DISTANCE and d < best_distance:
                         best_distance, best_match = d, market
             matching_market = best_match
 
@@ -1689,6 +1720,13 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             confidence = 0.68
         else:
             confidence = 0.72
+
+        # Hard spread cap — skip regardless of edge or signal strength
+        MAX_SPREAD = 5.8
+        if spread is not None and spread > MAX_SPREAD:
+            log(f"  ⏸️  Spread {spread}° exceeds max {MAX_SPREAD}° — skip")
+            skip_reasons.append(f"spread>{MAX_SPREAD}°")
+            continue
 
         # Aggregation: don't re-buy markets we already hold
         if market_id and market_id in already_held_markets:

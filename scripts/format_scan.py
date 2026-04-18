@@ -115,13 +115,11 @@ def parse_scan_stats(scan_output):
 
 
 def get_positions():
-    """Fetch open positions via Simmer client."""
+    """Fetch open positions from local paper journal (not Simmer API)."""
     try:
-        sys.path.insert(0, SKILL_DIR)
-        import weather_trader as wt
-        client = wt.get_client(live=False)
-        positions = wt.simmer_call(client.get_positions, venue="paper", _label="positions")
-        return positions or []
+        sys.path.insert(0, os.path.join(SKILL_DIR, "scripts"))
+        from paper_journal import get_open_positions
+        return get_open_positions()
     except Exception as e:
         return []
 
@@ -202,8 +200,8 @@ def format_output(scan_output):
     else:
         for pos in positions:
             q = (pos.get("question") or pos.get("market_question", "Unknown"))[:65]
-            pnl = pos.get("pnl", 0)
-            cost = pos.get("cost", 0)
+            pnl = pos.get("pnl") or 0.0
+            cost = pos.get("cost") or 0.0
             lines.append(f"  • {q}")
             lines.append(f"    Cost: ${cost:.2f} | P&L: ${pnl:.2f}")
     lines.append("")
