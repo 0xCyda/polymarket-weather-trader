@@ -81,11 +81,14 @@ from simmer_sdk.skill import load_config, update_config, get_config_path
 # SIMMER_WEATHER_EXIT, SIMMER_WEATHER_MAX_POSITION, SIMMER_WEATHER_MAX_TRADES) are
 # resolved as fallbacks below for backwards compatibility.
 CONFIG_SCHEMA = {
-    "entry_threshold":   {"env": "SIMMER_WEATHER_ENTRY_THRESHOLD",   "default": 0.15,  "type": float},
+    "entry_threshold":   {"env": "SIMMER_WEATHER_ENTRY_THRESHOLD",   "default": 0.50,  "type": float,
+                          "help": "Upper price ceiling for entry (sanity cap). Primary gate is min_edge."},
+    "min_edge":          {"env": "SIMMER_WEATHER_MIN_EDGE",          "default": 0.25,  "type": float,
+                          "help": "Min required edge = confidence - price. Primary entry gate (replaces pure price threshold)."},
     "exit_threshold":    {"env": "SIMMER_WEATHER_EXIT_THRESHOLD",    "default": 0.45,  "type": float},
     "max_position_usd":  {"env": "SIMMER_WEATHER_MAX_POSITION_USD",  "default": 200.00, "type": float},
     "sizing_pct":        {"env": "SIMMER_WEATHER_SIZING_PCT",        "default": 0.05,  "type": float},
-    "max_trades_per_run":{"env": "SIMMER_WEATHER_MAX_TRADES_PER_RUN","default": 5,     "type": int},
+    "max_trades_per_run":{"env": "SIMMER_WEATHER_MAX_TRADES_PER_RUN","default": 10,    "type": int},
     "paper_balance":     {"env": "SIMMER_WEATHER_PAPER_BALANCE",     "default": 10000.0,"type": float},
     "locations":         {"env": "SIMMER_WEATHER_LOCATIONS",         "default": "NYC", "type": str},
     "binary_only":       {"env": "SIMMER_WEATHER_BINARY_ONLY",       "default": False, "type": bool},
@@ -105,7 +108,7 @@ CONFIG_SCHEMA = {
                           "help": "EWMA span for volatility calculation (lower = more responsive)."},
     "max_daily_loss_usd":{"env": "SIMMER_WEATHER_MAX_DAILY_LOSS_USD","default": 0.0,   "type": float,
                           "help": "Stop trading for the day once realized+unrealized loss exceeds this USD. 0 = disabled."},
-    "exit_profit_multiplier": {"env": "SIMMER_WEATHER_EXIT_PROFIT_MULT", "default": 0.0, "type": float,
+    "exit_profit_multiplier": {"env": "SIMMER_WEATHER_EXIT_PROFIT_MULT", "default": 4.0, "type": float,
                           "help": "Dynamic exit: take profit at max(exit_threshold, entry_price * mult). 0 = use fixed exit_threshold only."},
     "ladder_first_exit": {"env": "SIMMER_WEATHER_LADDER_FIRST_EXIT", "default": 0.0,   "type": float,
                           "help": "Price threshold for first laddered exit (sells ladder_first_fraction). 0 = disabled."},
@@ -264,6 +267,7 @@ MIN_TICK_SIZE = 0.01        # Minimum tradeable price
 
 # Strategy parameters - from config
 ENTRY_THRESHOLD = _config["entry_threshold"]
+MIN_EDGE = _config["min_edge"]
 EXIT_THRESHOLD = _config["exit_threshold"]
 MAX_POSITION_USD = _config["max_position_usd"]
 _automaton_max = os.environ.get("AUTOMATON_MAX_BET")
@@ -348,7 +352,24 @@ def validate_live_trading_prereqs():
 # =============================================================================
 
 _FORECAST_CACHE_FILE = _p.Path(__file__).parent / "data" / "forecast_cache.json"
-_FORECAST_CACHE_TTL_SECONDS = 6 * 3600  # 6h — balances staleness vs API load
+# Split TTL: D+0 markets are fast-moving (refresh every ~1h so we pick up new
+# GFS/ICON runs and METAR updates). D+1+ markets are slower-moving (3h is fine).
+_FORECAST_CACHE_TTL_D0_SECONDS = 1 * 3600
+_FORECAST_CACHE_TTL_DEFAULT_SECONDS = 3 * 3600
+
+
+def _forecast_cache_ttl_for(key_str: str) -> int:
+    """Return TTL based on whether the cached entry targets today (D+0)."""
+    # key is "location|date_str|metric" — compare date to today UTC.
+    try:
+        parts = key_str.split("|")
+        if len(parts) >= 2:
+            today_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            if parts[1] == today_utc:
+                return _FORECAST_CACHE_TTL_D0_SECONDS
+    except Exception:
+        pass
+    return _FORECAST_CACHE_TTL_DEFAULT_SECONDS
 
 
 def _load_forecast_disk_cache() -> dict:
@@ -362,7 +383,8 @@ def _load_forecast_disk_cache() -> dict:
     now = time.time()
     fresh = {}
     for key_str, entry in raw.items():
-        if now - entry.get("cached_at", 0) < _FORECAST_CACHE_TTL_SECONDS:
+        ttl = _forecast_cache_ttl_for(key_str)
+        if now - entry.get("cached_at", 0) < ttl:
             fresh[key_str] = entry.get("result")
     return fresh
 
@@ -1404,7 +1426,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         log("\n  [PAPER MODE] Trades will be simulated with real prices. Use --live for real trades.")
 
     log(f"\n⚙️  Configuration:")
-    log(f"  Entry threshold: {ENTRY_THRESHOLD:.0%} (buy below this)")
+    log(f"  Min edge:        {MIN_EDGE:+.0%} (primary entry gate: confidence - price)")
+    log(f"  Entry ceiling:   {ENTRY_THRESHOLD:.0%} (price sanity cap)")
     log(f"  Exit threshold:  {EXIT_THRESHOLD:.0%} (sell above this)")
     log(f"  Max position:    ${MAX_POSITION_USD:.2f}")
     log(f"  Max trades/run:  {MAX_TRADES_PER_RUN}")
@@ -1663,14 +1686,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         elif signal_strength == "moderate":
             confidence = 0.80
         elif signal_strength == "weak":
-            confidence = 0.70
+            confidence = 0.68
         else:
             confidence = 0.72
-
-        if signal_strength == "weak":
-            log(f"  ⏭️  Weak ensemble signal ({spread}° disagreement) — skipping")
-            skip_reasons.append("weak ensemble signal")
-            continue
 
         # Aggregation: don't re-buy markets we already hold
         if market_id and market_id in already_held_markets:
@@ -1678,9 +1696,21 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             skip_reasons.append("already held")
             continue
 
-        if price >= ENTRY_THRESHOLD:
-            log(f"  ⏸️  Price ${price:.2f} above threshold ${ENTRY_THRESHOLD:.2f} - skip")
+        # Primary entry gate: edge (confidence - price). Price ceiling is a
+        # loose sanity cap only — avoids buckets priced near resolution.
+        edge = confidence - price
+        if edge < MIN_EDGE:
+            log(f"  ⏸️  Edge {edge:+.2f} below min {MIN_EDGE:+.2f} (price ${price:.2f}, conf {confidence:.2f}) - skip")
+            skip_reasons.append(f"edge<{MIN_EDGE:+.2f}")
             continue
+        if price >= ENTRY_THRESHOLD:
+            log(f"  ⏸️  Price ${price:.2f} above ceiling ${ENTRY_THRESHOLD:.2f} - skip")
+            skip_reasons.append("price above ceiling")
+            continue
+        # Weak signals are allowed through only when edge is strong enough (gate above).
+        # Log a note so we can track which trades came from weak signals.
+        if signal_strength == "weak":
+            log(f"  ⚠️  Weak signal ({spread}° spread) but edge {edge:+.2f} ≥ {MIN_EDGE:+.2f} — allowing")
 
         candidates.append({
             "location": location, "date_str": date_str, "metric": metric,
@@ -1824,10 +1854,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             log(f"  ✅ {'[PAPER] ' if result.get('simulated') else ''}Bought {shares:.1f} shares @ ${price:.2f}", force=True)
 
             if trade_id and JOURNAL_AVAILABLE and not result.get("simulated"):
-                if ENTRY_THRESHOLD > 0:
-                    journal_confidence = min(0.95, (ENTRY_THRESHOLD - price) / ENTRY_THRESHOLD + 0.5)
-                else:
-                    journal_confidence = 0.7
+                # Journal confidence ~ the model confidence shifted by realized edge.
+                journal_confidence = min(0.95, max(0.5, confidence + 0.5 * (confidence - price)))
                 log_trade(
                     trade_id=trade_id,
                     source=TRADE_SOURCE, skill_slug=SKILL_SLUG,
@@ -1929,6 +1957,7 @@ if __name__ == "__main__":
             _config = load_config(CONFIG_SCHEMA, __file__, slug="polymarket-weather-trader")
             # Update module-level vars
             globals()["ENTRY_THRESHOLD"] = _config["entry_threshold"]
+            globals()["MIN_EDGE"] = _config["min_edge"]
             globals()["EXIT_THRESHOLD"] = _config["exit_threshold"]
             globals()["MAX_POSITION_USD"] = _config["max_position_usd"]
             globals()["SMART_SIZING_PCT"] = _config["sizing_pct"]

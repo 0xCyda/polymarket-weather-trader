@@ -14,10 +14,13 @@ Models & weights (normalized to 1.0):
   bom_access_global 0.08  (BOM ACCESS, strong in Southern Hemisphere)
 
 Signal strength:
-  "strong"        = >=4 models, agreement_pct>=70%, max_delta<=5°
-  "moderate"      = >=3 models, max_delta<=8°
-  "weak"          = max_delta>8° or <3 models
+  "strong"        = >=4 models, agreement_pct>=70%, max_delta<=6°
+  "moderate"      = >=3 models, max_delta<=10°
+  "weak"          = max_delta>10° or <3 models
   "single_source" = only 1 model returned data
+
+METAR downgrades (D+0 only) are applied only after 14:00 local, since morning
+obs are typically 10-15°F below the daily high and would spuriously downgrade.
 
 Usage:
   from scripts.ensemble_forecast import get_ensemble_forecast
@@ -348,16 +351,19 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
     if metar_temp is not None:
         metar_delta = round(abs(weighted_temp - metar_temp), 1)
 
-    # Signal strength classification
-    # METAR divergence > 5° downgrades signal (models may be tracking wrong trajectory)
-    if models_count >= 4 and agreement_pct >= 70.0 and max_delta <= 5:
+    # Signal strength classification.
+    # METAR downgrade is only applied after 14:00 local — before that, current
+    # temp is naturally far below the daily high and would falsely downgrade.
+    local_hour = datetime.now(city_tz).hour
+    metar_downgrade_active = is_today and metric == "high" and local_hour >= 14
+    if models_count >= 4 and agreement_pct >= 70.0 and max_delta <= 6:
         signal_strength = "strong"
-        if metar_delta is not None and metar_delta > 5:
-            signal_strength = "moderate"  # downgrade: ground obs diverging from models
-    elif models_count >= 3 and max_delta <= 8:
+        if metar_downgrade_active and metar_delta is not None and metar_delta > 5:
+            signal_strength = "moderate"  # downgrade: afternoon ground obs diverging from models
+    elif models_count >= 3 and max_delta <= 10:
         signal_strength = "moderate"
-        if metar_delta is not None and metar_delta > 8:
-            signal_strength = "weak"  # downgrade: large METAR divergence on D+0
+        if metar_downgrade_active and metar_delta is not None and metar_delta > 8:
+            signal_strength = "weak"  # downgrade: large METAR divergence
     else:
         signal_strength = "weak"
 
