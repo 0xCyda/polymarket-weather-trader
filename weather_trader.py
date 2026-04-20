@@ -122,6 +122,21 @@ CONFIG_SCHEMA = {
                           "help": "Persist forecast cache to disk across runs (reduces API calls on cron schedule)."},
     "concurrent_scans":  {"env": "SIMMER_WEATHER_CONCURRENT_SCANS",  "default": True,  "type": bool,
                           "help": "Fetch market context + price history concurrently across events."},
+    # Punt mode: separate side-strategy for tail-priced buckets (0.1¢-6¢ mispricings).
+    # Runs AFTER core trades on the same forecast data. Its own budget + journal tag.
+    # Does not affect core trade selection, sizing, exits, or budget.
+    "punt_mode":         {"env": "SIMMER_WEATHER_PUNT_MODE",         "default": False, "type": bool,
+                          "help": "Enable punt mode: buy deeply-mispriced tail buckets with small stakes."},
+    "punt_max_position_usd": {"env": "SIMMER_WEATHER_PUNT_POSITION_USD", "default": 15.0, "type": float,
+                          "help": "Fixed USD per punt trade (small — these are lottery tickets)."},
+    "punt_price_ceiling":{"env": "SIMMER_WEATHER_PUNT_PRICE_CEILING","default": 0.06,  "type": float,
+                          "help": "Max price for a punt candidate (6¢ default — above this it's not a tail mispricing)."},
+    "punt_min_edge":     {"env": "SIMMER_WEATHER_PUNT_MIN_EDGE",     "default": 0.50,  "type": float,
+                          "help": "Min edge (model_prob - price) for a punt candidate. Higher than core min_edge."},
+    "punt_min_confidence":{"env": "SIMMER_WEATHER_PUNT_MIN_CONFIDENCE","default": 0.70,"type": float,
+                          "help": "Min model probability for a punt. Don't punt on weak tail signals."},
+    "punt_daily_budget_usd":{"env": "SIMMER_WEATHER_PUNT_DAILY_BUDGET","default": 100.0,"type": float,
+                          "help": "Max USD spent on punts per day. Safety cap."},
 }
 
 # Backwards-compatible env var aliases (old name -> new name)
@@ -307,6 +322,14 @@ DISCOVERY_CACHE_MINUTES = _config["discovery_cache_minutes"]
 FORECAST_CACHE_DISK = _config["forecast_cache_disk"]
 CONCURRENT_SCANS = _config["concurrent_scans"]
 LOG_LEVEL = _config["log_level"]
+
+# Punt mode (side strategy — isolated from core trading)
+PUNT_MODE = _config["punt_mode"]
+PUNT_MAX_POSITION_USD = _config["punt_max_position_usd"]
+PUNT_PRICE_CEILING = _config["punt_price_ceiling"]
+PUNT_MIN_EDGE = _config["punt_min_edge"]
+PUNT_MIN_CONFIDENCE = _config["punt_min_confidence"]
+PUNT_DAILY_BUDGET_USD = _config["punt_daily_budget_usd"]
 
 # Supported locations (matching Polymarket resolution sources)
 LOCATIONS = {
@@ -881,6 +904,92 @@ def check_context_safeguards(context: dict, use_edge: bool = True) -> tuple:
     return True, reasons
 
 
+def _bucket_probability(lo_f: float, hi_f: float, mean_f: float, spread_f: float) -> float:
+    """
+    Approximate the probability that the daily resolution falls within [lo_f, hi_f]
+    given a Gaussian forecast N(mean_f, sigma) where sigma is derived from spread.
+
+    spread_f is the ensemble max_delta (max - min across models). For a ~4σ range,
+    sigma ≈ spread / 4. We floor sigma at 1.5°F because the Gaussian approximation
+    underestimates true uncertainty when models happen to cluster.
+
+    Sentinels: lo_f == -999 means "-∞", hi_f == 999 means "+∞".
+    """
+    import math
+    if spread_f is None or spread_f <= 0:
+        sigma = 2.0
+    else:
+        sigma = max(spread_f / 4.0, 1.5)
+
+    def _phi(z: float) -> float:
+        return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+    if lo_f == -999:
+        p_lo = 0.0
+    else:
+        p_lo = _phi((lo_f - mean_f) / sigma)
+    if hi_f == 999:
+        p_hi = 1.0
+    else:
+        p_hi = _phi((hi_f - mean_f) / sigma)
+    return max(0.0, min(1.0, p_hi - p_lo))
+
+
+def find_punt_candidates(event_markets: list, forecast_temp: float, spread: float,
+                         core_match_id: str | None, already_held: set,
+                         location: str, date_str: str, metric: str,
+                         is_international: bool, signal_strength: str,
+                         models_used: int, agreement_pct: float) -> list:
+    """
+    Scan all buckets in an event for tail-mispriced punt candidates.
+
+    A punt candidate is a bucket where:
+      - Market price <= PUNT_PRICE_CEILING (very cheap tail bucket)
+      - Model probability >= PUNT_MIN_CONFIDENCE
+      - Edge = model_prob - price >= PUNT_MIN_EDGE
+      - Not the bucket the core strategy matched (avoid double-buy)
+      - Not already held
+
+    Never raises. Returns [] on any error or if punt mode is off.
+    """
+    if not PUNT_MODE or forecast_temp is None:
+        return []
+    candidates = []
+    for market in event_markets:
+        market_id = market.get("id")
+        if market_id and (market_id == core_match_id or market_id in already_held):
+            continue
+        price = market.get("external_price_yes")
+        if price is None or price <= 0 or price > PUNT_PRICE_CEILING:
+            continue
+        outcome_name = market.get("outcome_name") or market.get("question", "")
+        bucket = parse_temperature_bucket(outcome_name)
+        if not bucket:
+            continue
+        lo, hi, unit = bucket
+        if unit == 'C':
+            lo = lo * 9 / 5 + 32 if lo != -999 else -999
+            hi = hi * 9 / 5 + 32 if hi != 999 else 999
+        prob = _bucket_probability(lo, hi, forecast_temp, spread or 0.0)
+        if prob < PUNT_MIN_CONFIDENCE:
+            continue
+        edge = prob - price
+        if edge < PUNT_MIN_EDGE:
+            continue
+        candidates.append({
+            "location": location, "date_str": date_str, "metric": metric,
+            "market": market, "market_id": market_id,
+            "outcome_name": outcome_name, "price": price,
+            "confidence": prob, "edge": edge,
+            "signal_strength": signal_strength, "models_used": models_used,
+            "agreement_pct": agreement_pct, "spread": spread,
+            "forecast_temp": forecast_temp,
+            "is_international": is_international,
+            "strategy": "punt",
+        })
+    return candidates
+
+
 def get_open_market_ids() -> set:
     """Return set of market_ids we already hold >0 shares in (weather source).
 
@@ -1450,6 +1559,13 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
     log(f"  Safeguards:      {'✓ Enabled' if use_safeguards else '✗ Disabled'}")
     log(f"  Trend detection: {'✓ Enabled' if use_trends else '✗ Disabled'}")
     log(f"  Vol targeting:   {'✓ Enabled' if vol_targeting else '✗ Disabled'}")
+    log(f"  Punt mode:       {'✓ Enabled' if PUNT_MODE else '✗ Disabled'}")
+    if PUNT_MODE:
+        log(f"    Punt size:     ${PUNT_MAX_POSITION_USD:.2f}")
+        log(f"    Price ceiling: {PUNT_PRICE_CEILING:.1%}")
+        log(f"    Min edge:      {PUNT_MIN_EDGE:+.0%}")
+        log(f"    Min confidence:{PUNT_MIN_CONFIDENCE:.0%}")
+        log(f"    Daily budget:  ${PUNT_DAILY_BUDGET_USD:.2f}")
     if vol_targeting:
         log(f"    Target vol:    {TARGET_VOL:.0%} annualized")
         log(f"    Max leverage:  {VOL_MAX_LEVERAGE:.1f}x")
@@ -1574,6 +1690,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
     # PASS 1: Collect all viable candidates (no trades yet)
     # =========================================================================
     candidates = []  # list of dicts with all fields needed to execute a trade
+    punt_candidates = []  # separate list — never competes with core candidates
 
     for event_id, event_markets in events.items():
         event_name = event_markets[0].get("event_name") or event_markets[0].get("question", "")
@@ -1670,6 +1787,26 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                     if d <= BUCKET_DISTANCE and d < best_distance:
                         best_distance, best_match = d, market
             matching_market = best_match
+
+        # Punt scan: find deep tail-priced mispricings in this event.
+        # Runs regardless of whether core matched — excludes core's bucket if any.
+        if PUNT_MODE:
+            _core_match_id = matching_market.get("id") if matching_market else None
+            _event_punts = find_punt_candidates(
+                event_markets=event_markets,
+                forecast_temp=forecast_temp,
+                spread=spread,
+                core_match_id=_core_match_id,
+                already_held=already_held_markets,
+                location=location, date_str=date_str, metric=metric,
+                is_international=is_international,
+                signal_strength=signal_strength,
+                models_used=models_used,
+                agreement_pct=agreement_pct,
+            )
+            for _p in _event_punts:
+                log(f"  🎯 Punt candidate: {_p['outcome_name']} @ ${_p['price']:.3f} | model_prob={_p['confidence']:.0%} | edge={_p['edge']:+.2f}")
+            punt_candidates.extend(_event_punts)
 
         if not matching_market:
             all_buckets = []
@@ -1959,16 +2096,105 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
     # Persist forecast cache to disk for next run
     _save_forecast_disk_cache(forecast_cache)
 
+    # =========================================================================
+    # PUNT EXECUTION PASS (side strategy — isolated from core budget/rules)
+    # =========================================================================
+    punts_executed = 0
+    punt_usd_spent = 0.0
+    if PUNT_MODE and punt_candidates:
+        # Compute remaining daily punt budget by summing today's punt journal entries
+        today_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        punt_usd_today = 0.0
+        if PAPER_JOURNAL_AVAILABLE:
+            try:
+                from paper_journal import _load_trades
+                for _t in _load_trades():
+                    if _t.get("strategy") != "punt":
+                        continue
+                    entered = str(_t.get("entered_at", ""))[:10]
+                    if entered == today_utc:
+                        punt_usd_today += float(_t.get("cost", 0.0) or 0.0)
+            except Exception:
+                pass
+        remaining_budget = max(0.0, PUNT_DAILY_BUDGET_USD - punt_usd_today)
+        log(f"\n🎯 Punt pass: {len(punt_candidates)} candidate(s), ${remaining_budget:.2f} daily budget remaining")
+
+        # Rank by edge descending
+        punt_candidates.sort(key=lambda c: c["edge"], reverse=True)
+        # Dedupe by market_id (in case same bucket punt-scanned twice)
+        _seen_punt_ids = set()
+        for p in punt_candidates:
+            if remaining_budget < PUNT_MAX_POSITION_USD:
+                log(f"  ⏸️  Punt daily budget exhausted (${punt_usd_today + punt_usd_spent:.2f}/${PUNT_DAILY_BUDGET_USD:.2f})")
+                break
+            mid = p.get("market_id")
+            if not mid or mid in _seen_punt_ids:
+                continue
+            _seen_punt_ids.add(mid)
+
+            size = PUNT_MAX_POSITION_USD
+            tag = "[PAPER]" if dry_run else "[LIVE]"
+            log(f"  🎯 PUNT {tag} {p['location']} {p['date_str']} {p['outcome_name']} @ ${p['price']:.3f} | prob={p['confidence']:.0%} | edge={p['edge']:+.2f} | ${size:.2f}", force=True)
+
+            try:
+                result = execute_trade(
+                    mid, "yes", size,
+                    reasoning=f"PUNT: ensemble says {p['confidence']:.0%} but market priced at {p['price']:.1%} — {p['outcome_name']}",
+                    signal_data={
+                        "strategy": "punt",
+                        "edge": round(p["edge"], 4),
+                        "model_probability": round(p["confidence"], 4),
+                        "market_price": round(p["price"], 4),
+                        "forecast_temp": p["forecast_temp"],
+                        "spread": p.get("spread"),
+                        "signal_strength": p.get("signal_strength"),
+                    },
+                )
+            except Exception as e:
+                log(f"  ❌ Punt trade failed: {e}", force=True)
+                continue
+
+            if result.get("success"):
+                punts_executed += 1
+                punt_usd_spent += size
+                remaining_budget -= size
+                shares = result.get("shares_bought") or result.get("shares") or 0
+                log(f"  ✅ {tag} Punt bought {shares:.0f} shares @ ${p['price']:.3f}", force=True)
+
+                if result.get("simulated") and PAPER_JOURNAL_AVAILABLE:
+                    try:
+                        log_paper_trade(
+                            market_id=mid,
+                            question=p["market"].get("question", "") or p["market"].get("event_name", ""),
+                            side="yes", entry_price=p["price"], shares=shares,
+                            cost=size, bucket=p["outcome_name"],
+                            forecast_temp=p["forecast_temp"],
+                            signal_strength=p.get("signal_strength", "punt"),
+                            location=p["location"], date_str=p["date_str"], metric=p["metric"],
+                            models_used=p.get("models_used", 0),
+                            agreement_pct=p.get("agreement_pct", 0),
+                            spread=p.get("spread"),
+                            strategy="punt",
+                        )
+                    except Exception:
+                        pass
+            else:
+                log(f"  ❌ Punt trade failed: {result.get('error', 'unknown')}", force=True)
+
     exits_found, exits_executed = check_exit_opportunities(dry_run, use_safeguards)
 
     log("\n" + "=" * 50)
-    total_trades = trades_executed + exits_executed
+    total_trades = trades_executed + exits_executed + punts_executed
     show_summary = not quiet or total_trades > 0
     if show_summary:
         print("📊 Summary:")
         print(f"  Events scanned: {len(events)}")
         print(f"  Entry opportunities: {opportunities_found}")
         print(f"  Exit opportunities:  {exits_found}")
+        print(f"  Core trades:         {trades_executed + exits_executed}")
+        if PUNT_MODE:
+            print(f"  Punts found:         {len(punt_candidates)}")
+            print(f"  Punts executed:      {punts_executed}  (${punt_usd_spent:.2f})")
         print(f"  Trades executed:     {total_trades}")
 
     # Structured report for automaton
@@ -2002,6 +2228,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-safeguards", action="store_true", help="Disable context safeguards")
     parser.add_argument("--no-trends", action="store_true", help="Disable price trend detection")
     parser.add_argument("--vol-targeting", action="store_true", help="Enable volatility targeting (dynamic position sizing based on realized vol)")
+    parser.add_argument("--punt-mode", action="store_true", help="Enable punt mode: buy deeply-mispriced tail buckets with small stakes (side strategy)")
     parser.add_argument("--quiet", "-q", action="store_true", help="Only output when trades execute or errors occur (ideal for high-frequency runs)")
     args = parser.parse_args()
 
@@ -2049,11 +2276,21 @@ if __name__ == "__main__":
             globals()["FORECAST_CACHE_DISK"] = _config["forecast_cache_disk"]
             globals()["CONCURRENT_SCANS"] = _config["concurrent_scans"]
             globals()["LOG_LEVEL"] = _config["log_level"]
+            globals()["PUNT_MODE"] = _config["punt_mode"]
+            globals()["PUNT_MAX_POSITION_USD"] = _config["punt_max_position_usd"]
+            globals()["PUNT_PRICE_CEILING"] = _config["punt_price_ceiling"]
+            globals()["PUNT_MIN_EDGE"] = _config["punt_min_edge"]
+            globals()["PUNT_MIN_CONFIDENCE"] = _config["punt_min_confidence"]
+            globals()["PUNT_DAILY_BUDGET_USD"] = _config["punt_daily_budget_usd"]
             _locations_str = _config["locations"]
             globals()["ACTIVE_LOCATIONS"] = [loc.strip().upper() for loc in _locations_str.split(",") if loc.strip()]
 
     # Default to dry-run unless --live is explicitly passed
     dry_run = not args.live
+
+    # CLI flag overrides config: --punt-mode enables the side strategy
+    if args.punt_mode:
+        globals()["PUNT_MODE"] = True
 
     run_weather_strategy(
         dry_run=dry_run,

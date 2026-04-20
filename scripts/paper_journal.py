@@ -60,6 +60,7 @@ def log_paper_trade(
     models_used: int,
     agreement_pct: float,
     spread: float,
+    strategy: str = "core",   # "core" (default) or "punt"
 ) -> str:
     """
     Log a new paper trade. Returns the trade_id.
@@ -76,6 +77,7 @@ def log_paper_trade(
         "bucket": bucket,
         "forecast_temp": forecast_temp,
         "signal_strength": signal_strength,
+        "strategy": strategy,
         "location": location,
         "target_date": date_str,
         "metric": metric,
