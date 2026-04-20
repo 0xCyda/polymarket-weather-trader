@@ -755,6 +755,38 @@ def parse_temperature_bucket(outcome_name: str):
     return None
 
 
+def parse_market_bucket(market: dict):
+    """
+    Extract a parseable bucket from a Simmer market dict.
+
+    Some markets return outcome_name="Yes"/"No" instead of the bucket label.
+    In that case the bucket info lives in the question text, e.g. "Will the
+    highest temperature in Hong Kong be 28°C on April 21, 2026?". We try the
+    most-specific fields first and fall back to the question.
+
+    Returns:
+        ((lo, hi, unit), bucket_label) on success — bucket_label is a
+        human-readable string for logging/journal storage.
+        (None, "") if nothing parses.
+    """
+    if not isinstance(market, dict):
+        return None, ""
+    # Order: most-specific bucket label first, then descriptive text.
+    candidates = [
+        market.get("outcome_name"),
+        market.get("outcome"),
+        market.get("name"),
+        market.get("question"),
+    ]
+    for raw in candidates:
+        if not raw or not isinstance(raw, str):
+            continue
+        bucket = parse_temperature_bucket(raw)
+        if bucket:
+            return bucket, raw
+    return None, ""
+
+
 # =============================================================================
 # Simmer API - Core
 # =============================================================================
@@ -962,8 +994,7 @@ def find_punt_candidates(event_markets: list, forecast_temp: float, spread: floa
         price = market.get("external_price_yes")
         if price is None or price <= 0 or price > PUNT_PRICE_CEILING:
             continue
-        outcome_name = market.get("outcome_name") or market.get("question", "")
-        bucket = parse_temperature_bucket(outcome_name)
+        bucket, outcome_name = parse_market_bucket(market)
         if not bucket:
             continue
         lo, hi, unit = bucket
@@ -1743,8 +1774,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         matching_market = None
         threshold_markets = []
         for market in event_markets:
-            outcome_name = market.get("outcome_name") or market.get("question", "")
-            bucket = parse_temperature_bucket(outcome_name)
+            bucket, outcome_name = parse_market_bucket(market)
             if bucket:
                 lo, hi, unit = bucket
                 if unit == 'C':
@@ -1810,20 +1840,27 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
         if not matching_market:
             all_buckets = []
+            unparsed_count = 0
             for m in event_markets:
-                outcome = m.get("outcome_name") or m.get("question", "")
-                b = parse_temperature_bucket(outcome)
+                b, label = parse_market_bucket(m)
                 if b:
                     lo, hi, unit = b
                     if unit == 'C':
                         lo = lo * 9 / 5 + 32 if lo != -999 else -999
                         hi = hi * 9 / 5 + 32 if hi != 999 else 999
-                    all_buckets.append((lo, hi, m.get('outcome_name', '')))
+                    all_buckets.append((lo, hi, label))
+                else:
+                    unparsed_count += 1
             nearest = min(all_buckets, key=lambda b: min(abs(b[0]-forecast_temp), abs(b[1]-forecast_temp))) if all_buckets else None
             if nearest:
                 log(f"  ⚠️  No bucket found for {forecast_temp}{unit_label} — nearest: {nearest[2]} ({nearest[0]:.0f}-{nearest[1]:.0f}{unit_label})")
             else:
-                log(f"  ⚠️  No bucket found for {forecast_temp}{unit_label}")
+                log(f"  ⚠️  No bucket found for {forecast_temp}{unit_label} — {len(event_markets)} markets, {unparsed_count} unparseable")
+                # Diagnostic: show what fields the markets actually expose so we
+                # can see whether bucket info is in outcome_name, question, or elsewhere.
+                for m in event_markets[:3]:
+                    sample_fields = {k: m.get(k) for k in ("outcome_name", "outcome", "name", "question") if m.get(k)}
+                    log(f"    market sample: {sample_fields}")
             skip_reasons.append("no bucket match")
             # Log forecast even when no bucket match
             if newly_fetched and FORECAST_HISTORY_AVAILABLE and forecasts.get("weighted_temp") is not None:
@@ -1842,7 +1879,11 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                     pass
             continue
 
-        outcome_name = matching_market.get("outcome_name", "")
+        # Re-extract the parseable bucket label (matched_market may have
+        # outcome_name="Yes" with the bucket info in the question field).
+        _matched_bucket, outcome_name = parse_market_bucket(matching_market)
+        if not outcome_name:
+            outcome_name = matching_market.get("outcome_name", "") or matching_market.get("question", "")
         price = matching_market.get("external_price_yes") or 0.5
         market_id = matching_market.get("id")
         log(f"  Matching bucket: {outcome_name} @ ${price:.2f}")

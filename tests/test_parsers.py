@@ -54,6 +54,7 @@ os.environ.setdefault("SIMMER_API_KEY", "test-key")
 
 # Now safe to import
 from weather_trader import (
+    parse_market_bucket,
     parse_weather_event,
     parse_temperature_bucket,
     compute_dynamic_exit,
@@ -113,6 +114,39 @@ class TestParseTemperatureBucket(unittest.TestCase):
     def test_invalid(self):
         self.assertIsNone(parse_temperature_bucket(""))
         self.assertIsNone(parse_temperature_bucket("random text"))
+
+
+class TestParseMarketBucket(unittest.TestCase):
+    """Verify the market-dict bucket extractor handles common Simmer/Polymarket shapes."""
+
+    def test_outcome_name_has_bucket(self):
+        market = {"outcome_name": "28°C", "question": "Will the highest temperature in Hong Kong be 28°C on April 21?"}
+        bucket, label = parse_market_bucket(market)
+        self.assertEqual(bucket, (28, 28, "C"))
+        self.assertEqual(label, "28°C")
+
+    def test_outcome_name_yes_falls_back_to_question(self):
+        # The bug we just fixed: Polymarket sometimes returns outcome_name="Yes"
+        # and the bucket info lives in the question text.
+        market = {"outcome_name": "Yes", "question": "Will the highest temperature in Hong Kong be 28°C on April 21, 2026?"}
+        bucket, label = parse_market_bucket(market)
+        self.assertEqual(bucket, (28, 28, "C"))
+        self.assertIn("28°C", label)
+
+    def test_outcome_name_empty_falls_back_to_question(self):
+        market = {"outcome_name": "", "question": "Will the highest temperature in NYC be 70°F on April 18?"}
+        bucket, label = parse_market_bucket(market)
+        self.assertEqual(bucket, (70, 70, "F"))
+
+    def test_no_parseable_text_returns_none(self):
+        market = {"outcome_name": "Yes", "question": "Will SpaceX launch this week?"}
+        bucket, label = parse_market_bucket(market)
+        self.assertIsNone(bucket)
+        self.assertEqual(label, "")
+
+    def test_non_dict_returns_none(self):
+        bucket, label = parse_market_bucket(None)
+        self.assertIsNone(bucket)
 
 
 class TestCelsiusConversion(unittest.TestCase):
