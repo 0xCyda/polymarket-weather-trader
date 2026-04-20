@@ -198,6 +198,27 @@ def get_open_positions() -> list:
     return [t for t in trades if t.get("status") == "open"]
 
 
+def get_open_positions_by_event() -> dict:
+    """
+    Return open positions keyed by (location, date_str, metric) tuple.
+    Values: {"side": str, "market_id": str, "bucket": str, "entry_price": float}.
+    Used to detect opposing same-event positions before executing a new trade.
+    """
+    positions = get_open_positions()
+    by_event = {}
+    for t in positions:
+        key = (t.get("location", ""), t.get("target_date", ""), t.get("metric", ""))
+        if key not in by_event:
+            by_event[key] = {
+                "side": t.get("side", "yes"),
+                "market_id": t.get("market_id", ""),
+                "bucket": t.get("bucket", ""),
+                "entry_price": t.get("entry_price", 0),
+                "cost": t.get("cost", 0),
+            }
+    return by_event
+
+
 def get_resolved_trades(limit: int = 20) -> list:
     """Return most recent resolved trades."""
     trades = _load_trades()

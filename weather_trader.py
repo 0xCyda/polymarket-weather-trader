@@ -53,7 +53,7 @@ except ImportError:
 
 # Paper trading journal (local JSONL — no Simmer balance needed)
 try:
-    from paper_journal import log_paper_trade, update_resolved_trades, get_open_positions, get_stats
+    from paper_journal import log_paper_trade, update_resolved_trades, get_open_positions, get_stats, get_open_positions_by_event
     PAPER_JOURNAL_AVAILABLE = True
 except ImportError:
     PAPER_JOURNAL_AVAILABLE = False
@@ -1726,6 +1726,21 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             log(f"  ⏭️  Already holding position in this market — skipping re-entry")
             skip_reasons.append("already held")
             continue
+
+        # Same-event check: if we already have an open position on this
+        # (location, date, metric) — regardless of bucket — skip to avoid
+        # redundant same-side exposure across multiple buckets on one event
+        if PAPER_JOURNAL_AVAILABLE:
+            try:
+                open_by_event = get_open_positions_by_event()
+                event_key = (location, date_str, metric)
+                existing = open_by_event.get(event_key)
+                if existing:
+                    log(f"  ⏭️  Already holding {existing['side'].upper()} on {location} {date_str} {metric} — skipping (bucket '{existing['bucket']}' already open)")
+                    skip_reasons.append("same-event position already open")
+                    continue
+            except Exception:
+                pass
 
         # Primary entry gate: edge (confidence - price). Price ceiling is a
         # loose sanity cap only — avoids buckets priced near resolution.

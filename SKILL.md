@@ -51,6 +51,17 @@ For same-day (D+0) markets, live **METAR station observations** are fetched as a
 - **Cache per (location, date, metric)**: Each market's ensemble result cached separately to prevent stale data across different dates or high/low temp events for the same city.
 - **METAR ground truth**: Same-day markets get live airport station observations as an extra signal quality check.
 
+## Bot Repo Path (CRITICAL)
+- **Repo path:** `~/.hermes/skills/solebrace-skills/polymarket-weather-trader/`
+- **Git dir:** `~/.hermes/skills/solebrace-skills/polymarket-weather-trader/.git`
+- **Latest commit:** `209a7ff` — "Relax trading rules per Opus audit findings"
+- **WRONG (ignore):** `~/.openclaw/workspace/skills/polymarket-weather-trader` — do NOT use this path
+
+## Simmer API Key
+- Key: `sk_live_XREDACTED`
+- Location: `\\wsl.localhost\Ubuntu\home\brandon\.hermes\workspace\SOLEBRACE\API`
+- Confirmed working by Brandon
+
 ## Setup Flow
 
 1. **Install dependencies**
@@ -59,12 +70,17 @@ For same-day (D+0) markets, live **METAR station observations** are fetched as a
    ```
 
 2. **Set environment variables**
-   - `SIMMER_API_KEY` — from simmer.markets/dashboard → SDK tab
+   - `SIMMER_API_KEY` — use key above (from simmer.markets/dashboard → SDK tab)
    - `WALLET_PRIVATE_KEY` — required for live trading (signs orders client-side automatically)
 
 3. **Confirm locations** (default: NYC only; configurable)
 
 4. **Set up cron** (disabled by default — user must enable)
+
+## Cron Notes
+- Cron JSON must escape newlines as `\\n` in string values, not bare `\n`
+- `payload.message` and `prompt` fields break if newlines aren't properly escaped
+- Always use correct repo path in cron prompt
 
 ## Configuration
 
@@ -199,7 +215,57 @@ Before trading, the skill checks:
 - **Signal strength**: Skips if `weak` or `no_data`
 - **Bucket match**: Skips if no Polymarket bucket matches the forecast temperature
 
+## Cron Setup — Python Interpreter
+
+**Always use `python3.12` (system Python), NOT the hermes-agent venv Python.**
+...
+## Verifying Bot Health
+Check lock file PID directly (no systemctl in WSL — WSL has no systemd user bus):
+```bash
+BOT_PID=$(cat ~/.polymarket-paper-bot/bot.lock 2>/dev/null | grep -oP 'pid:\s*\K\d+' | head -1)
+kill -0 "$BOT_PID" 2>/dev/null && echo "Running PID $BOT_PID" || echo "Not running"
+```
+Lock file: `~/.polymarket-paper-bot/bot.lock`
+```bash
+python3.12 weather_trader.py --dry-run
+```
+Using plain `python3` (the hermes venv interpreter) fails with `ModuleNotFoundError: No module named 'simmer_sdk'`. The Polymarket Weather Scan cron was updated to use `python3.12`.
+
+### AIFS ENS GRIB cache has stale files
+Old GRIB files from Apr 12 (`2026-04-12_00_*.grib2`) sit in `~/.cache/aifs_ens/` alongside the active `latest_*.grib2` cache. The active cache is identified by `latest_*.grib2` — the stale files can be deleted manually.
+
+## Manual Position Closing
+
+`log_paper_trade()` is for **entries only** — it creates a new open trade. To manually close a position:
+
+```python
+import sys
+sys.path.insert(0, '.')
+from scripts.paper_journal import _load_trades, _save_trades
+import datetime, requests
+
+trades = _load_trades()
+for t in trades:
+    if t['market_id'] == 'MARKET_ID_HERE' and t['status'] == 'open':
+        r = requests.get(f'https://api.simmer.markets/api/sdk/context/{t["market_id"]}',
+            headers={'Authorization': f'Bearer {SIMMER_API_KEY}'})
+        current_price = r.json()['market']['current_price']
+        t['status'] = 'resolved'
+        t['exit_price'] = current_price
+        t['outcome'] = None
+        t['pnl'] = (current_price - t['entry_price']) * t['shares']
+        t['resolved_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+_save_trades(trades)
+```
+
+**Paper journal positions (`format_scan.py`) carry no `current_price`** — `get_positions()` in `format_scan.py` now fetches live prices from `GET https://api.simmer.markets/api/sdk/context/{market_id}` for each paper journal position. The journal uses different field names: `shares` (not `shares_yes`/`shares_no`), `cost` (not `cost_basis`), `side` in {"yes","no"} (not Simmer's `shares_yes > 0`). `compute_upnl()` handles both schemas.
+
+**To get current price for any market:** `GET https://api.simmer.markets/api/sdk/context/{market_id}` (not `/v1/markets/`). The SDK's `get_market_context()` silently returns `None` — use the direct REST call.
+
 ## Troubleshooting
+
+**"ModuleNotFoundError: No module named 'simmer_sdk'"**
+- The cron or script is using the wrong Python interpreter. Use `python3.12` explicitly. See Cron Setup above.
 
 **"No ensemble forecast for [date] (signal: no_data)"**
 - Date is too far ahead for models to forecast (typically >10 days). This is expected for far-future markets.
