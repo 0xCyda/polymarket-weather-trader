@@ -482,6 +482,22 @@ function money(v, digits) {
   return '$' + n.toFixed(d);
 }
 
+function toCelsius(f) {
+  const n = Number(f || 0);
+  return n === 0 ? '—' : (n - 32) * 5 / 9;
+}
+
+function fmtCelsius(f) {
+  const c = toCelsius(f);
+  return c === '—' ? '—°C' : c.toFixed(1) + '°C';
+}
+
+function fmtCelsiusDelta(f) {
+  // Spread is a delta (°F difference), not an absolute temp — convert without offset
+  const n = Number(f || 0);
+  return n === 0 ? '—°C' : (n * 5 / 9).toFixed(1) + '°C';
+}
+
 function fmtPnl(v) {
   const n = Number(v || 0);
   if (n === 0) return '<span class="neutral">$0.00</span>';
@@ -711,11 +727,11 @@ function renderSignals(d) {
           <span class="mono" style="font-size:11px">${s.date}</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;gap:8px">
-          <span style="color:var(--text-secondary);font-size:13px"><span class="mono">${s.temp}°F</span> · ${s.metric}</span>
+          <span style="color:var(--text-secondary);font-size:13px"><span class="mono">${fmtCelsius(s.temp)}</span> · ${s.metric}</span>
           ${signalBadge(s.signal)}
         </div>
         <div class="faint" style="margin-top:4px">
-          ${s.models} models · spread <span class="mono">${s.spread}°</span>${s.agree !== 'N/A' ? ' · ' + s.agree + '% agree' : ''}
+          ${s.models} models · spread <span class="mono">${fmtCelsiusDelta(s.spread)}</span>${s.agree !== 'N/A' ? ' · ' + s.agree + '% agree' : ''}
         </div>
       </div>
     `).join('');
@@ -1115,4 +1131,4 @@ def api_state():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8414, log_level="warning")
+    uvicorn.run(app, host="0.0.0.0", port=8414, log_level="warning")

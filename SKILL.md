@@ -313,6 +313,13 @@ _save_trades(trades)
 **"signal: weak — skipped"**
 - Ensemble has fewer than 3 models, or `max_delta > 8°`. Signal is not confident enough. This is intentional — weak-signal trades are skipped to avoid noise.
 
+**"9 markets scanned in cron but only 1 city shows in manual runs"**
+- Cron ran a full scan with `--dry-run`, found 9 events, generated signals
+- Manual run shows only NYC because ALL 34 cities are cached in `data/discovery_cache.json` (TTL 180 min)
+- When cities are cached, the run skips them silently with `"Discovery cache hit for {location} — skipping"`
+- This is expected behavior — after a full cron scan, manual runs will only show cities not yet cached
+- To force a full re-scan: delete `data/discovery_cache.json` or touch only the cities you want to re-scan
+
 **"No bucket found for XX.X°F"**
 - The forecast temperature doesn't fall within any of the Polymarket buckets for that market. This is normal — it means the forecast doesn't align with the market's defined ranges.
 - If a Celsius market (e.g. Tokyo, Shanghai): the bucket value is converted from °C to °F before comparison. The ensemble always returns Fahrenheit; `parse_temperature_bucket` detects the market's unit and converts accordingly. Sentinel values (-999/999) for "or higher"/"or below" buckets are preserved through conversion.
@@ -323,6 +330,23 @@ _save_trades(trades)
 
 **"Balance shows $0 but I have USDC on Polygon"**
 - Polymarket uses **USDC.e** (bridged USDC, contract `0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174`). Bridge native USDC to USDC.e if needed.
+
+**"Simmer API returning 401 Unauthorized on `/api/sdk/markets`"**
+- If `GET /api/sdk/markets` returns `401 {"detail": "..."}`, the API key is invalid, expired, or lacks permissions
+- The skill's `weather_trader.py` uses Simmer's CLOB proxy endpoint for market discovery, not the raw `/markets` endpoint
+- Discovery works via Simmer's internal market list (the SDK wraps it differently), so a 401 on raw `/markets` may not block the bot
+- However, if ALL Simmer API calls fail with 401, market discovery falls back to an empty list and no new trades will be found
+- **Fix**: Verify API key at `simmer.markets/dashboard → SDK tab`. Re-check the key hasn't been rotated or expired.
+- `GET /api/sdk/context/{market_id}` also returned `{"detail": "..."}` in recent testing — this broke live price lookups for open positions
+
+**"Verifying bot health — lock file not found"**
+- The skill's health check looks for `~/.polymarket-paper-bot/bot.lock`, but **the bot does not run as a persistent daemon**
+- The cron job runs `python3.12 weather_trader.py --dry-run` as a **one-shot** command — no lock file is created
+- To verify the cron actually fired, check instead:
+  - `ls -la ~/.hermes/skills/polymarket-weather-trader/data/discovery_cache.json` — timestamps show last run
+  - `ls -la ~/.hermes/skills/polymarket-weather-trader/data/paper_trades.jsonl` — same
+  - Paper trades journal: `python3.12 scripts/paper_journal.py --backfill` to force-settle any ready trades
+- `paper_trades.jsonl` is the authoritative source for open positions and P&L
 
 **"Simmer API price for Shenzhen was $0.21 but actual market showed <1% (~$0.001)"**
 - Simmer's `current_price` can be **stale or wrong** for illiquid/near-zero buckets
