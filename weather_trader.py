@@ -1741,6 +1741,13 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         else:
             confidence = 0.72
 
+        # Hard spread cap — skip regardless of edge or signal strength
+        MAX_SPREAD = 5.8
+        if spread is not None and spread > MAX_SPREAD:
+            log(f"  ⏸️  Spread {spread}° exceeds max {MAX_SPREAD}° — skip")
+            skip_reasons.append(f"spread>{MAX_SPREAD}°")
+            continue
+
         # Aggregation: don't re-buy markets we already hold
         if market_id and market_id in already_held_markets:
             log(f"  ⏭️  Already holding position in this market — skipping re-entry")
