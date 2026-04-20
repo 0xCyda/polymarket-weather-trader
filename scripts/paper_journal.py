@@ -96,21 +96,26 @@ def log_paper_trade(
 
 
 def _fetch_market_resolution(market_id: str) -> dict | None:
-    """Fetch resolution state from Polymarket API by market ID."""
+    """Fetch resolution state from Simmer API by market ID (clob.polymarket.com is 403-blocked)."""
     try:
+        api_key = os.environ.get("SIMMER_API_KEY")
+        if not api_key:
+            return None
         resp = requests.get(
-            f"https://clob.polymarket.com/markets/{market_id}",
-            timeout=10,
+            f"https://api.simmer.markets/api/sdk/context/{market_id}",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=15,
         )
         if resp.status_code != 200:
             return None
-        m = resp.json()
+        data = resp.json()
+        m = data.get("market", {}) if isinstance(data, dict) else {}
         if not m:
             return None
         return {
-            "resolved": m.get("resolved", False),
-            "outcome": m.get("outcome"),          # e.g. "Yes" or "No"
-            "end_date_utc": m.get("end_date_utc", ""),
+            "resolved": m.get("status") == "resolved",
+            "outcome": m.get("outcome"),
+            "end_date_utc": m.get("resolves_at", ""),
             "question": m.get("question", ""),
         }
     except Exception:
@@ -165,6 +170,9 @@ def update_resolved_trades() -> list:
 
         # Market has resolved — derive YES token settlement price from resolution
         outcome = resolution.get("outcome", "")
+        if not outcome:
+            # Simmer API doesn't surface outcomes — skip resolution for now
+            continue
         exit_price = 1.0 if outcome.lower() in ("yes", "true") else 0.0
 
         # Calculate P&L
