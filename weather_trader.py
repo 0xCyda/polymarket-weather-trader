@@ -1606,20 +1606,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             newly_fetched = True
 
         forecasts = forecast_cache[cache_key_str] or {}
-        # Log forecast for accuracy tracking (once per new fetch)
-        if newly_fetched and FORECAST_HISTORY_AVAILABLE and forecasts.get("weighted_temp") is not None:
-            try:
-                log_forecast(
-                    location=location, date_str=date_str, metric=metric,
-                    forecast_temp=forecasts.get("weighted_temp"),
-                    signal_strength=forecasts.get("signal_strength", "unknown"),
-                    models_used=forecasts.get("models_count", 0),
-                    agreement_pct=forecasts.get("agreement_pct", 0),
-                    spread=forecasts.get("max_delta"),
-                    model_temps=forecasts.get("model_temps"),
-                )
-            except Exception:
-                pass
+        # Log forecast for accuracy tracking (once per new fetch, after bucket matching)
+        # market_id is set at line 1706 below
+        _logged_market_id_for_cache = None
         forecast_temp = forecasts.get("weighted_temp") or forecasts.get("ensemble_mean")
         signal_strength = forecasts.get("signal_strength", "unknown")
         models_used = forecasts.get("models_count", 0)
@@ -1699,12 +1688,43 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             else:
                 log(f"  ⚠️  No bucket found for {forecast_temp}{unit_label}")
             skip_reasons.append("no bucket match")
+            # Log forecast even when no bucket match
+            if newly_fetched and FORECAST_HISTORY_AVAILABLE and forecasts.get("weighted_temp") is not None:
+                try:
+                    log_forecast(
+                        location=location, date_str=date_str, metric=metric,
+                        forecast_temp=forecasts.get("weighted_temp"),
+                        signal_strength=forecasts.get("signal_strength", "unknown"),
+                        models_used=forecasts.get("models_count", 0),
+                        agreement_pct=forecasts.get("agreement_pct", 0),
+                        spread=forecasts.get("max_delta"),
+                        model_temps=forecasts.get("model_temps"),
+                        market_id=None,
+                    )
+                except Exception:
+                    pass
             continue
 
         outcome_name = matching_market.get("outcome_name", "")
         price = matching_market.get("external_price_yes") or 0.5
         market_id = matching_market.get("id")
         log(f"  Matching bucket: {outcome_name} @ ${price:.2f}")
+
+        # Log forecast after bucket match so we have market_id
+        if newly_fetched and FORECAST_HISTORY_AVAILABLE and forecasts.get("weighted_temp") is not None:
+            try:
+                log_forecast(
+                    location=location, date_str=date_str, metric=metric,
+                    forecast_temp=forecasts.get("weighted_temp"),
+                    signal_strength=forecasts.get("signal_strength", "unknown"),
+                    models_used=forecasts.get("models_count", 0),
+                    agreement_pct=forecasts.get("agreement_pct", 0),
+                    spread=forecasts.get("max_delta"),
+                    model_temps=forecasts.get("model_temps"),
+                    market_id=market_id,
+                )
+            except Exception:
+                pass
 
         if price < MIN_TICK_SIZE or price > (1 - MIN_TICK_SIZE):
             log(f"  ⏸️  Price ${price:.4f} at extreme — skip")

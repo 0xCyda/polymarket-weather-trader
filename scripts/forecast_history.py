@@ -34,6 +34,7 @@ def log_forecast(
     agreement_pct: float,
     spread: float,
     model_temps: dict | None = None,
+    market_id: str | None = None,
 ) -> None:
     """Append one forecast observation. Idempotent on (location, date, metric)."""
     entry = {
@@ -47,6 +48,7 @@ def log_forecast(
         "agreement_pct": agreement_pct,
         "spread": spread,
         "model_temps": model_temps or {},
+        "market_id": market_id,
         "actual_temp": None,
         "forecast_error": None,
     }
