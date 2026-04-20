@@ -3,11 +3,8 @@ __pycache__/
 *.pyo
 .env
 data/*.json
-data/*.jsonl
 logs/
 *.log
 .DS_Store
-data/paper_trades.jsonl
-data/*.jsonl
+!data/paper_trades.jsonl
 scripts/__pycache__/
-data/
