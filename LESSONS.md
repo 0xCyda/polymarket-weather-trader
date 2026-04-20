@@ -64,3 +64,37 @@ def get_positions():
 **Limitation:** Cannot close positions manually at a specific price. Positions remain "open" in the journal until Polymarket resolves the market.
 
 **If manual close is needed:** Add `close_position(trade_id: str, exit_price: float)` to `paper_journal.py` that sets `status="resolved"`, `exit_price=exit_price`, calculates P&L manually, and sets `resolved_at`.
+
+---
+
+## 2026-04-20 — Auto-Resolution Failure: CLOB API 403-Blocked
+
+**Symptom:** Chengdu market (Apr 19) resolved to 30°C on Polymarket, but paper journal showed it as "open" indefinitely. Scan run showed no auto-resolution.
+
+**Root cause (chain of failures):**
+
+1. `_fetch_market_resolution()` called `https://clob.polymarket.com/markets/{market_id}` — this returns **403 Forbidden** for server-side HTTP requests without a browser session/cookies.
+
+2. The `requests.HTTPError` was caught by `except Exception: return None` — completely silent, trades never resolved.
+
+3. The Simmer API (`GET /api/sdk/context/{id}`) DOES detect `status: "resolved": true` from Polymarket's chain, but returns **`outcome: null`** — Simmer doesn't surface which bucket won.
+
+4. `update_resolved_trades()` computes `exit_price` from `outcome`, so even with Simmer detecting resolution, `outcome: None` caused `exit_price = 1.0 if None.lower() in (...)` → `AttributeError` was also silently caught.
+
+**Fixes applied (paper_journal.py):**
+
+1. `_fetch_market_resolution()` now calls `https://api.simmer.markets/api/sdk/context/{id}` instead of CLOB. Uses `SIMMER_API_KEY` from env. Detects `resolved: True` but outcome still `None`.
+
+2. `update_resolved_trades()` now guards against `outcome: None`:
+   ```python
+   outcome = resolution.get("outcome", "")
+   if not outcome:
+       continue  # Simmer doesn't surface outcomes — skip for now
+   exit_price = 1.0 if outcome.lower() in ("yes", "true") else 0.0
+   ```
+
+**Limitation:** Simmer's context API (`/api/sdk/context/{id}`) returns `status: "resolved"` but `outcome: null` — so auto-resolution detection now works, but the winning bucket/PNL still won't be filled in. Paper trades will remain "open" with `pnl: null` until Simmer adds outcome to their API, or until we switch to scraping the Polymarket page directly.
+
+**Workaround found:** `https://clob.polymarket.com/markets?_id={market_id}` (query param, not path param) returns 200 OK with full outcome data including `tokens[].winner`. However, `_outcome_price()` still uses the broken path-based URL — it would need updating to use this query-URL pattern if we want full auto-resolution.
+
+**Manual close if needed:** Until full auto-resolution works, manually edit `paper_trades.jsonl` — set `status="resolved"`, `outcome="no"` (or `"yes"`), `exit_price=0.0` or `1.0` based on whether your bucket won, `pnl=(exit_price - entry_price) * shares`, and `resolved_at=ISO timestamp`.
