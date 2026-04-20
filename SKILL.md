@@ -30,7 +30,7 @@ The core change in v2.0: instead of single-source NOAA, the trader uses a **weig
 
 `weighted_temp` = weighted average across all models that return data (weights renormalize if some models fail). The ensemble also computes `max_delta` (worst disagreement in degrees) and `agreement_pct` (% of models within 3° of the weighted average).
 
-For same-day (D+0) markets, live **METAR station observations** are fetched as a ground-truth anchor (using the city's local timezone to determine D+0). If METAR diverges >5° from the ensemble, the signal is downgraded.
+For same-day (D+0) markets after 14:00 local, live **METAR station observations** are fetched as a ground-truth anchor. If METAR diverges >5° from the ensemble, the signal is downgraded. Downgrade is skipped in the morning since current temp is naturally well below the daily high.
 
 ## When to Use This Skill
 
@@ -44,9 +44,9 @@ For same-day (D+0) markets, live **METAR station observations** are fetched as a
 - **AIFS ENS ensemble**: ECMWF AI-generated ensemble with CF (control) + PF (perturbed, 5 members) GRIB download. True ensemble spread and agreement computed from all members.
 - **6-model global blend**: Weighted combination of major global forecast models via Open-Meteo. All models run concurrently via ThreadPoolExecutor.
 - **Signal strength confidence**: Dynamic confidence (0.70–0.88) based on ensemble agreement, not a hardcoded NOAA probability.
-  - `strong` (≥4 models, agreement ≥70%, max_delta ≤5°): confidence = 0.88
-  - `moderate` (≥3 models, max_delta ≤8°): confidence = 0.80
-  - `weak` (otherwise): confidence = 0.70 — **trade skipped**
+  - `strong` (≥4 models, agreement ≥70%, max_delta ≤6°): confidence = 0.88
+  - `moderate` (≥3 models, max_delta ≤10°): confidence = 0.80
+  - `weak` (otherwise): confidence = 0.68 — allowed if edge clears the MIN_EDGE gate
   - `single_source` / unknown: confidence = 0.72
 - **Cache per (location, date, metric)**: Each market's ensemble result cached separately to prevent stale data across different dates or high/low temp events for the same city.
 - **METAR ground truth**: Same-day markets get live airport station observations as an extra signal quality check.
@@ -54,7 +54,7 @@ For same-day (D+0) markets, live **METAR station observations** are fetched as a
 ## Bot Repo Path (CRITICAL)
 - **Repo path:** `~/.hermes/skills/solebrace-skills/polymarket-weather-trader/`
 - **Git dir:** `~/.hermes/skills/solebrace-skills/polymarket-weather-trader/.git`
-- **Latest commit:** `209a7ff` — "Relax trading rules per Opus audit findings"
+- **Latest commit:** `6d97d3c` — "Enable punt mode by default"
 - **WRONG (ignore):** `~/.openclaw/workspace/skills/polymarket-weather-trader` — do NOT use this path
 
 ## Simmer API Key
@@ -84,15 +84,20 @@ For same-day (D+0) markets, live **METAR station observations** are fetched as a
 
 ## Configuration
 
+### Core strategy
+
 | Setting | Environment Variable | Default | Description |
 |---------|---------------------|---------|-------------|
-| Entry threshold | `SIMMER_WEATHER_ENTRY_THRESHOLD` | 0.15 | Buy when price below this |
-| Exit threshold | `SIMMER_WEATHER_EXIT_THRESHOLD` | 0.45 | Sell when price above this |
-| Max position | `SIMMER_WEATHER_MAX_POSITION_USD` | 100.00 | Maximum USD per trade |
-| Max trades/run | `SIMMER_WEATHER_MAX_TRADES_PER_RUN` | 5 | Maximum trades per scan cycle |
-| Locations | `SIMMER_WEATHER_LOCATIONS` | NYC | Comma-separated cities |
+| Min edge | `SIMMER_WEATHER_MIN_EDGE` | 0.25 | Primary entry gate: `confidence - price` must be ≥ this |
+| Entry ceiling | `SIMMER_WEATHER_ENTRY_THRESHOLD` | 0.50 | Price sanity cap (secondary filter) |
+| Exit threshold | `SIMMER_WEATHER_EXIT_THRESHOLD` | 0.45 | Fixed exit floor |
+| Exit profit multiplier | `SIMMER_WEATHER_EXIT_PROFIT_MULT` | 4.0 | Dynamic exit: entry_price × this (e.g. 15¢ entry → 60¢ target) |
+| Max position | `SIMMER_WEATHER_MAX_POSITION_USD` | 200.00 | Maximum USD per trade |
+| Max trades/run | `SIMMER_WEATHER_MAX_TRADES_PER_RUN` | 10 | Maximum trades per scan cycle |
+| Locations | `SIMMER_WEATHER_LOCATIONS` | NYC | Comma-separated cities (see below for supported list) |
 | Binary only | `SIMMER_WEATHER_BINARY_ONLY` | false | Skip range-bucket events, only trade binary yes/no |
 | Smart sizing | `SIMMER_WEATHER_SIZING_PCT` | 0.05 | % of balance per trade (--smart-sizing) |
+| Paper balance | `SIMMER_WEATHER_PAPER_BALANCE` | 10000.0 | Starting balance for paper trading |
 | Slippage max | `SIMMER_WEATHER_SLIPPAGE_MAX` | 0.15 | Skip trades with slippage above this |
 | Min liquidity | `SIMMER_WEATHER_MIN_LIQUIDITY` | 0 | Skip markets with liquidity below this USD |
 | Order type | `SIMMER_WEATHER_ORDER_TYPE` | GTC | Order type (GTC or FAK) |
@@ -101,10 +106,29 @@ For same-day (D+0) markets, live **METAR station observations** are fetched as a
 | Vol max leverage | `SIMMER_WEATHER_VOL_MAX_LEVERAGE` | 2.0 | Max scale-up multiplier |
 | Vol min alloc | `SIMMER_WEATHER_VOL_MIN_ALLOC` | 0.2 | Min allocation floor |
 | Vol EWMA span | `SIMMER_WEATHER_VOL_SPAN` | 10 | EWMA responsiveness |
+| Discovery cache | `SIMMER_WEATHER_DISCOVERY_CACHE_MIN` | 60 | Per-location discovery cache TTL (minutes) |
+| Forecast cache (disk) | `SIMMER_WEATHER_FORECAST_CACHE_DISK` | true | Persist forecast cache across runs (1h D+0, 3h D+1+) |
+
+There is also a fixed **MAX_SPREAD = 5.8°F** cap hard-coded in `weather_trader.py` — any candidate with ensemble spread above this is skipped regardless of edge or signal strength.
+
+### Punt mode (side strategy — hunts tail-priced mispricings)
+
+On by default. Finds deeply-mispriced buckets (e.g. "London 59°F or below" priced at 0.1¢ when models say 95%+ likely). Fixed small stake, own daily budget, tagged separately in the paper journal.
+
+| Setting | Environment Variable | Default | Description |
+|---------|---------------------|---------|-------------|
+| Punt mode | `SIMMER_WEATHER_PUNT_MODE` | true | Enable punt side strategy |
+| Punt size | `SIMMER_WEATHER_PUNT_POSITION_USD` | 15.00 | Fixed USD per punt trade |
+| Punt price ceiling | `SIMMER_WEATHER_PUNT_PRICE_CEILING` | 0.06 | Max price for a punt candidate (6¢) |
+| Punt min edge | `SIMMER_WEATHER_PUNT_MIN_EDGE` | 0.50 | Min edge for a punt |
+| Punt min confidence | `SIMMER_WEATHER_PUNT_MIN_CONFIDENCE` | 0.70 | Min model probability for a punt |
+| Punt daily budget | `SIMMER_WEATHER_PUNT_DAILY_BUDGET` | 100.00 | Max USD spent on punts per day |
 
 **US locations** (AIFS ENS + Open-Meteo + METAR): NYC, Chicago, Seattle, Atlanta, Dallas, Miami, Houston, San Francisco, Phoenix, Los Angeles, Denver, Austin, Las Vegas
 
-**International locations** (AIFS ENS + Open-Meteo): Tel Aviv, Munich, London, Tokyo, Seoul, Ankara, Lucknow, Wellington, Toronto, Paris, Milan, Sao Paulo, Warsaw, Singapore, Shanghai, Beijing, Shenzhen, Chengdu, Chongqing, Wuhan
+**International locations** (AIFS ENS + Open-Meteo): Tel Aviv, Munich, London, Tokyo, Seoul, Ankara, Lucknow, Wellington, Toronto, Paris, Milan, Sao Paulo, Warsaw, Singapore, Shanghai, Beijing, Shenzhen, Chengdu, Chongqing, Wuhan, Hong Kong
+
+All 34 cities are wired end-to-end: forecast fetch, bucket matching, METAR (US), discovery, parsing. Both Celsius and Fahrenheit bucket types are supported.
 
 ## Quick Commands
 
@@ -136,6 +160,9 @@ python weather_trader.py --no-trends
 # Enable volatility targeting
 python weather_trader.py --live --smart-sizing --vol-targeting
 
+# Enable punt mode (on by default; use this to force-enable from CLI)
+python weather_trader.py --punt-mode
+
 # Quiet mode — only output on trades/errors
 python weather_trader.py --live --quiet
 ```
@@ -158,9 +185,10 @@ Each cycle:
 4. **Bucket matching** — Finds the Polymarket bucket matching `weighted_temp`. Two-pass algorithm: exact range match first, then threshold buckets ("X or higher" / "X or below") closest to forecast. Bucket values in Celsius are automatically converted to Fahrenheit before comparison (ensemble always returns °F). A `— nearest: [bucket]` suffix shows the closest non-matching bucket when the forecast is near a threshold.
 5. **Safeguards** — Checks flip-flop warnings, slippage, time decay, market status, liquidity
 6. **Trend detection** — Looks for recent price drops (stronger buy signal)
-7. **Entry** — If price < threshold and safeguards pass → BUY
-8. **Exit** — If open position and price > exit threshold → SELL
-9. **Signal metadata** — Logged with trade: `weighted_temp`, `signal_strength`, `models_count`, `agreement_pct`, `max_delta`
+7. **Core entry** — If `edge = confidence - price ≥ MIN_EDGE (0.25)` AND `price < ENTRY_THRESHOLD (0.50)` AND spread ≤ `MAX_SPREAD (5.8°)`, safeguards pass → BUY. Candidates are ranked by edge; top `MAX_TRADES_PER_RUN (10)` execute.
+8. **Punt scan** — After core trades, scans every bucket in each event for deep tail mispricings. A bucket qualifies if `price ≤ 6¢` AND Gaussian model probability ≥ 70% AND edge ≥ 50% AND not already held/core-matched. Executes at fixed $15 per punt up to $100/day, tagged `strategy="punt"` in the paper journal.
+9. **Exit** — For each open position, dynamic exit at `max(EXIT_THRESHOLD 0.45, entry_price × EXIT_PROFIT_MULTIPLIER 4.0)`. Optional laddered partial exits.
+10. **Signal metadata** — Logged with trade: `weighted_temp`, `signal_strength`, `models_count`, `agreement_pct`, `max_delta`, `edge`, `strategy` (core|punt)
 
 ## Example Output
 
