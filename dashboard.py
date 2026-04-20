@@ -572,7 +572,11 @@ function renderCards(d) {
 }
 
 function renderChart(d) {
-  const x = d.timeseries.map(r => r.date);
+  const x = d.timeseries.map(r => {
+    const [y, m, day] = r.date.split('-');
+    const d = new Date(Number(y), Number(m) - 1, Number(day));
+    return d.toLocaleDateString('en-AU', { timeZone: 'Australia/Perth', timeZoneName: 'short' }).replace(/\s+\w+$/, '');
+  });
   const y = d.timeseries.map(r => r.cumulative_pnl);
   const container = document.getElementById('equity-chart');
   if (!x.length) {
@@ -689,21 +693,46 @@ function renderSignals(d) {
     container.innerHTML = emptyState('📡', 'No signals in latest scan');
     return;
   }
-  container.innerHTML = d.signals.slice(0, 15).map(s => `
-    <div class="signal-row">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <span style="font-weight:600;color:var(--text-primary);font-size:14px">${s.location}</span>
-        <span class="mono" style="font-size:11px">${s.date}</span>
+
+  const SIGNAL_ORDER = { strong: 0, moderate: 1, weak: 2 };
+  const sorted = [...d.signals].sort((a, b) =>
+    (SIGNAL_ORDER[a.signal] ?? 3) - (SIGNAL_ORDER[b.signal] ?? 3)
+  );
+
+  const INITIAL = 5;
+  let expanded = false;
+
+  function render() {
+    const visible = expanded ? sorted : sorted.slice(0, INITIAL);
+    container.innerHTML = visible.map(s => `
+      <div class="signal-row">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <span style="font-weight:600;color:var(--text-primary);font-size:14px">${s.location}</span>
+          <span class="mono" style="font-size:11px">${s.date}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;gap:8px">
+          <span style="color:var(--text-secondary);font-size:13px"><span class="mono">${s.temp}°F</span> · ${s.metric}</span>
+          ${signalBadge(s.signal)}
+        </div>
+        <div class="faint" style="margin-top:4px">
+          ${s.models} models · spread <span class="mono">${s.spread}°</span>${s.agree !== 'N/A' ? ' · ' + s.agree + '% agree' : ''}
+        </div>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;gap:8px">
-        <span style="color:var(--text-secondary);font-size:13px"><span class="mono">${s.temp}°F</span> · ${s.metric}</span>
-        ${signalBadge(s.signal)}
-      </div>
-      <div class="faint" style="margin-top:4px">
-        ${s.models} models · spread <span class="mono">${s.spread}°</span>${s.agree !== 'N/A' ? ' · ' + s.agree + '% agree' : ''}
-      </div>
-    </div>
-  `).join('');
+    `).join('');
+
+    if (sorted.length > INITIAL) {
+      container.innerHTML += `
+        <button id="signal-toggle" onclick="window._signalExpanded=!window._signalExpanded;renderSignals(window._lastSignals)" style="
+          width:100%;margin-top:10px;padding:7px;background:rgba(96,165,250,0.08);border:1px solid var(--border-subtle);
+          border-radius:6px;color:var(--text-secondary);font-size:12px;cursor:pointer;
+        ">Show ${window._signalExpanded ? 'less' : 'more'} (${sorted.length - INITIAL} more)</button>
+      `;
+    }
+  }
+
+  window._lastSignals = d.signals;
+  window._signalExpanded = false;
+  render();
 }
 
 function renderResolved(d) {
@@ -813,15 +842,21 @@ def _load_trades_jsonl(path: Path) -> list[dict]:
 
 
 def _build_timeseries(trades: list[dict]) -> list[dict]:
-    """Cumulative P&L over time from resolved trades."""
+    """Cumulative P&L over time from resolved trades — one row per date (latest value wins)."""
     rows = []
-    cumulative = 0.0
     for t in trades:
         if t.get("status") == "resolved" and t.get("pnl") is not None:
-            cumulative += float(t["pnl"])
             ts = t.get("resolved_at", "")[:10] if t.get("resolved_at") else t.get("entered_at", "")[:10]
-            rows.append({"date": ts, "cumulative_pnl": round(cumulative, 4)})
-    return rows
+            rows.append({"date": ts, "pnl": float(t["pnl"])})
+    # Sort by date ascending
+    rows.sort(key=lambda r: r["date"])
+    # Aggregate: keep only the last (final cumulative) entry per date
+    aggregated = {}
+    cumulative = 0.0
+    for r in rows:
+        cumulative += r["pnl"]
+        aggregated[r["date"]] = round(cumulative, 4)
+    return [{"date": d, "cumulative_pnl": v} for d, v in aggregated.items()]
 
 
 def _get_simmer_positions() -> list[dict]:
@@ -949,6 +984,10 @@ def _parse_signals_from_history() -> list[dict]:
                 "agree": str(round(float(agree), 1)) + "%" if agree not in ("", None) else "N/A",
                 "spread": str(spread) if spread not in ("", None) else "—",
             })
+    signals.sort(key=lambda s: (
+        {"strong": 0, "moderate": 1, "weak": 2}.get(s["signal"], 3),
+        s.get("location", ""),
+    ))
     return signals
 
 
@@ -959,7 +998,7 @@ def _get_portfolio_stats(enriched_positions: list[dict]) -> dict:
     realized = round(sum(float(t.get("pnl") or 0) for t in resolved), 4)
     unrealized = round(sum(float(p.get("upnl") or 0) for p in enriched_positions), 2)
     return {
-        "balance": 10000.0,
+        "balance": round(10000.0 + realized, 2),
         "realized_pnl": realized,
         "unrealized_pnl": unrealized,
     }

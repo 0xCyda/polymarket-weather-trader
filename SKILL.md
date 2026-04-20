@@ -43,18 +43,20 @@ For same-day (D+0) markets after 14:00 local, live **METAR station observations*
 
 - **AIFS ENS ensemble**: ECMWF AI-generated ensemble with CF (control) + PF (perturbed, 5 members) GRIB download. True ensemble spread and agreement computed from all members.
 - **6-model global blend**: Weighted combination of major global forecast models via Open-Meteo. All models run concurrently via ThreadPoolExecutor.
-- **Signal strength confidence**: Dynamic confidence (0.70–0.88) based on ensemble agreement, not a hardcoded NOAA probability.
+- **Signal strength confidence**: Dynamic confidence based on ensemble agreement:
   - `strong` (≥4 models, agreement ≥70%, max_delta ≤6°): confidence = 0.88
   - `moderate` (≥3 models, max_delta ≤10°): confidence = 0.80
-  - `weak` (otherwise): confidence = 0.68 — allowed if edge clears the MIN_EDGE gate
+  - `weak` (otherwise): confidence = 0.68 — allowed through if edge ≥ MIN_EDGE (0.25)
   - `single_source` / unknown: confidence = 0.72
+- **MAX_SPREAD cap**: hard cap at 5.8°F — any candidate with spread above this is skipped regardless of edge or signal
+- **market_id in forecast_history**: `log_forecast()` called after bucket matching — `market_id` captured in all new scan entries
 - **Cache per (location, date, metric)**: Each market's ensemble result cached separately to prevent stale data across different dates or high/low temp events for the same city.
 - **METAR ground truth**: Same-day markets get live airport station observations as an extra signal quality check.
 
 ## Bot Repo Path (CRITICAL)
 - **Repo path:** `~/.hermes/skills/solebrace-skills/polymarket-weather-trader/`
 - **Git dir:** `~/.hermes/skills/solebrace-skills/polymarket-weather-trader/.git`
-- **Latest commit:** `6d97d3c` — "Enable punt mode by default"
+- **Latest commit:** `4822936` — "Dashboard UI overhaul — glass-morphism"
 - **WRONG (ignore):** `~/.openclaw/workspace/skills/polymarket-weather-trader` — do NOT use this path
 
 ## Simmer API Key
@@ -322,14 +324,51 @@ _save_trades(trades)
 **"Balance shows $0 but I have USDC on Polygon"**
 - Polymarket uses **USDC.e** (bridged USDC, contract `0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174`). Bridge native USDC to USDC.e if needed.
 
-**"API key invalid"**
-- Get new key from simmer.markets/dashboard → SDK tab
+**"Simmer API price for Shenzhen was $0.21 but actual market showed <1% (~$0.001)"**
+- Simmer's `current_price` can be **stale or wrong** for illiquid/near-zero buckets
+- Always cross-check against the live Polymarket page for position-critical decisions
+- When locking P&L: check the Polymarket page directly (browser or scraper) for the real bucket price
+- `GET /api/sdk/context/{market_id}` is fine for detection but unreliable for final settlement price
+
+**"Paper trade never auto-resolved"**
+- `clob.polymarket.com` returns **403 Forbidden** — bot-blocked without browser session cookies
+- `_fetch_market_resolution()` now uses Simmer API (`/api/sdk/context/{market_id}`) for `resolved: True/False`
+- **Limitation**: Simmer returns `resolved: True` but `outcome: null` — it does not surface the winning bucket
+- As a result, `update_resolved_trades()` can detect resolution but cannot compute P&L automatically
+- Manual close is required: get real bucket price from Polymarket page, then update journal manually
+
+**Manual Position Closing (updated)**
+```python
+# Simmer's current_price can be wrong for illiquid buckets (<1% priced tokens)
+# For position-critical decisions, ALWAYS check the Polymarket page directly
+# Then update the paper journal:
+
+import json, datetime
+
+journal = "/path/to/data/paper_trades.jsonl"
+with open(journal) as f:
+    trades = [json.loads(l) for l in f]
+
+EXIT_PRICE = 0.001  # from Polymarket page (bucket's implied probability)
+for t in trades:
+    if t['market_id'] == 'MARKET_ID' and t['status'] == 'open':
+        t['status'] = 'resolved'
+        t['outcome'] = None  # unknown from Simmer
+        t['exit_price'] = EXIT_PRICE
+        t['pnl'] = round((EXIT_PRICE - t['entry_price']) * t['shares'], 4)
+        t['resolved_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+with open(journal, 'w') as f:
+    for t in trades:
+        f.write(json.dumps(t, ensure_ascii=False) + '\n')
+```
 
 ## File Structure
 
 ```
 polymarket-weather-trader/
 ├── weather_trader.py             # Main entry point
+├── dashboard.py                 # FastAPI dashboard (port 8414)
 ├── config.json                   # Runtime configuration overrides
 ├── clawhub.json                  # Skill registration + tunables
 ├── _meta.json                    # Version metadata
@@ -340,6 +379,7 @@ polymarket-weather-trader/
     ├── aifs_forecast.py          # AIFS ENS GRIB download + parse (CF + PF members)
     ├── ensemble_forecast.py      # Multi-model ensemble (weighted blend + METAR)
     ├── forecast_validator.py     # Forecast consistency checks (standalone)
+    ├── forecast_history.py       # Forecast accuracy journal (JSONL)
     ├── paper_journal.py          # Local paper trading journal + P&L tracking
     └── status.py                 # Balance and position checks
 ```

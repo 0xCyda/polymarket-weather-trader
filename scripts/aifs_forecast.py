@@ -391,7 +391,14 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
         if not path.exists():
             return False
         age_hours = (datetime.now(timezone.utc) - datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)).total_seconds() / 3600
-        return age_hours < AIFS_CACHE_MAX_AGE_HOURS
+        if age_hours >= AIFS_CACHE_MAX_AGE_HOURS:
+            return False
+        # Validate the GRIB file is actually readable by cfgrib (not a corrupt stub)
+        try:
+            cfgrib_mod.open_file(str(path))
+            return True
+        except Exception:
+            return False
 
     cfgrib_mod = deps["cfgrib"]
     if cfgrib_mod is None:

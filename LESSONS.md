@@ -193,3 +193,21 @@ terminal("python3.12 dashboard.py", background=True)
 ```bash
 rm data/forecast_cache.json && python3.12 weather_trader.py --dry-run
 ```
+
+---
+
+## 2026-04-20 — AIFS Cache Corruption: `_is_cache_fresh` Only Checked Age, Not Integrity
+
+**Symptom:** `FileNotFoundError: /tmp/aifs_ens_savnawwl/latest_cf_cf.grib2.5b7b6.idx` appearing in scan FAILURES section. The `latest_cf.grib2` in `~/.cache/aifs_ens/` was only 2380 bytes (corrupt/incomplete). cfgrib failed to open it.
+
+**Root cause:** `_is_cache_fresh()` in `scripts/aifs_forecast.py` only checked file age — it returned `True` if the file was younger than 24 hours, regardless of whether the file was a valid GRIB file. An interrupted AWS S3 download leaves a 2-4KB stub that passes the age check.
+
+**Fix applied:** `_is_cache_fresh()` now also validates with `cfgrib.open_file(str(path))` before returning True. If cfgrib throws, the cache is considered stale and re-downloaded.
+
+**Why doubled `_cf_cf` in path:** The traceback mixed stale tempdir path names — a red herring. The real issue was the corrupt 2380-byte cache file.
+
+**Files touched:** `scripts/aifs_forecast.py` — `_is_cache_fresh()` function
+
+**Verification:** After fix, scan re-downloaded fresh 8.1MB `latest_cf.grib2` from ECMWF AWS S3 and returned valid forecast data.
+
+**Note:** The PF (perturbed forecast) file is ~39MB and download times out on slow connections. If PF times out, the scan still returns valid results using CF (control forecast) only — PF is part of the ensemble spread calculation but not critical for core functionality.
