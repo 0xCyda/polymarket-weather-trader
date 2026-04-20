@@ -124,35 +124,202 @@ def _fetch_market_resolution(market_id: str) -> dict | None:
         return None
 
 
-def _outcome_price(market_id: str) -> float | None:
-    """Get the YES token settlement price (0.00 or 1.00) for a resolved market."""
+# =============================================================================
+# Open-Meteo historical archive fallback — settles trades when Simmer API
+# returns resolved=true but outcome=None, or when target_date has passed and
+# Simmer never confirms resolution. Lets us decide YES/NO ourselves.
+# =============================================================================
+
+# Location lat/lon for 34 supported cities — mirrored from ensemble_forecast.py
+# Kept here to avoid circular imports. Keep in sync if locations are added.
+_HISTORICAL_LOCATIONS = {
+    "NYC": (40.7769, -73.8740, "America/New_York"),
+    "Chicago": (41.9742, -87.9073, "America/Chicago"),
+    "Seattle": (47.4502, -122.3088, "America/Los_Angeles"),
+    "Atlanta": (33.6407, -84.4277, "America/New_York"),
+    "Dallas": (32.8998, -97.0403, "America/Chicago"),
+    "Miami": (25.7959, -80.2870, "America/New_York"),
+    "Houston": (29.9902, -95.3368, "America/Chicago"),
+    "San Francisco": (37.6213, -122.3790, "America/Los_Angeles"),
+    "Phoenix": (33.4373, -112.0078, "America/Phoenix"),
+    "Los Angeles": (33.9425, -118.4081, "America/Los_Angeles"),
+    "Denver": (39.8617, -104.6732, "America/Denver"),
+    "Austin": (30.1945, -97.6699, "America/Chicago"),
+    "Las Vegas": (36.0840, -115.1537, "America/Los_Angeles"),
+    "Tel Aviv": (32.0853, 34.7818, "Asia/Jerusalem"),
+    "Munich": (48.1351, 11.5820, "Europe/Berlin"),
+    "London": (51.5074, -0.1278, "Europe/London"),
+    "Tokyo": (35.6762, 139.6503, "Asia/Tokyo"),
+    "Seoul": (37.5665, 126.9780, "Asia/Seoul"),
+    "Ankara": (39.9334, 32.8597, "Europe/Istanbul"),
+    "Lucknow": (26.8467, 80.9462, "Asia/Kolkata"),
+    "Wellington": (-41.2866, 174.7756, "Pacific/Auckland"),
+    "Toronto": (43.6777, -79.6248, "America/Toronto"),
+    "Paris": (48.8566, 2.3522, "Europe/Paris"),
+    "Milan": (45.4642, 9.1900, "Europe/Rome"),
+    "Sao Paulo": (-23.5505, -46.6333, "America/Sao_Paulo"),
+    "Warsaw": (52.2297, 21.0122, "Europe/Warsaw"),
+    "Singapore": (1.3521, 103.8198, "Asia/Singapore"),
+    "Shanghai": (31.2304, 121.4737, "Asia/Shanghai"),
+    "Beijing": (39.9042, 116.4074, "Asia/Shanghai"),
+    "Shenzhen": (22.5431, 114.0579, "Asia/Shanghai"),
+    "Chengdu": (30.5728, 104.0668, "Asia/Shanghai"),
+    "Chongqing": (29.4316, 106.9123, "Asia/Shanghai"),
+    "Wuhan": (30.5928, 114.3055, "Asia/Shanghai"),
+    "Hong Kong": (22.3193, 114.1694, "Asia/Hong_Kong"),
+}
+
+
+def fetch_historical_temp(location: str, date_str: str, metric: str, unit: str = "F") -> float | None:
+    """
+    Fetch the actual observed high/low temperature for a past date via Open-Meteo
+    archive API. Returns the temp in requested unit (°F default) or None on failure.
+    """
+    loc = _HISTORICAL_LOCATIONS.get(location)
+    if not loc:
+        return None
+    lat, lon, tz = loc
+    temp_unit = "fahrenheit" if unit == "F" else "celsius"
+    tz_enc = tz.replace("/", "%2F")
+    url = (
+        f"https://archive-api.open-meteo.com/v1/archive"
+        f"?latitude={lat}&longitude={lon}"
+        f"&start_date={date_str}&end_date={date_str}"
+        f"&daily=temperature_2m_max,temperature_2m_min"
+        f"&temperature_unit={temp_unit}&timezone={tz_enc}"
+    )
     try:
-        resp = requests.get(
-            f"https://clob.polymarket.com/markets/{market_id}",
-            timeout=10,
-        )
+        resp = requests.get(url, timeout=20)
         if resp.status_code != 200:
             return None
-        m = resp.json()
-        if not m.get("resolved"):
+        data = resp.json().get("daily", {})
+        key = "temperature_2m_max" if metric == "high" else "temperature_2m_min"
+        temps = data.get(key, [])
+        if not temps:
             return None
-        # outcomePrices is ["1.00", "0.00"] if YES wins, ["0.00", "1.00"] if NO wins
-        # prices[0] is always the YES token settlement price
-        prices = m.get("outcomePrices", [])
-        if not prices:
-            return None
-        try:
-            return float(prices[0])
-        except (ValueError, IndexError):
-            return None
+        val = temps[0]
+        return round(float(val), 1) if val is not None else None
     except Exception:
         return None
 
 
+def _parse_bucket_range(bucket_str: str) -> tuple | None:
+    """
+    Parse a bucket string into (lo, hi, unit) in Fahrenheit.
+    Duplicates parse_temperature_bucket from weather_trader.py to keep
+    paper_journal.py self-contained (avoids import cycle).
+
+    Returns (lo_f, hi_f, unit) or None. -999/999 are open-ended sentinels.
+    """
+    import re
+    if not bucket_str:
+        return None
+    unit = 'C' if re.search(r'°C', bucket_str, re.IGNORECASE) else 'F'
+
+    def _to_f(lo, hi):
+        if unit == 'C':
+            lo = lo * 9 / 5 + 32 if lo != -999 else -999
+            hi = hi * 9 / 5 + 32 if hi != 999 else 999
+        return (lo, hi)
+
+    m = re.search(r'(\d+)\s*°?[fFcC]?\s*(or below|or less)', bucket_str, re.IGNORECASE)
+    if m:
+        lo, hi = _to_f(-999, int(m.group(1)))
+        return (lo, hi, 'F')
+    m = re.search(r'(\d+)\s*°?[fFcC]?\s*(or higher|or above|or more)', bucket_str, re.IGNORECASE)
+    if m:
+        lo, hi = _to_f(int(m.group(1)), 999)
+        return (lo, hi, 'F')
+    m = re.search(r'(\d+)\s*(?:°?\s*[fFcC])?\s*(?:-|–|to)\s*(\d+)', bucket_str)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        lo, hi = _to_f(min(a, b), max(a, b))
+        return (lo, hi, 'F')
+    m = re.search(r'\b(\d+)\s*°[fFcC]\b', bucket_str)
+    if m:
+        t = int(m.group(1))
+        lo, hi = _to_f(t, t)
+        return (lo, hi, 'F')
+    m = re.match(r'^\s*(\d+)\s*°?[cCfF]?\s*$', bucket_str.strip())
+    if m:
+        t = int(m.group(1))
+        lo, hi = _to_f(t, t)
+        return (lo, hi, 'F')
+    return None
+
+
+# Days past target_date before we fall back to historical-temp settlement
+_FALLBACK_DAYS_PAST = 2
+
+
+def _historical_fallback_settlement(trade: dict) -> dict | None:
+    """
+    Settle a stuck-open trade by checking the actual observed temperature
+    against the bucket range via Open-Meteo archive.
+
+    Returns {"outcome": "yes"/"no", "exit_price": 0.0|1.0, "actual_temp": float,
+    "source": "historical_fallback"} or None if we can't determine.
+    """
+    target_date = trade.get("target_date")
+    location = trade.get("location")
+    metric = trade.get("metric", "high")
+    bucket = trade.get("bucket") or trade.get("question", "")
+    if not target_date or not location or not bucket:
+        return None
+
+    # Check target_date is at least _FALLBACK_DAYS_PAST old (UTC)
+    try:
+        target = datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    if (datetime.now(timezone.utc) - target).days < _FALLBACK_DAYS_PAST:
+        return None
+
+    actual = fetch_historical_temp(location, target_date, metric, unit="F")
+    if actual is None:
+        return None
+
+    bucket_range = _parse_bucket_range(bucket)
+    if not bucket_range:
+        return None
+    lo_f, hi_f, _ = bucket_range
+
+    yes_won = (lo_f <= actual <= hi_f)
+    return {
+        "outcome": "yes" if yes_won else "no",
+        "exit_price": 1.0 if yes_won else 0.0,
+        "actual_temp": actual,
+        "source": "historical_fallback",
+    }
+
+
+def _compute_pnl(side: str, entry: float, exit_price: float, shares: float) -> float:
+    """
+    Compute realized P&L for a paper trade.
+
+    exit_price is the YES token settlement price (0 or 1 at resolution).
+    - YES position payoff at settlement: exit_price  →  P&L = (exit_price - entry) * shares
+    - NO  position payoff at settlement: (1 - exit_price)
+      Entry paid for NO tokens was `entry` per share.
+      P&L = ((1 - exit_price) - entry) * shares
+    """
+    shares = float(shares or 0)
+    entry = float(entry or 0)
+    exit_price = float(exit_price or 0)
+    if (side or "yes").lower() == "yes":
+        return (exit_price - entry) * shares
+    return ((1.0 - exit_price) - entry) * shares
+
+
 def update_resolved_trades() -> list:
     """
-    Check all open paper trades against Polymarket API.
-    Updates status, outcome, exit_price, pnl for any that have resolved.
+    Check all open paper trades. Settlement flow:
+      1. Query Simmer API for resolution status + outcome.
+      2. If Simmer says resolved AND outcome surfaced → settle.
+      3. If Simmer says resolved but outcome=None, OR target_date is >2 days
+         past with no resolution, → fall back to Open-Meteo archive historical
+         temperature and settle ourselves.
+
     Returns list of newly resolved trades.
     """
     trades = _load_trades()
@@ -163,43 +330,80 @@ def update_resolved_trades() -> list:
             continue
 
         market_id = trade.get("market_id")
-        if not market_id:
-            continue
+        resolution = _fetch_market_resolution(market_id) if market_id else None
 
-        resolution = _fetch_market_resolution(market_id)
-        if not resolution or not resolution.get("resolved"):
-            continue
+        outcome = None
+        exit_price = None
+        source = None
 
-        # Market has resolved — derive YES token settlement price from resolution
-        outcome = resolution.get("outcome", "")
-        if not outcome:
-            # Simmer API doesn't surface outcomes — skip resolution for now
-            continue
-        exit_price = 1.0 if outcome.lower() in ("yes", "true") else 0.0
+        # Path 1: Simmer reports resolved + outcome
+        if resolution and resolution.get("resolved") and resolution.get("outcome"):
+            outcome = resolution["outcome"]
+            exit_price = 1.0 if outcome.lower() in ("yes", "true") else 0.0
+            source = "simmer"
+        else:
+            # Path 2: historical fallback (Simmer outcome=None OR just expired)
+            fb = _historical_fallback_settlement(trade)
+            if fb:
+                outcome = fb["outcome"]
+                exit_price = fb["exit_price"]
+                source = fb["source"]
+                trade["actual_temp"] = fb["actual_temp"]
 
-        # Calculate P&L
+        if outcome is None or exit_price is None:
+            continue  # Not ready yet
+
         side = trade.get("side", "yes")
         entry = trade.get("entry_price", 0)
         shares = trade.get("shares", 0)
-
-        if side == "yes":
-            pnl = (exit_price - entry) * shares
-        else:  # no
-            pnl = (entry - exit_price) * shares
+        pnl = _compute_pnl(side, entry, exit_price, shares)
 
         old_status = trade.get("status")
         trade["status"] = "resolved"
-        trade["outcome"] = resolution.get("outcome")
+        trade["outcome"] = outcome
         trade["exit_price"] = exit_price
         trade["pnl"] = round(pnl, 4)
         trade["resolved_at"] = datetime.now(timezone.utc).isoformat()
-        trade["resolution_date"] = resolution.get("end_date_utc", "")[:10]
+        trade["resolution_date"] = (
+            (resolution or {}).get("end_date_utc", "")[:10] if resolution else trade.get("target_date", "")
+        )
+        trade["resolution_source"] = source
 
         if old_status == "open":
             newly_resolved.append(trade)
 
     _save_trades(trades)
     return newly_resolved
+
+
+def manual_resolve(trade_id: str, outcome: str) -> dict | None:
+    """
+    Manually resolve a specific trade. outcome must be "yes" or "no".
+    Returns the updated trade dict or None if not found.
+    """
+    outcome = (outcome or "").lower().strip()
+    if outcome not in ("yes", "no"):
+        raise ValueError("outcome must be 'yes' or 'no'")
+    trades = _load_trades()
+    target = None
+    for t in trades:
+        if t.get("trade_id") == trade_id:
+            target = t
+            break
+    if target is None:
+        return None
+    exit_price = 1.0 if outcome == "yes" else 0.0
+    target["status"] = "resolved"
+    target["outcome"] = outcome
+    target["exit_price"] = exit_price
+    target["pnl"] = round(_compute_pnl(
+        target.get("side", "yes"), target.get("entry_price", 0),
+        exit_price, target.get("shares", 0)
+    ), 4)
+    target["resolved_at"] = datetime.now(timezone.utc).isoformat()
+    target["resolution_source"] = "manual"
+    _save_trades(trades)
+    return target
 
 
 def get_open_positions() -> list:
@@ -304,4 +508,37 @@ def print_summary() -> None:
 
 
 if __name__ == "__main__":
-    print_summary()
+    import argparse
+    parser = argparse.ArgumentParser(description="Paper journal — summary, manual resolve, backfill")
+    parser.add_argument("--resolve", metavar="TRADE_ID", help="Manually resolve a trade by trade_id")
+    parser.add_argument("--outcome", choices=["yes", "no"], help="Outcome for --resolve (yes|no)")
+    parser.add_argument("--backfill", action="store_true",
+                        help="Run update_resolved_trades() to settle any resolvable open trades (incl. historical fallback)")
+    parser.add_argument("--list-open", action="store_true", help="List open trade_ids + questions")
+    args = parser.parse_args()
+
+    if args.list_open:
+        for t in get_open_positions():
+            q = (t.get("question") or "")[:60]
+            print(f"{t.get('trade_id', '?')}  |  {t.get('location', '?')}  {t.get('target_date', '')}  |  {q}")
+    elif args.resolve:
+        if not args.outcome:
+            print("Error: --outcome yes|no is required with --resolve", file=sys.stderr)
+            sys.exit(2)
+        updated = manual_resolve(args.resolve, args.outcome)
+        if updated is None:
+            print(f"Trade {args.resolve} not found.", file=sys.stderr)
+            sys.exit(1)
+        print(f"Resolved {args.resolve} as {args.outcome.upper()}: exit=${updated['exit_price']:.2f} "
+              f"pnl=${updated['pnl']:.4f}")
+    elif args.backfill:
+        newly = update_resolved_trades()
+        print(f"Settled {len(newly)} trade(s):")
+        for t in newly:
+            src = t.get("resolution_source", "?")
+            print(f"  • {t.get('location')} {t.get('target_date')} {t.get('outcome', '?').upper()} "
+                  f"(source={src}) pnl=${t.get('pnl', 0):.4f}")
+        if not newly:
+            print("  (none ready yet)")
+    else:
+        print_summary()

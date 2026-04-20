@@ -33,6 +33,33 @@ SCAN_LOG = DATA_DIR / "forecast_history.jsonl"
 PAPER_TRADES = DATA_DIR / "paper_trades.jsonl"
 CONFIG_FILE = SKILL_DIR / "config.json"
 
+_MONTH_NAMES = {
+    "01": "january", "02": "february", "03": "march", "04": "april",
+    "05": "may", "06": "june", "07": "july", "08": "august",
+    "09": "september", "10": "october", "11": "november", "12": "december",
+}
+
+
+def polymarket_event_url(location: str, target_date: str, metric: str) -> str | None:
+    """
+    Build a Polymarket event slug URL.
+
+    Example: ("Wellington", "2026-04-20", "high") →
+      https://polymarket.com/event/highest-temperature-in-wellington-on-april-20-2026
+    """
+    if not location or not target_date:
+        return None
+    try:
+        y, m, d = target_date.split("-")
+        month = _MONTH_NAMES[m]
+    except (ValueError, KeyError):
+        return None
+    metric_word = "highest" if (metric or "high").lower().startswith("h") else "lowest"
+    loc_slug = (location or "").lower().strip().replace(" ", "-")
+    if not loc_slug:
+        return None
+    return f"https://polymarket.com/event/{metric_word}-temperature-in-{loc_slug}-on-{month}-{int(d)}-{y}"
+
 DASHBOARD_HTML = """
 <!doctype html>
 <html>
@@ -226,8 +253,11 @@ function renderPositions(d) {
     const side = p.side ? p.side.toUpperCase() : 'YES';
     const upnl = Number(p.upnl || 0);
     const upnlStr = upnl > 0 ? `<span class="good">+$${upnl.toFixed(2)}</span>` : upnl < 0 ? `<span class="bad">-$${Math.abs(upnl).toFixed(2)}</span>` : '$0.00';
+    const marketCell = p.polymarket_url
+      ? `<a href="${p.polymarket_url}" target="_blank" rel="noopener" style="color:#8ab4ff;text-decoration:none" title="Open on Polymarket">${q} ↗</a>`
+      : q;
     return [
-      q,
+      marketCell,
       positionBadge(side),
       (p.shares || 0).toFixed(1),
       '$' + (p.entry_price || 0).toFixed(3),
@@ -276,8 +306,12 @@ function renderResolved(d) {
     const pnl = Number(t.pnl || 0);
     const outcome = t.outcome ? t.outcome.toUpperCase() : (exit > 0.5 ? 'YES' : 'NO');
     const resolvedDate = t.resolved_at ? t.resolved_at.substring(0, 10) : (t.resolution_date || '—');
+    const locName = (t.location || '—').substring(0, 30);
+    const locCell = t.polymarket_url
+      ? `<a href="${t.polymarket_url}" target="_blank" rel="noopener" style="color:#8ab4ff;text-decoration:none" title="Open on Polymarket">${locName} ↗</a>`
+      : locName;
     return [
-      (t.location || '—').substring(0, 30),
+      locCell,
       positionBadge(outcome),
       '$' + entry.toFixed(3),
       '$' + exit.toFixed(3),
@@ -549,34 +583,41 @@ def api_state():
     simmer_pos = _get_simmer_positions()
 
     if simmer_pos:
-        positions = [
-            {
-                "question": p.get("question", ""),
+        positions = []
+        for p in simmer_pos:
+            q = p.get("question") or ""
+            loc = q.split(" in ")[1].split(" on ")[0] if " in " in q else ""
+            tgt = p.get("end_date_utc", "")[:10] if p.get("end_date_utc") else ""
+            metric = "high" if "highest" in q.lower() else ("low" if "lowest" in q.lower() else "high")
+            positions.append({
+                "question": q,
                 "side": "YES" if float(p.get("shares_yes") or 0) > 0 else "NO",
                 "shares": float(p.get("shares_yes") or p.get("shares_no") or 0),
                 "entry_price": float(p.get("entry_price") or 0),
                 "current_price": float(p.get("current_price") or 0),
                 "upnl": _compute_upnl(p),
-                "target_date": p.get("end_date_utc", "")[:10] if p.get("end_date_utc") else "",
-                "location": p.get("question", "").split(" in ")[1].split(" on ")[0] if " in " in (p.get("question") or "") else "",
-            }
-            for p in simmer_pos
-        ]
+                "target_date": tgt,
+                "location": loc,
+                "polymarket_url": polymarket_event_url(loc, tgt, metric),
+            })
     else:
         enriched = _enrich_positions(open_trades)
-        positions = [
-            {
+        positions = []
+        for p in enriched:
+            loc = p.get("location", "")
+            tgt = p.get("target_date", "")
+            metric = p.get("metric") or "high"
+            positions.append({
                 "question": p.get("question", ""),
                 "side": p.get("side", "YES").upper(),
                 "shares": float(p.get("shares") or 0),
                 "entry_price": float(p.get("entry_price") or 0),
                 "current_price": float(p.get("current_price") or 0),
                 "upnl": float(p.get("upnl") or 0),
-                "target_date": p.get("target_date", ""),
-                "location": p.get("location", ""),
-            }
-            for p in enriched
-        ]
+                "target_date": tgt,
+                "location": loc,
+                "polymarket_url": polymarket_event_url(loc, tgt, metric),
+            })
 
     return JSONResponse({
         "portfolio": _get_portfolio_stats(positions),
@@ -596,6 +637,7 @@ def api_state():
                 "outcome": t.get("outcome", ""),
                 "resolved_at": t.get("resolved_at", ""),
                 "resolution_date": t.get("resolution_date", ""),
+                "polymarket_url": polymarket_event_url(t.get("location", ""), t.get("target_date", ""), t.get("metric") or "high"),
             }
             for t in resolved[-20:]
         ],
