@@ -125,7 +125,7 @@ CONFIG_SCHEMA = {
     # Punt mode: separate side-strategy for tail-priced buckets (0.1¢-6¢ mispricings).
     # Runs AFTER core trades on the same forecast data. Its own budget + journal tag.
     # Does not affect core trade selection, sizing, exits, or budget.
-    "punt_mode":         {"env": "SIMMER_WEATHER_PUNT_MODE",         "default": False, "type": bool,
+    "punt_mode":         {"env": "SIMMER_WEATHER_PUNT_MODE",         "default": True,  "type": bool,
                           "help": "Enable punt mode: buy deeply-mispriced tail buckets with small stakes."},
     "punt_max_position_usd": {"env": "SIMMER_WEATHER_PUNT_POSITION_USD", "default": 15.0, "type": float,
                           "help": "Fixed USD per punt trade (small — these are lottery tickets)."},
