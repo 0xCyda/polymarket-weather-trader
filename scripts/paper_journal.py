@@ -13,6 +13,53 @@ import json
 import os
 import sys
 import pathlib
+from datetime import datetime, timezone
+from pathlib import Path
+
+# Loss log — one JSON line per losing trade, written to losses.log in the journal dir
+_LOSSES_LOG: Path | None = None
+
+def _losses_log_path() -> Path:
+    global _LOSSES_LOG
+    if _LOSSES_LOG is None:
+        # Resolve relative to this file's directory (scripts/)
+        _LOSSES_LOG = Path(__file__).parent.parent / "losses.log"
+    return _LOSSES_LOG
+
+
+def log_loss(trade: dict) -> None:
+    """Append a losing trade to losses.log with full signal + execution context."""
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "trade_id": trade.get("trade_id"),
+        "market_id": trade.get("market_id"),
+        "question": trade.get("question"),
+        "location": trade.get("location"),
+        "target_date": trade.get("target_date"),
+        "metric": trade.get("metric"),
+        "bucket": trade.get("bucket"),
+        "side": trade.get("side"),
+        "strategy": trade.get("strategy", "core"),
+        "signal_strength": trade.get("signal_strength"),
+        "entry_price": trade.get("entry_price"),
+        "exit_price": trade.get("exit_price"),
+        "shares": trade.get("shares"),
+        "cost": trade.get("cost"),
+        "pnl": trade.get("pnl"),
+        "forecast_temp": trade.get("forecast_temp"),
+        "models_used": trade.get("models_used"),
+        "agreement_pct": trade.get("agreement_pct"),
+        "spread": trade.get("spread"),
+        "actual_temp": trade.get("actual_temp"),
+        "outcome": trade.get("outcome"),
+        "resolved_at": trade.get("resolved_at"),
+        "entered_at": trade.get("entered_at"),
+    }
+    try:
+        with open(_losses_log_path(), "a") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # Never let logging break trade resolution
 import requests
 from datetime import datetime, timezone
 
@@ -379,6 +426,10 @@ def update_resolved_trades() -> list:
         )
         trade["resolution_source"] = source
 
+        # Write to losses.log if this was a losing trade
+        if pnl < 0:
+            log_loss(trade)
+
         if old_status == "open":
             newly_resolved.append(trade)
 
@@ -412,6 +463,8 @@ def manual_resolve(trade_id: str, outcome: str) -> dict | None:
     ), 4)
     target["resolved_at"] = datetime.now(timezone.utc).isoformat()
     target["resolution_source"] = "manual"
+    if target.get("pnl", 0) < 0:
+        log_loss(target)
     _save_trades(trades)
     return target
 
