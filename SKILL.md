@@ -128,9 +128,9 @@ On by default. Finds deeply-mispriced buckets (e.g. "London 59°F or below" pric
 
 **US locations** (AIFS ENS + Open-Meteo + METAR): NYC, Chicago, Seattle, Atlanta, Dallas, Miami, Houston, San Francisco, Phoenix, Los Angeles, Denver, Austin, Las Vegas
 
-**International locations** (AIFS ENS + Open-Meteo): Tel Aviv, Munich, London, Tokyo, Seoul, Ankara, Lucknow, Wellington, Toronto, Paris, Milan, Sao Paulo, Warsaw, Singapore, Shanghai, Beijing, Shenzhen, Chengdu, Chongqing, Wuhan, Hong Kong
+**International locations** (AIFS ENS + Open-Meteo): Tel Aviv, Munich, London, Tokyo, Seoul, Ankara, Lucknow, Wellington, Toronto, Paris, Milan, Sao Paulo, Warsaw, Singapore, Shanghai, Beijing, Shenzhen, Chengdu, Chongqing, Wuhan, Hong Kong, Buenos Aires
 
-All 34 cities are wired end-to-end: forecast fetch, bucket matching, METAR (US), discovery, parsing. Both Celsius and Fahrenheit bucket types are supported.
+All 35 cities are wired end-to-end: forecast fetch, bucket matching, METAR (US), discovery, parsing. Both Celsius and Fahrenheit bucket types are supported.
 
 ## Quick Commands
 
@@ -315,7 +315,7 @@ _save_trades(trades)
 
 **"9 markets scanned in cron but only 1 city shows in manual runs"**
 - Cron ran a full scan with `--dry-run`, found 9 events, generated signals
-- Manual run shows only NYC because ALL 34 cities are cached in `data/discovery_cache.json` (TTL 180 min)
+- Manual run shows only NYC because ALL 35 cities are cached in `data/discovery_cache.json` (TTL 180 min)
 - When cities are cached, the run skips them silently with `"Discovery cache hit for {location} — skipping"`
 - This is expected behavior — after a full cron scan, manual runs will only show cities not yet cached
 - To force a full re-scan: delete `data/discovery_cache.json` or touch only the cities you want to re-scan

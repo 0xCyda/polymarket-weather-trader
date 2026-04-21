@@ -479,6 +479,7 @@ INTERNATIONAL_LOCATIONS = {
     "Singapore":  {"lat": 1.3521,  "lon": 103.8198, "tz": "Asia/Singapore"},
     "Shanghai":   {"lat": 31.2304, "lon": 121.4737, "tz": "Asia/Shanghai"},
     "Hong Kong":  {"lat": 22.3193, "lon": 114.1694, "tz": "Asia/Hong_Kong"},
+    "Buenos Aires": {"lat": -34.6037, "lon": -58.3816, "tz": "America/Argentina/Buenos_Aires"},
 }
 
 # Forecasts are fetched exclusively via ensemble_forecast.get_ensemble_forecast.
@@ -544,6 +545,7 @@ def parse_weather_event(event_name: str) -> dict:
         'milan': 'Milan',
         'warsaw': 'Warsaw',
         'singapore': 'Singapore',
+        'buenos aires': 'Buenos Aires',
     }
 
     for alias, loc in location_aliases.items():

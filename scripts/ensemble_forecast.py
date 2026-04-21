@@ -75,6 +75,7 @@ ALL_LOCATIONS = {
     "Chongqing":     {"lat": 29.4316, "lon": 106.9123, "tz": "Asia/Shanghai"},
     "Wuhan":         {"lat": 30.5928, "lon": 114.3055, "tz": "Asia/Shanghai"},
     "Hong Kong":     {"lat": 22.3193, "lon": 114.1694, "tz": "Asia/Hong_Kong"},
+    "Buenos Aires":  {"lat": -34.6037, "lon": -58.3816, "tz": "America/Argentina/Buenos_Aires"},
 }
 
 # METAR station IDs per city (ICAO codes — these are the airport stations
@@ -107,6 +108,7 @@ METAR_STATIONS = {
     "Tel Aviv":      "LLBG",   # Ben Gurion
     "Singapore":     "WSSS",   # Changi
     "Hong Kong":     "VHHH",   # Hong Kong Intl
+    "Buenos Aires":  "SAEZ",   # Ezeiza Intl
 }
 
 METAR_API_BASE = "https://aviationweather.gov/api/data/metar"

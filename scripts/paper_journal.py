@@ -176,6 +176,7 @@ _HISTORICAL_LOCATIONS = {
     "Chongqing": (29.4316, 106.9123, "Asia/Shanghai"),
     "Wuhan": (30.5928, 114.3055, "Asia/Shanghai"),
     "Hong Kong": (22.3193, 114.1694, "Asia/Hong_Kong"),
+    "Buenos Aires": (-34.6037, -58.3816, "America/Argentina/Buenos_Aires"),
 }
 
 

@@ -50,7 +50,7 @@ python dashboard.py
 
 ## Config highlights
 
-- 34 cities (US + international), both °F and °C bucket types supported
+- 35 cities (US + international), both °F and °C bucket types supported
 - Edge-based entry gate (price × confidence driven)
 - Dynamic exit: entry_price × 4.0 profit target
 - 5.8° spread cap, 10 max trades per core cycle

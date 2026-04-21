@@ -45,7 +45,8 @@ def run_scan():
         "Phoenix,Los Angeles,Denver,Austin,Las Vegas,"
         "Tel Aviv,Munich,London,Tokyo,Seoul,Ankara,Lucknow,"
         "Wellington,Toronto,Paris,Milan,Sao Paulo,Warsaw,Singapore,"
-        "Shanghai,Beijing,Shenzhen,Chengdu,Chongqing,Wuhan,Hong Kong"
+        "Shanghai,Beijing,Shenzhen,Chengdu,Chongqing,Wuhan,Hong Kong,"
+        "Buenos Aires"
     )
     env["SIMMER_WEATHER_LOCATIONS"] = env.get("SIMMER_WEATHER_LOCATIONS", LOCATIONS)
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
