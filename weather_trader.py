@@ -1378,6 +1378,162 @@ def calculate_position_size(default_size: float, smart_sizing: bool) -> float:
 # Exit Strategy
 # =============================================================================
 
+def check_signal_invalidation(dry_run: bool = False) -> tuple:
+    """
+    Re-evaluate open paper trades against the latest ensemble forecast.
+    If the models no longer support the position, exit early.
+
+    Triggers:
+      1. Forecast moved outside held bucket range by >2°
+      2. Signal degraded to "weak" (was strong/moderate at entry)
+      3. Model agreement collapsed (< 50%)
+      4. METAR afternoon obs outside bucket (D+0 high only, after 14:00 local)
+
+    Returns: (checked, invalidated)
+    """
+    if not PAPER_JOURNAL_AVAILABLE:
+        return 0, 0
+
+    try:
+        open_trades = get_open_positions()
+    except Exception:
+        return 0, 0
+
+    if not open_trades:
+        return 0, 0
+
+    log(f"\n🔄 Signal invalidation check: {len(open_trades)} open position(s)...")
+    checked = 0
+    invalidated = 0
+
+    for trade in open_trades:
+        location = trade.get("location")
+        date_str = trade.get("target_date")
+        metric = trade.get("metric", "high")
+        bucket_str = trade.get("bucket", "")
+        entry_signal = trade.get("signal_strength", "")
+        entry_agreement = trade.get("agreement_pct", 100)
+        entry_forecast = trade.get("forecast_temp")
+        trade_id = trade.get("trade_id")
+
+        if not location or not date_str or not bucket_str:
+            continue
+
+        # Parse the bucket to get (lo, hi, unit)
+        parsed = parse_temperature_bucket(bucket_str)
+        if not parsed:
+            continue
+        lo, hi, bucket_unit = parsed
+
+        checked += 1
+        reasons = []
+
+        # Re-fetch ensemble forecast in the bucket's unit
+        try:
+            forecast = get_ensemble_forecast(
+                city=location, date_str=date_str, metric=metric, unit=bucket_unit,
+            )
+        except Exception:
+            continue
+
+        new_temp = forecast.get("weighted_temp")
+        new_signal = forecast.get("signal_strength", "")
+        new_agreement = forecast.get("agreement_pct", 100)
+        new_spread = forecast.get("max_delta")
+        metar_temp = forecast.get("metar_temp")
+        metar_adjusted = forecast.get("metar_adjusted", False)
+
+        if new_temp is None:
+            continue
+
+        # --- Trigger 1: forecast moved outside bucket by >2° ---
+        bucket_lo = lo if lo != -999 else new_temp - 50
+        bucket_hi = hi if hi != 999 else new_temp + 50
+        if new_temp < bucket_lo - 2:
+            reasons.append(f"forecast {new_temp:.1f}° dropped below bucket [{lo}–{hi}] by {bucket_lo - new_temp:.1f}°")
+        elif new_temp > bucket_hi + 2:
+            reasons.append(f"forecast {new_temp:.1f}° rose above bucket [{lo}–{hi}] by {new_temp - bucket_hi:.1f}°")
+
+        # --- Trigger 2: signal degraded to weak ---
+        if new_signal == "weak" and entry_signal in ("strong", "moderate"):
+            reasons.append(f"signal degraded {entry_signal} → weak")
+
+        # --- Trigger 3: agreement collapsed (<50%) ---
+        if new_agreement < 50.0 and entry_agreement >= 70.0:
+            reasons.append(f"agreement collapsed {entry_agreement:.0f}% → {new_agreement:.0f}%")
+
+        # --- Trigger 4: METAR contradicts bucket (D+0 high, afternoon) ---
+        if metar_temp is not None and metric == "high":
+            from zoneinfo import ZoneInfo
+            try:
+                loc_data = INTERNATIONAL_LOCATIONS.get(location) or LOCATIONS.get(location) or {}
+                tz_name = loc_data.get("tz", "UTC") if isinstance(loc_data, dict) else "UTC"
+                from datetime import datetime as _dt
+                local_hour = _dt.now(ZoneInfo(tz_name)).hour
+            except Exception:
+                local_hour = 0
+            if local_hour >= 14:
+                if metar_temp < bucket_lo - 2 or metar_temp > bucket_hi + 2:
+                    reasons.append(f"METAR obs {metar_temp:.1f}° outside bucket [{lo}–{hi}]")
+
+        if not reasons:
+            continue
+
+        # Signal invalidated — exit this position
+        reason_str = "; ".join(reasons)
+        log(f"  ⚠️  {location} {date_str} bucket [{bucket_str}]: INVALIDATED")
+        for r in reasons:
+            log(f"      → {r}")
+
+        # Estimate exit price from updated bucket probability
+        new_prob = _bucket_probability(lo, hi, new_temp, new_spread or 4.0)
+        exit_price = round(max(0.01, min(0.99, new_prob)), 4)
+
+        if dry_run:
+            log(f"      [PAPER] Closing at estimated ${exit_price:.4f} (was entry ${trade.get('entry_price', 0):.4f})")
+        else:
+            log(f"      Closing at estimated ${exit_price:.4f}")
+
+        # Close in paper journal
+        try:
+            from paper_journal import _load_trades, _save_trades, _compute_pnl, log_loss
+            trades_all = _load_trades()
+            for t in trades_all:
+                if t.get("trade_id") == trade_id and t.get("status") == "open":
+                    side = t.get("side", "yes")
+                    entry = t.get("entry_price", 0)
+                    shares = t.get("shares", 0)
+                    pnl = _compute_pnl(side, entry, exit_price, shares)
+                    t["status"] = "resolved"
+                    t["outcome"] = "invalidated"
+                    t["exit_price"] = exit_price
+                    t["pnl"] = round(pnl, 4)
+                    t["resolved_at"] = datetime.now(timezone.utc).isoformat()
+                    t["resolution_source"] = "signal_invalidation"
+                    t["invalidation_reasons"] = reasons
+                    t["invalidation_forecast"] = {
+                        "temp": new_temp,
+                        "signal": new_signal,
+                        "agreement": new_agreement,
+                        "spread": new_spread,
+                        "metar": metar_temp,
+                    }
+                    if pnl < 0:
+                        log_loss(t)
+                    emoji = "✅" if pnl > 0 else "❌"
+                    log(f"      {emoji} Closed: P&L ${pnl:.4f} (entry ${entry:.4f} → exit ${exit_price:.4f})")
+                    invalidated += 1
+                    break
+            _save_trades(trades_all)
+        except Exception as e:
+            log(f"      ❌ Failed to close trade: {e}")
+
+    if checked and not invalidated:
+        log(f"  ✓ All {checked} positions still valid")
+
+    return checked, invalidated
+
+
 def check_exit_opportunities(dry_run: bool = False, use_safeguards: bool = True) -> tuple:
     """Check open positions for exit opportunities. Returns: (exits_found, exits_executed)"""
     positions = get_positions()
@@ -2217,10 +2373,13 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             else:
                 log(f"  ❌ Punt trade failed: {result.get('error', 'unknown')}", force=True)
 
+    # Signal invalidation: re-evaluate open positions against latest forecast
+    inv_checked, inv_closed = check_signal_invalidation(dry_run)
+
     exits_found, exits_executed = check_exit_opportunities(dry_run, use_safeguards)
 
     log("\n" + "=" * 50)
-    total_trades = trades_executed + exits_executed + punts_executed
+    total_trades = trades_executed + exits_executed + punts_executed + inv_closed
     show_summary = not quiet or total_trades > 0
     if show_summary:
         print("📊 Summary:")
@@ -2228,6 +2387,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         print(f"  Entry opportunities: {opportunities_found}")
         print(f"  Exit opportunities:  {exits_found}")
         print(f"  Core trades:         {trades_executed + exits_executed}")
+        if inv_closed:
+            print(f"  Signal invalidations: {inv_closed}/{inv_checked} positions closed")
         if PUNT_MODE:
             print(f"  Punts found:         {len(punt_candidates)}")
             print(f"  Punts executed:      {punts_executed}  (${punt_usd_spent:.2f})")
