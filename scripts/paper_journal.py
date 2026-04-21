@@ -119,6 +119,7 @@ def log_paper_trade(
     spread: float,
     strategy: str = "core",   # "core" (default) or "punt"
     model_temps: dict | None = None,  # {model_name: temp} for all models in ensemble
+    confidence: float | None = None,  # numeric confidence at entry (for calibration)
 ) -> str:
     """
     Log a new paper trade. Returns the trade_id.
@@ -143,6 +144,7 @@ def log_paper_trade(
         "agreement_pct": agreement_pct,
         "spread": spread,
         "model_temps": model_temps,
+        "confidence": confidence,
         "status": "open",
         "outcome": None,
         "exit_price": None,

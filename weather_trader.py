@@ -378,6 +378,38 @@ if not logger.handlers:
     logger.setLevel(getattr(logging, LOG_LEVEL.upper(), logging.INFO))
 
 
+_SKIP_LOG = _p.Path(__file__).parent / "data" / "skip_events.jsonl"
+
+
+def _log_skip(reason: str, location: str, date_str: str, metric: str,
+              market_id: str | None = None, price: float | None = None,
+              confidence: float | None = None, edge: float | None = None,
+              spread: float | None = None, signal_strength: str | None = None,
+              threshold: float | None = None, actual: float | None = None) -> None:
+    """Log a skipped trade candidate to skip_events.jsonl for funnel analysis."""
+    import json as _json
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "reason": reason,
+        "location": location,
+        "date": date_str,
+        "metric": metric,
+        "market_id": market_id,
+        "price": price,
+        "confidence": confidence,
+        "edge": edge,
+        "spread": spread,
+        "signal_strength": signal_strength,
+        "threshold": threshold,
+        "actual": actual,
+    }
+    try:
+        with _SKIP_LOG.open("a") as f:
+            f.write(_json.dumps(entry, default=str) + "\n")
+    except OSError:
+        pass
+
+
 def validate_live_trading_prereqs():
     """Fail fast if --live is used without required credentials."""
     missing = []
@@ -1825,6 +1857,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         if price < MIN_TICK_SIZE or price > (1 - MIN_TICK_SIZE):
             log(f"  ⏸️  Price ${price:.4f} at extreme — skip")
             skip_reasons.append("price at extreme")
+            _log_skip("price_extreme", location, date_str, metric, market_id=market_id,
+                      price=price, signal_strength=signal_strength, spread=spread)
             continue
 
         # Signal → confidence
@@ -1842,12 +1876,18 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         if spread is not None and spread > MAX_SPREAD:
             log(f"  ⏸️  Spread {spread}° exceeds max {MAX_SPREAD}° — skip")
             skip_reasons.append(f"spread>{MAX_SPREAD}°")
+            _log_skip("high_spread", location, date_str, metric, market_id=market_id,
+                      price=price, confidence=confidence, spread=spread,
+                      signal_strength=signal_strength, threshold=MAX_SPREAD, actual=spread)
             continue
 
         # Aggregation: don't re-buy markets we already hold
         if market_id and market_id in already_held_markets:
             log(f"  ⏭️  Already holding position in this market — skipping re-entry")
             skip_reasons.append("already held")
+            _log_skip("already_held", location, date_str, metric, market_id=market_id,
+                      price=price, confidence=confidence, spread=spread,
+                      signal_strength=signal_strength)
             continue
 
         # Same-event check: if we already have an open position on this
@@ -1861,6 +1901,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 if existing:
                     log(f"  ⏭️  Already holding {existing['side'].upper()} on {location} {date_str} {metric} — skipping (bucket '{existing['bucket']}' already open)")
                     skip_reasons.append("same-event position already open")
+                    _log_skip("same_event_open", location, date_str, metric, market_id=market_id,
+                              price=price, confidence=confidence, spread=spread,
+                              signal_strength=signal_strength)
                     continue
             except Exception:
                 pass
@@ -1871,10 +1914,16 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         if edge < MIN_EDGE:
             log(f"  ⏸️  Edge {edge:+.2f} below min {MIN_EDGE:+.2f} (price ${price:.2f}, conf {confidence:.2f}) - skip")
             skip_reasons.append(f"edge<{MIN_EDGE:+.2f}")
+            _log_skip("low_edge", location, date_str, metric, market_id=market_id,
+                      price=price, confidence=confidence, edge=edge, spread=spread,
+                      signal_strength=signal_strength, threshold=MIN_EDGE, actual=edge)
             continue
         if price >= ENTRY_THRESHOLD:
             log(f"  ⏸️  Price ${price:.2f} above ceiling ${ENTRY_THRESHOLD:.2f} - skip")
             skip_reasons.append("price above ceiling")
+            _log_skip("price_ceiling", location, date_str, metric, market_id=market_id,
+                      price=price, confidence=confidence, edge=edge, spread=spread,
+                      signal_strength=signal_strength, threshold=ENTRY_THRESHOLD, actual=price)
             continue
         # Weak signals are allowed through only when edge is strong enough (gate above).
         # Log a note so we can track which trades came from weak signals.
@@ -1958,6 +2007,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             if not should_trade:
                 log(f"  ⏭️  Safeguard blocked: {'; '.join(reasons)}")
                 skip_reasons.append(f"safeguard: {reasons[0]}")
+                _log_skip(f"safeguard:{reasons[0]}", location, date_str, metric,
+                          market_id=market_id, price=price, confidence=confidence,
+                          edge=c["edge"], spread=c["spread"], signal_strength=signal_strength)
                 continue
             if reasons:
                 log(f"  ⚠️  Warnings: {'; '.join(reasons)}")
@@ -1987,6 +2039,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         if MIN_SHARES_PER_ORDER * price > position_size:
             log(f"  ⚠️  Position size ${position_size:.2f} too small for {MIN_SHARES_PER_ORDER} shares at ${price:.2f}")
             skip_reasons.append("position too small")
+            _log_skip("position_too_small", location, date_str, metric,
+                      market_id=market_id, price=price, confidence=confidence,
+                      edge=c["edge"], spread=c["spread"], signal_strength=signal_strength)
             continue
 
         _mt = forecasts.get("model_temps", {})
@@ -2048,6 +2103,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                         location=location, date_str=date_str, metric=metric,
                         models_used=models_used, agreement_pct=agreement_pct, spread=spread,
                         model_temps=forecasts.get("model_temps"),
+                        confidence=confidence,
                     )
                 except Exception:
                     pass
@@ -2154,6 +2210,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                             spread=p.get("spread"),
                             model_temps=p.get("model_temps"),
                             strategy="punt",
+                            confidence=p.get("confidence"),
                         )
                     except Exception:
                         pass
