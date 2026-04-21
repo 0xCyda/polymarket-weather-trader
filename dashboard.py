@@ -870,7 +870,6 @@ function renderConfig() {
         label: 'API Keys',
         rows: [
           { k: 'Simmer API', v: cfg.has_simmer_key ? '✓ configured' : '✗ missing' },
-          { k: 'OpenAI API', v: cfg.has_openai_key ? '✓ configured' : '✗ missing' },
         ]
       },
       {
@@ -880,8 +879,10 @@ function renderConfig() {
         }))
       },
       {
-        label: 'Cities',
-        rows: [{ k: 'Locations', v: cfg.locations ? cfg.locations.join(', ') : '—' }]
+        label: `Cities (${cfg.locations ? cfg.locations.length : 0})`,
+        rows: (cfg.locations && cfg.locations.length)
+          ? cfg.locations.map((loc, i) => ({ k: String(i + 1).padStart(2, '0'), v: loc }))
+          : [{ k: 'Locations', v: '—' }]
       },
       {
         label: 'Core Trading',
@@ -1367,12 +1368,16 @@ def _get_config() -> dict:
 
     # Detect API key presence (masked)
     simmer_key = os.environ.get("SIMMER_API_KEY", "")
-    openai_key = os.environ.get("OPENAI_API_KEY", "")
     has_simmer = bool(simmer_key)
-    has_openai = bool(openai_key)
 
-    # Locations
-    locations_raw = config.get("locations", os.environ.get("SIMMER_WEATHER_LOCATIONS", "NYC"))
+    # Locations — pull the real scan list from format_scan (single source of truth).
+    # Fall back to env / config only if the import fails.
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts"))
+        from format_scan import DEFAULT_LOCATIONS as _default_locs
+    except Exception:
+        _default_locs = "NYC"
+    locations_raw = os.environ.get("SIMMER_WEATHER_LOCATIONS") or config.get("locations") or _default_locs
     locations = [l.strip() for l in locations_raw.split(",")] if locations_raw else []
 
     return {
@@ -1419,7 +1424,6 @@ def _get_config() -> dict:
         "locations": locations,
         # API keys (presence only, never the actual key)
         "has_simmer_key": has_simmer,
-        "has_openai_key": has_openai,
     }
 
 

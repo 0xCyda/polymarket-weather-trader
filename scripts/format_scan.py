@@ -19,6 +19,16 @@ from dateutil import tz
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE = os.path.join(SKILL_DIR, ".env")
 
+# Single source of truth for cities scanned. Imported by dashboard.py.
+DEFAULT_LOCATIONS = (
+    "NYC,Chicago,Seattle,Atlanta,Dallas,Miami,Houston,San Francisco,"
+    "Phoenix,Los Angeles,Denver,Austin,Las Vegas,"
+    "Tel Aviv,Munich,London,Tokyo,Seoul,Ankara,Lucknow,"
+    "Wellington,Toronto,Paris,Milan,Sao Paulo,Warsaw,Singapore,"
+    "Shanghai,Beijing,Shenzhen,Chengdu,Chongqing,Wuhan,Hong Kong,"
+    "Buenos Aires"
+)
+
 
 def get_awst_time():
     awst = tz.gettz("Australia/Perth")
@@ -40,15 +50,7 @@ def run_scan():
     cmd = [sys.executable, os.path.join(SKILL_DIR, "weather_trader.py"), "--dry-run"]
     env = dict(os.environ)
     # Ensure all major locations are scanned (not just the NYC default)
-    LOCATIONS = (
-        "NYC,Chicago,Seattle,Atlanta,Dallas,Miami,Houston,San Francisco,"
-        "Phoenix,Los Angeles,Denver,Austin,Las Vegas,"
-        "Tel Aviv,Munich,London,Tokyo,Seoul,Ankara,Lucknow,"
-        "Wellington,Toronto,Paris,Milan,Sao Paulo,Warsaw,Singapore,"
-        "Shanghai,Beijing,Shenzhen,Chengdu,Chongqing,Wuhan,Hong Kong,"
-        "Buenos Aires"
-    )
-    env["SIMMER_WEATHER_LOCATIONS"] = env.get("SIMMER_WEATHER_LOCATIONS", LOCATIONS)
+    env["SIMMER_WEATHER_LOCATIONS"] = env.get("SIMMER_WEATHER_LOCATIONS", DEFAULT_LOCATIONS)
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     return result.stdout + result.stderr
 
