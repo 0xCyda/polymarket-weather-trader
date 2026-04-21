@@ -2390,8 +2390,10 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             else:
                 log(f"  ❌ Punt trade failed: {result.get('error', 'unknown')}", force=True)
 
-    # Signal invalidation: re-evaluate open positions against latest forecast
-    inv_checked, inv_closed = check_signal_invalidation(dry_run, log)
+    # Signal invalidation: disabled — bucket parsing bugs caused false closures.
+    # Re-enable once bucket data from Simmer is trustworthy end-to-end.
+    inv_checked, inv_closed = 0, 0
+    # inv_checked, inv_closed = check_signal_invalidation(dry_run, log)
 
     exits_found, exits_executed = check_exit_opportunities(dry_run, use_safeguards)
 
