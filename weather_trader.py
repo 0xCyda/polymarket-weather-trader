@@ -1393,8 +1393,8 @@ def check_signal_invalidation(dry_run: bool = False, log=print) -> tuple:
 
     Triggers (scaled by days-to-resolution):
       1. Forecast drift outside held bucket — D+0: >2°, D+1: >3°, D+2+: >5°
-      2. Signal degraded to "weak" — D+0 and D+1 only
-      3. Agreement collapsed below 50% — D+0 and D+1 only
+      2. Signal degraded to "weak" — D+0 only
+      3. Agreement collapsed below 50% — D+0 only
       4. METAR contradiction — D+0 afternoon only
 
     Exit price: entry_price × 0.5 (conservative ~50% recovery estimate).
@@ -1476,14 +1476,13 @@ def check_signal_invalidation(dry_run: bool = False, log=print) -> tuple:
         elif new_temp > bucket_hi + drift_threshold:
             reasons.append(f"forecast {new_temp:.1f}° rose {new_temp - bucket_hi:.1f}° above bucket [{lo}–{hi}] (D+{days_out}, threshold {drift_threshold}°)")
 
-        # --- Trigger 2: signal degraded to weak (D+0 and D+1 only) ---
-        # D+2+ forecasts naturally fluctuate — don't penalize signal swings
-        if days_out <= 1 and new_signal == "weak" and entry_signal in ("strong", "moderate"):
-            reasons.append(f"signal degraded {entry_signal} → weak (D+{days_out})")
+        # --- Trigger 2: signal degraded to weak (D+0 only) ---
+        if days_out == 0 and new_signal == "weak" and entry_signal in ("strong", "moderate"):
+            reasons.append(f"signal degraded {entry_signal} → weak (D+0)")
 
-        # --- Trigger 3: agreement collapsed <50% (D+0 and D+1 only) ---
-        if days_out <= 1 and new_agreement < 50.0 and entry_agreement >= 70.0:
-            reasons.append(f"agreement collapsed {entry_agreement:.0f}% → {new_agreement:.0f}% (D+{days_out})")
+        # --- Trigger 3: agreement collapsed <50% (D+0 only) ---
+        if days_out == 0 and new_agreement < 50.0 and entry_agreement >= 70.0:
+            reasons.append(f"agreement collapsed {entry_agreement:.0f}% → {new_agreement:.0f}% (D+0)")
 
         # --- Trigger 4: METAR contradicts bucket (D+0 high, afternoon only) ---
         if days_out == 0 and metar_temp is not None and metric == "high":
