@@ -5,12 +5,14 @@ Multi-Model Ensemble Forecast — Degen Doppler style.
 Fetches Open-Meteo models plus AIFS ENS and returns a weighted ensemble forecast.
 
 Models & weights (normalized to 1.0):
-  aifs_ens          0.22  (ECMWF AIFS ensemble mean)
-  ecmwf_ifs025      0.30  (Open-Meteo ECMWF deterministic)
-  gfs_seamless      0.18  (NOAA GFS, good global coverage)
-  icon_global       0.13  (DWD ICON, strong in Europe)
-  gem_global        0.09  (Canadian GEM)
-  jma_seamless      0.08  (JMA, strong in Asia-Pacific)
+  aifs_ens               0.18  (ECMWF AIFS ensemble mean)
+  ecmwf_ifs025           0.24  (Open-Meteo ECMWF deterministic)
+  meteofrance_seamless   0.14  (Météo-France ARPEGE, strong globally)
+  ukmo_seamless          0.12  (UK Met Office, 2nd in WMO verification)
+  gfs_seamless           0.14  (NOAA GFS, good global coverage)
+  icon_global            0.10  (DWD ICON, strong in Europe)
+  gem_global             0.04  (Canadian GEM)
+  jma_seamless           0.04  (JMA, strong in Asia-Pacific)
 
 Signal strength:
   "strong"        = >=4 models, agreement_pct>=70%, max_delta<=6°
@@ -122,12 +124,14 @@ OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast"
 
 # Model definitions: name -> base weight (normalized to sum to 1.0)
 ENSEMBLE_MODELS = {
-    "aifs_ens":          0.22,
-    "ecmwf_ifs025":      0.30,
-    "gfs_seamless":      0.18,
-    "icon_global":       0.13,
-    "gem_global":        0.09,
-    "jma_seamless":      0.08,
+    "aifs_ens":                0.18,
+    "ecmwf_ifs025":            0.24,
+    "meteofrance_seamless":    0.14,
+    "ukmo_seamless":           0.12,
+    "gfs_seamless":            0.14,
+    "icon_global":             0.10,
+    "gem_global":              0.04,
+    "jma_seamless":            0.04,
 }
 
 
