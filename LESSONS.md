@@ -49,7 +49,20 @@ def get_positions():
     ...
 ```
 
-**Impact:** uPNL and current_price are frozen at $0 until the API key is fixed or env is loaded.
+---
+
+## 2026-04-21 — `--list-open` Returns Truncated IDs, Not Market UUIDs
+
+**Symptom:** `paper_journal.py --list-open` shows trade IDs like `paper_0a0cf089-aa36-45_1776644844`. Extracting the market ID as `0a0cf089-aa36-45` and calling `GET /api/sdk/context/0a0cf089-aa36-45` returns `404 Market not found`.
+
+**Root cause:** The ID format is `{type}_{market_id_short}_{timestamp}` — the market ID portion is truncated. Simmer API requires the full UUID.
+
+**Fix:** Read `data/paper_trades.jsonl` directly. Each line is a JSON object with the full `market_id` field (e.g. `"market_id": "0a0cf089-aa36-45bf-a800-8f4752cdb9b1"`). Use these full UUIDs for all API calls. The `paper_trades.jsonl` is the authoritative source for both trade state and full market IDs.
+
+**Verification:**
+```bash
+grep '"status": "open"' data/paper_trades.jsonl | python3.12 -c "import json,sys; [print(json.loads(l)['market_id'], json.loads(l)['question'][:60]) for l in sys.stdin]"
+```
 
 ---
 
@@ -275,3 +288,120 @@ GET https://gamma-api.polymarket.com/markets/2019436
 ```
 
 **Pattern to remember:** Any time you see `$0.00` uPNL for active Polymarket positions, check whether the `market_id` is a plain integer. If so, the Gamma→CLOB path is required. Simmer only handles CLOB UUIDs.
+
+---
+
+## 2026-04-21 — cfgrib Stale `.idx` FileNotFoundError After Fresh GRIB Download
+
+**Symptom:** Scan FAILURES section shows `FileNotFoundError: /tmp/aifs_ens_xxxxx/latest_cf_cf.grib2.5b7b6.idx` — two occurrences per city. GRIB download succeeds (correct 8.1MB file), but cfgrib fails to open it.
+
+**Root cause:** cfgrib creates a `.idx` index file keyed to GRIB content. When ECMWF re-runs the AIFS model (every 12h), the new GRIB has different content → same filename, different hash. The old `.idx` from a prior run still exists but doesn't match the new GRIB → FileNotFoundError. Note: `_is_cache_fresh()` was already fixed to validate GRIB readability, but the stale-idx problem persists because cfgrib checks the idx at open time, not at cache validation time.
+
+**Fix applied:** In `_extract_member_daily_values()` (`scripts/aifs_forecast.py`), delete any pre-existing `.idx` before calling `cfgrib.open_file()`:
+```python
+idx_path = grib_path + ".idx"
+if os.path.exists(idx_path):
+    os.unlink(idx_path)
+ds = cfgrib_mod.open_file(grib_path)
+```
+
+**Commit:** `5e79768` — "fix: delete stale cfgrib .idx file before opening GRIB"
+
+---
+
+## 2026-04-21 — Win Rate Dashboard Shows Wrong % (50% vs 55.6%)
+
+**Symptom:** Dashboard Win Rate card showed 50.0% but should have been ~55.6% based on actual outcomes.
+
+**Root cause:** Win rate formula was `wins / resolved * 100`. Breakeven trades (pnl = 0.0, e.g. LA 68-69°F entry at $0.275 exit $0.275) were counted in the denominator but not in wins or losses. With 5 wins, 4 losses, 1 breakeven: `5/10 = 50.0%` instead of `5/9 = 55.6%`.
+
+**Fix applied (`dashboard.py`, `_get_stats()`):**
+```python
+# WRONG:
+win_rate=round(len(wins) / len(resolved) * 100, 1) if resolved else None
+# RIGHT:
+win_rate=round(len(wins) / (len(wins) + len(losses)) * 100, 1) if (wins or losses) else None
+```
+
+**Commit:** `6531bfb` — "feat: add data/errors.log for structured error persistence" (also fixed win rate)
+
+---
+
+## 2026-04-21 — errors.log: Structural Error Logging for Persistent Error Tracking
+
+**Problem:** Errors only appeared in cron output markdown files. No persistent, queryable error log existed. Key errors (GRIB failures, API errors, safeguard blocks) were not being captured in a structured way.
+
+**Solution:** Added `log_error(kind, msg, **ctx)` function in `weather_trader.py` that appends structured JSON lines to `data/errors.log`. Covers: API errors from `simmer_call`, no-forecast conditions, context fetch failures, price history failures, discovery search failures, and import failures. Each entry includes `ts`, `kind`, `msg`, plus relevant context (market_id, location, date, etc.).
+
+**Logged error kinds:** `api_error`, `no_forecast`, `context_fetch`, `price_history`, `discovery_search`, `import_rate_limit`, `import_failed`. Safeguard skips (slippage, flip-flop, time decay) are NOT logged — those are expected conditions, not errors.
+
+**Files touched:** `weather_trader.py` — `log_error()` function, wired into key exception handlers
+
+**Commit:** `6531bfb`
+
+---
+
+## 2026-04-21 — Dashboard API Timeout / Hang: Kill + Restart Pattern
+
+**Symptom:** `http://localhost:8414/api/state` hangs and times out. Dashboard process is running but unresponsive. Simple `kill <pid>` followed by restart fixes it.
+
+**Root cause:** The uvicorn/FastAPI server inside dashboard.py can hang on a stuck request (likely a slow Simmer API call blocking the event loop). Not a code bug — just a runtime health issue.
+
+**Restart pattern (since terminal background=True has issues):**
+```python
+import subprocess, time
+# Kill old process
+subprocess.run(["pkill", "-f", "dashboard.py"], capture_output=True)
+time.sleep(1)
+# Start new
+proc = subprocess.Popen(
+    ["/usr/bin/python3.12", "dashboard.py"],
+    cwd="/home/brandon/.hermes/skills/solebrace-skills/polymarket-weather-trader",
+    stdout=open("/tmp/dashboard.log", "w"),
+    stderr=subprocess.STDOUT,
+)
+time.sleep(5)  # uvicorn takes a few seconds to bind
+import requests
+r = requests.get("http://localhost:8414/api/state", timeout=10)
+```
+
+**PID discovery:** `ss -tlnp | grep 8414` or `ps aux | grep dashboard`
+
+---
+
+## 2026-04-21 — Gamma API: `resolved=None` Despite Closed Markets
+
+**Symptom:** Hong Kong Apr 21 (`2019315`) showed `closed=False` in Gamma API despite being past resolution time. Shenzhen Apr 21 (`2019436`) showed `closed=True` but `outcome=None` and `resolved=None`.
+
+**Root cause:** Gamma's `closed` flag and `resolved`/`outcome` are separate fields. A market can be `closed=True` (Polymarket has ended trading) while `umaResolutionStatus=resolved` (UMA oracle has certified the outcome) but `outcome=None` (Gamma hasn't surfaced the winning bucket yet). Similarly, markets can still accept trades (`closed=False`) past their `endDate` until Polymarket's nightly settlement batch runs.
+
+**What to use for resolution checks:**
+- `closed=True` → market has stopped accepting new trades
+- `umaResolutionStatus=resolved` → oracle has certified the result
+- `outcome` field → the winning bucket (only appears after UMA settles)
+- `lastTradePrice` → last traded price is the best real-time signal before settlement
+- For P&L: Gamma `outcomePrices` array tells you which token (YES=index 0 or 1) maps to which outcome — interpret `lastTradePrice` in context of which bucket you hold
+
+**Simmer API:** Only handles CLOB UUID market IDs. Non-UUID (integer) IDs from Gamma return 404. Always use paper journal's `market_id` field which contains the full UUID.
+
+---
+
+## 2026-04-21 — Simmer `context` API Returns `outcome: null` for Resolved Markets
+
+**Symptom:** Even after markets like Shenzhen Apr 21 closed (`closed=True`), Simmer's `GET /api/sdk/context/{id}` still returned `resolved=None` and `outcome=null`.
+
+**Root cause:** Simmer's resolution detection is eventually consistent — they poll Polymarket's settlement API and can lag by minutes to hours after `closed=True`. For the bot, this means `update_resolved_trades()` can detect a market is closed but still not compute P&L.
+
+**Manual close pattern (still needed for now):**
+1. Get exit price from Gamma API (`lastTradePrice` + `outcomePrices` array to determine which bucket won)
+2. Update `paper_trades.jsonl`: `status="resolved"`, `outcome="yes"/"no"`, `exit_price`, `pnl`, `resolved_at`
+
+---
+
+## 2026-04-21 — `_load_trades_jsonl` vs `paper_journal.get_open_positions()`: Different Schemas
+
+**Symptom:** Dashboard API (`/api/state`) showed 2 open positions. Journal showed 2 open. But dashboard's `status` field was `None` while journal showed `status=open`.
+
+**Root cause:** `dashboard.py` uses `_load_trades_jsonl()` which returns raw dicts. It does NOT set a `status` key — the paper journal entries have `status: open` as a top-level key, but when `_get_stats()` in dashboard reads resolved/open counts, it checks `t.get("status")`. Both data sources agree on 2 open positions — the UI field just wasn't being set.
+
+**Note:** This is a display only issue in the dashboard API response, not a data integrity problem. The paper journal is the authoritative source.
