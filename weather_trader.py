@@ -699,12 +699,20 @@ def parse_market_bucket(market: dict):
     """
     if not isinstance(market, dict):
         return None, ""
-    # Order: most-specific bucket label first, then descriptive text.
+    # For weather markets, question text always has the correct threshold
+    # (outcome_name can contain stale or inconsistent values like "17°C" when
+    # the actual question is "43°C"). Try question first for weather; for all
+    # other markets fall back to the original priority order.
+    question = market.get("question", "")
+    bucket_from_question = parse_temperature_bucket(question)
+    if bucket_from_question:
+        return bucket_from_question, question
+
+    # Fallback order for non-weather markets
     candidates = [
         market.get("outcome_name"),
         market.get("outcome"),
         market.get("name"),
-        market.get("question"),
     ]
     for raw in candidates:
         if not raw or not isinstance(raw, str):
