@@ -47,6 +47,7 @@ def log_loss(trade: dict) -> None:
         "cost": trade.get("cost"),
         "pnl": trade.get("pnl"),
         "forecast_temp": trade.get("forecast_temp"),
+        "model_temps": trade.get("model_temps"),
         "models_used": trade.get("models_used"),
         "agreement_pct": trade.get("agreement_pct"),
         "spread": trade.get("spread"),
@@ -117,6 +118,7 @@ def log_paper_trade(
     agreement_pct: float,
     spread: float,
     strategy: str = "core",   # "core" (default) or "punt"
+    model_temps: dict | None = None,  # {model_name: temp} for all models in ensemble
 ) -> str:
     """
     Log a new paper trade. Returns the trade_id.
@@ -140,6 +142,7 @@ def log_paper_trade(
         "models_used": models_used,
         "agreement_pct": agreement_pct,
         "spread": spread,
+        "model_temps": model_temps,
         "status": "open",
         "outcome": None,
         "exit_price": None,

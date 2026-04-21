@@ -1989,7 +1989,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             skip_reasons.append("position too small")
             continue
 
-        log(f"  ✅ BUY opportunity!{trend_bonus}")
+        _mt = forecasts.get("model_temps", {})
+        _mt_str = ", ".join(f"{k}:{v:.1f}°" for k, v in sorted(_mt.items())) if _mt else "?"
+        log(f"  ✅ BUY opportunity!{trend_bonus} | {_mt_str} → {forecast_temp}{unit_label}")
         tag = "SIMULATED" if dry_run else "LIVE"
         log(f"  Executing trade ({tag})...", force=True)
 
@@ -2005,6 +2007,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             "agreement_pct": agreement_pct,
             "spread": spread,
             "signal_strength": signal_strength,
+            "model_temps": forecasts.get("model_temps"),
         }
         if vol_meta:
             signal["vol_targeting"] = vol_meta
@@ -2044,6 +2047,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                         forecast_temp=forecast_temp, signal_strength=signal_strength,
                         location=location, date_str=date_str, metric=metric,
                         models_used=models_used, agreement_pct=agreement_pct, spread=spread,
+                        model_temps=forecasts.get("model_temps"),
                     )
                 except Exception:
                     pass
@@ -2148,6 +2152,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                             models_used=p.get("models_used", 0),
                             agreement_pct=p.get("agreement_pct", 0),
                             spread=p.get("spread"),
+                            model_temps=p.get("model_temps"),
                             strategy="punt",
                         )
                     except Exception:
