@@ -40,8 +40,17 @@ def _load_trades() -> list:
 
 
 def _save_trades(trades: list) -> None:
-    """Rewrite JSONL file with all trades."""
-    JOURNAL_FILE.write_text("\n".join(json.dumps(t, default=str) for t in trades) + "\n")
+    """
+    Atomically rewrite JSONL with all trades.
+
+    Writes to a sibling temp file then os.replace() — this is atomic on POSIX
+    and NTFS, so a crash during write leaves either the old or new file intact,
+    never a truncated one.
+    """
+    tmp = JOURNAL_FILE.with_suffix(JOURNAL_FILE.suffix + ".tmp")
+    payload = "\n".join(json.dumps(t, default=str) for t in trades) + "\n"
+    tmp.write_text(payload)
+    os.replace(tmp, JOURNAL_FILE)
 
 
 def log_paper_trade(
@@ -222,25 +231,25 @@ def _parse_bucket_range(bucket_str: str) -> tuple | None:
             hi = hi * 9 / 5 + 32 if hi != 999 else 999
         return (lo, hi)
 
-    m = re.search(r'(\d+)\s*°?[fFcC]?\s*(or below|or less)', bucket_str, re.IGNORECASE)
+    m = re.search(r'(-?\d+)\s*°?[fFcC]?\s*(or below|or less)', bucket_str, re.IGNORECASE)
     if m:
         lo, hi = _to_f(-999, int(m.group(1)))
         return (lo, hi, 'F')
-    m = re.search(r'(\d+)\s*°?[fFcC]?\s*(or higher|or above|or more)', bucket_str, re.IGNORECASE)
+    m = re.search(r'(-?\d+)\s*°?[fFcC]?\s*(or higher|or above|or more)', bucket_str, re.IGNORECASE)
     if m:
         lo, hi = _to_f(int(m.group(1)), 999)
         return (lo, hi, 'F')
-    m = re.search(r'(\d+)\s*(?:°?\s*[fFcC])?\s*(?:-|–|to)\s*(\d+)', bucket_str)
+    m = re.search(r'(-?\d+)\s*(?:°?\s*[fFcC])?\s*(?:-|–|to)\s*(-?\d+)', bucket_str)
     if m:
         a, b = int(m.group(1)), int(m.group(2))
         lo, hi = _to_f(min(a, b), max(a, b))
         return (lo, hi, 'F')
-    m = re.search(r'\b(\d+)\s*°[fFcC]\b', bucket_str)
+    m = re.search(r'(-?\d+)\s*°[fFcC]', bucket_str)
     if m:
         t = int(m.group(1))
         lo, hi = _to_f(t, t)
         return (lo, hi, 'F')
-    m = re.match(r'^\s*(\d+)\s*°?[cCfF]?\s*$', bucket_str.strip())
+    m = re.match(r'^\s*(-?\d+)\s*°?[cCfF]?\s*$', bucket_str.strip())
     if m:
         t = int(m.group(1))
         lo, hi = _to_f(t, t)

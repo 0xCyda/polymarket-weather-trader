@@ -23,9 +23,8 @@ import json
 import logging
 import argparse
 from datetime import datetime, timezone, timedelta
-from urllib.request import urlopen, Request
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+# urllib imports removed — legacy NOAA/Open-Meteo direct fetchers were deleted.
+# Forecast data comes from ensemble_forecast.py which uses requests.
 
 # Add scripts/ to path for ensemble modules
 import pathlib as _p
@@ -153,7 +152,6 @@ for _old, _new in _LEGACY_ENV_ALIASES.items():
 # Load configuration
 _config = load_config(CONFIG_SCHEMA, __file__, slug="polymarket-weather-trader")
 
-NOAA_API_BASE = "https://api.weather.gov"
 ORDER_TYPE = (_config.get("order_type") or "GTC").upper()
 
 # SimmerClient singleton
@@ -483,136 +481,9 @@ INTERNATIONAL_LOCATIONS = {
     "Hong Kong":  {"lat": 22.3193, "lon": 114.1694, "tz": "Asia/Hong_Kong"},
 }
 
-OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast"
-
-def get_openmeteo_forecast(city: str) -> dict:
-    """Get Open-Meteo forecast for an international city.
-    Returns dict with date -> {"high_c": temp, "low_c": temp} in Celsius.
-    """
-    loc = INTERNATIONAL_LOCATIONS.get(city)
-    if not loc:
-        return {}
-
-    params = (
-        f"?latitude={loc['lat']}&longitude={loc['lon']}"
-        f"&daily=temperature_2m_max,temperature_2m_min"
-        f"&temperature_unit=celsius"
-        f"&timezone={loc['tz'].replace('/', '%2F')}"
-        f"&forecast_days=10"
-    )
-    url = OPEN_METEO_BASE + params
-    try:
-        from urllib.request import urlopen
-        import json as _json
-        with urlopen(url, timeout=15) as resp:
-            data = _json.loads(resp.read().decode())
-    except Exception as e:
-        print(f"  Open-Meteo error for {city}: {e}")
-        return {}
-
-    daily = data.get("daily", {})
-    dates = daily.get("time", [])
-    highs = daily.get("temperature_2m_max", [])
-    lows  = daily.get("temperature_2m_min", [])
-
-    forecasts = {}
-    for d, h, l in zip(dates, highs, lows):
-        forecasts[d] = {
-            "high_c": round(h) if h is not None else None,
-            "low_c":  round(l) if l is not None else None,
-        }
-    return forecasts
-
-
-def fetch_json(url, headers=None):
-    """Fetch JSON from URL with error handling."""
-    try:
-        req = Request(url, headers=headers or {})
-        with urlopen(req, timeout=30) as response:
-            return json.loads(response.read().decode())
-    except HTTPError as e:
-        print(f"  HTTP Error {e.code}: {url}")
-        return None
-    except URLError as e:
-        print(f"  URL Error: {e.reason}")
-        return None
-    except Exception as e:
-        print(f"  Error fetching {url}: {e}")
-        return None
-
-
-def get_noaa_forecast(location: str) -> dict:
-    """Get NOAA forecast for a location. Returns dict with date -> {"high": temp, "low": temp}"""
-    if location not in LOCATIONS:
-        print(f"  Unknown location: {location}")
-        return {}
-
-    loc = LOCATIONS[location]
-    headers = {
-        "User-Agent": "SimmerWeatherSkill/1.0 (https://simmer.markets)",
-        "Accept": "application/geo+json",
-    }
-
-    points_url = f"{NOAA_API_BASE}/points/{loc['lat']},{loc['lon']}"
-    points_data = fetch_json(points_url, headers)
-
-    if not points_data or "properties" not in points_data:
-        print(f"  Failed to get NOAA grid for {location}")
-        return {}
-
-    forecast_url = points_data["properties"].get("forecast")
-    if not forecast_url:
-        print(f"  No forecast URL for {location}")
-        return {}
-
-    forecast_data = fetch_json(forecast_url, headers)
-    if not forecast_data or "properties" not in forecast_data:
-        print(f"  Failed to get NOAA forecast for {location}")
-        return {}
-
-    periods = forecast_data["properties"].get("periods", [])
-    forecasts = {}
-
-    for period in periods:
-        start_time = period.get("startTime", "")
-        if not start_time:
-            continue
-
-        date_str = start_time[:10]
-        temp = period.get("temperature")
-        is_daytime = period.get("isDaytime", True)
-
-        if date_str not in forecasts:
-            forecasts[date_str] = {"high": None, "low": None}
-
-        if is_daytime:
-            forecasts[date_str]["high"] = temp
-        else:
-            forecasts[date_str]["low"] = temp
-
-    # Supplement with NOAA observations for today (D+0)
-    # /forecast often starts from the next period, missing today's daytime high
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if today_str not in forecasts or forecasts[today_str].get("high") is None:
-        station_id = loc.get("station")
-        if station_id:
-            try:
-                obs_url = f"{NOAA_API_BASE}/stations/{station_id}/observations/latest"
-                obs_data = fetch_json(obs_url, headers)
-                if obs_data and "properties" in obs_data:
-                    temp_c = obs_data["properties"].get("temperature", {}).get("value")
-                    if temp_c is not None:
-                        temp_f = round(temp_c * 9 / 5 + 32)
-                        if today_str not in forecasts:
-                            forecasts[today_str] = {"high": None, "low": None}
-                        if forecasts[today_str]["high"] is None:
-                            forecasts[today_str]["high"] = temp_f
-                        if forecasts[today_str]["low"] is None:
-                            forecasts[today_str]["low"] = temp_f
-            except Exception:
-                pass  # Observation fetch is best-effort
-
-    return forecasts
+# Forecasts are fetched exclusively via ensemble_forecast.get_ensemble_forecast.
+# Legacy get_noaa_forecast / get_openmeteo_forecast / fetch_json helpers were
+# removed — they were never called anywhere.
 
 
 # =============================================================================
@@ -727,27 +598,27 @@ def parse_temperature_bucket(outcome_name: str):
     # Detect unit from explicit °C marker (°F defaults if absent)
     bucket_unit = 'C' if re.search(r'°C', outcome_name, re.IGNORECASE) else 'F'
 
-    below_match = re.search(r'(\d+)\s*°?[fFcC]?\s*(or below|or less)', outcome_name, re.IGNORECASE)
+    below_match = re.search(r'(-?\d+)\s*°?[fFcC]?\s*(or below|or less)', outcome_name, re.IGNORECASE)
     if below_match:
         return (-999, int(below_match.group(1)), bucket_unit)
 
-    above_match = re.search(r'(\d+)\s*°?[fFcC]?\s*(or higher|or above|or more)', outcome_name, re.IGNORECASE)
+    above_match = re.search(r'(-?\d+)\s*°?[fFcC]?\s*(or higher|or above|or more)', outcome_name, re.IGNORECASE)
     if above_match:
         return (int(above_match.group(1)), 999, bucket_unit)
 
-    range_match = re.search(r'(\d+)\s*(?:°?\s*[fFcC])?\s*(?:-|–|to)\s*(\d+)', outcome_name)
+    range_match = re.search(r'(-?\d+)\s*(?:°?\s*[fFcC])?\s*(?:-|–|to)\s*(-?\d+)', outcome_name)
     if range_match:
         low, high = int(range_match.group(1)), int(range_match.group(2))
         return (min(low, high), max(low, high), bucket_unit)
 
-    # Single exact-degree bucket: "be 22°C on" or "22°F"
-    exact_match = re.search(r'\b(\d+)\s*°[fFcC]\b', outcome_name)
+    # Single exact-degree bucket: "be 22°C on" or "-5°F"
+    exact_match = re.search(r'(-?\d+)\s*°[fFcC]', outcome_name)
     if exact_match:
         t = int(exact_match.group(1))
         return (t, t, bucket_unit)
 
-    # Bare integer in short outcome names like "22°C"
-    bare_match = re.match(r'^\s*(\d+)\s*°?[cCfF]?\s*$', outcome_name.strip())
+    # Bare integer in short outcome names like "22°C" or "-5"
+    bare_match = re.match(r'^\s*(-?\d+)\s*°?[cCfF]?\s*$', outcome_name.strip())
     if bare_match:
         t = int(bare_match.group(1))
         return (t, t, bucket_unit)
@@ -1884,9 +1755,24 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         _matched_bucket, outcome_name = parse_market_bucket(matching_market)
         if not outcome_name:
             outcome_name = matching_market.get("outcome_name", "") or matching_market.get("question", "")
+        # Clean bucket label synthesized from the parsed (lo, hi, unit) tuple.
+        # Ensures paper journal stores a parseable bucket string even when
+        # outcome_name was the full question text.
+        if _matched_bucket:
+            _lo, _hi, _unit = _matched_bucket
+            if _lo == -999:
+                bucket_label = f"{_hi}°{_unit} or below"
+            elif _hi == 999:
+                bucket_label = f"{_lo}°{_unit} or above"
+            elif _lo == _hi:
+                bucket_label = f"{_lo}°{_unit}"
+            else:
+                bucket_label = f"{_lo}-{_hi}°{_unit}"
+        else:
+            bucket_label = outcome_name
         price = matching_market.get("external_price_yes") or 0.5
         market_id = matching_market.get("id")
-        log(f"  Matching bucket: {outcome_name} @ ${price:.2f}")
+        log(f"  Matching bucket: {bucket_label} @ ${price:.2f}")
 
         # Log forecast after bucket match so we have market_id
         if newly_fetched and FORECAST_HISTORY_AVAILABLE and forecasts.get("weighted_temp") is not None:
@@ -2122,7 +2008,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                         market_id=market_id,
                         question=matching_market.get("question", "") or matching_market.get("event_name", ""),
                         side="yes", entry_price=price, shares=shares,
-                        cost=position_size, bucket=outcome_name,
+                        cost=position_size, bucket=bucket_label,
                         forecast_temp=forecast_temp, signal_strength=signal_strength,
                         location=location, date_str=date_str, metric=metric,
                         models_used=models_used, agreement_pct=agreement_pct, spread=spread,
@@ -2203,12 +2089,27 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 log(f"  ✅ {tag} Punt bought {shares:.0f} shares @ ${p['price']:.3f}", force=True)
 
                 if result.get("simulated") and PAPER_JOURNAL_AVAILABLE:
+                    # Synthesize a clean bucket label from the parsed bucket
+                    # (may differ from outcome_name if that was the full question).
+                    _pb, _ = parse_market_bucket(p["market"])
+                    if _pb:
+                        _lo, _hi, _u = _pb
+                        if _lo == -999:
+                            _label = f"{_hi}°{_u} or below"
+                        elif _hi == 999:
+                            _label = f"{_lo}°{_u} or above"
+                        elif _lo == _hi:
+                            _label = f"{_lo}°{_u}"
+                        else:
+                            _label = f"{_lo}-{_hi}°{_u}"
+                    else:
+                        _label = p["outcome_name"]
                     try:
                         log_paper_trade(
                             market_id=mid,
                             question=p["market"].get("question", "") or p["market"].get("event_name", ""),
                             side="yes", entry_price=p["price"], shares=shares,
-                            cost=size, bucket=p["outcome_name"],
+                            cost=size, bucket=_label,
                             forecast_temp=p["forecast_temp"],
                             signal_strength=p.get("signal_strength", "punt"),
                             location=p["location"], date_str=p["date_str"], metric=p["metric"],

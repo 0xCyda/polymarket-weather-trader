@@ -926,11 +926,15 @@ def _compute_upnl(pos: dict) -> float:
     if shares_yes > 0:
         return round((current - entry) * shares_yes, 2)
     elif shares_no > 0:
-        return round((entry - current) * shares_no, 2)
-    # Paper journal fallback
+        # NO token settles at (1 - yes_price). Paid `entry` per NO share.
+        return round(((1 - current) - entry) * shares_no, 2)
+    # Paper journal fallback — respect side
     shares = float(pos.get("shares") or 0)
+    side = (pos.get("side") or "yes").lower()
     if shares > 0 and entry > 0:
-        return round((current - entry) * shares, 2)
+        if side == "yes":
+            return round((current - entry) * shares, 2)
+        return round(((1 - current) - entry) * shares, 2)
     return 0.0
 
 

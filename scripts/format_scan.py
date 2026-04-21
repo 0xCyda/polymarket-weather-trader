@@ -67,11 +67,14 @@ def parse_signals(scan_output):
     for block in blocks:
         if not block.strip():
             continue
-        # Extract location, date, metric from header
-        header = re.search(r"📍\s+(\S+)\s+(\d{4}-\d{2}-\d{2})\s+\((\w+)\s+temp\)", block)
+        # Extract location, date, metric from header.
+        # Location may be multi-word (e.g. "Hong Kong", "San Francisco") so
+        # use a lazy .+? capture and anchor on the ISO date.
+        header = re.search(r"📍\s+(.+?)\s+(\d{4}-\d{2}-\d{2})\s+\((\w+)\s+temp\)", block)
         if not header:
             continue
         location, date, metric = header.groups()
+        location = location.strip()
 
         # Extract AIFS ENS line
         ens = re.search(
@@ -151,13 +154,18 @@ def compute_upnl(position):
         if shares_yes > 0:
             upnl = (current_price - entry_price) * shares_yes if entry_price > 0 else 0.0
         else:
-            upnl = (entry_price - current_price) * shares_no if entry_price > 0 else 0.0
+            # NO token settles at (1 - yes_price). Paid `entry_price` per NO share.
+            upnl = ((1 - current_price) - entry_price) * shares_no if entry_price > 0 else 0.0
         return round(upnl, 2)
 
-    # Paper journal positions (all YES, stored as 'shares')
+    # Paper journal positions — respect side (currently always "yes" but guard anyway)
     shares = position.get("shares", 0)
+    side = (position.get("side") or "yes").lower()
     if shares > 0 and entry_price > 0:
-        upnl = (current_price - entry_price) * shares
+        if side == "yes":
+            upnl = (current_price - entry_price) * shares
+        else:
+            upnl = ((1 - current_price) - entry_price) * shares
         return round(upnl, 2)
 
     return 0.0

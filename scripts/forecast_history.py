@@ -36,7 +36,12 @@ def log_forecast(
     model_temps: dict | None = None,
     market_id: str | None = None,
 ) -> None:
-    """Append one forecast observation. Idempotent on (location, date, metric)."""
+    """
+    Log one forecast observation. Idempotent on (location, target_date, metric):
+    if an unresolved entry already exists for this key, it is updated in place
+    with the latest forecast rather than appended. Resolved entries (actual_temp
+    populated) are left untouched so accuracy stats remain accurate.
+    """
     entry = {
         "logged_at": datetime.now(timezone.utc).isoformat(),
         "location": location,
@@ -52,6 +57,29 @@ def log_forecast(
         "actual_temp": None,
         "forecast_error": None,
     }
+    try:
+        entries = _load_entries()
+    except Exception:
+        entries = []
+    # Find existing unresolved entry for the same (location, target_date, metric)
+    target_idx = None
+    for i, e in enumerate(entries):
+        if (e.get("location") == location
+            and e.get("target_date") == date_str
+            and e.get("metric") == metric
+            and e.get("actual_temp") is None):
+            target_idx = i
+            break
+    if target_idx is not None:
+        # Update in place — preserve any existing resolution fields
+        existing = entries[target_idx]
+        existing.update(entry)
+        try:
+            _save_entries(entries)
+        except OSError:
+            pass
+        return
+    # No existing unresolved entry — append fresh
     try:
         with HISTORY_FILE.open("a") as f:
             f.write(json.dumps(entry, default=str) + "\n")
