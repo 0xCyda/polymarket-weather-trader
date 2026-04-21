@@ -264,6 +264,11 @@ def _extract_member_daily_values(grib_path: str, lat: float, lon: float,
     target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
 
     try:
+        # cfgrib creates a .idx index file keyed to GRIB content — stale idx from
+        # a prior run causes FileNotFoundError when GRIB changes, so nuke it first
+        idx_path = grib_path + ".idx"
+        if os.path.exists(idx_path):
+            os.unlink(idx_path)
         ds = cfgrib_mod.open_file(grib_path)
     except Exception as exc:
         raise RuntimeError(f"cfgrib failed to open {grib_path}: {exc}")
