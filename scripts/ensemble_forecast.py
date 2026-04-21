@@ -109,6 +109,13 @@ METAR_STATIONS = {
     "Singapore":     "WSSS",   # Changi
     "Hong Kong":     "VHHH",   # Hong Kong Intl
     "Buenos Aires":  "SAEZ",   # Ezeiza Intl
+    "Beijing":       "ZBAA",   # Capital Intl
+    "Chengdu":       "ZUUU",   # Shuangliu
+    "Chongqing":     "ZUCK",   # Jiangbei
+    "Lucknow":       "VILK",   # Chaudhary Charan Singh
+    "Milan":         "LIMC",   # Malpensa
+    "Shenzhen":      "ZGSZ",   # Bao'an
+    "Wuhan":         "ZHHH",   # Tianhe
 }
 
 METAR_API_BASE = "https://aviationweather.gov/api/data/metar"
