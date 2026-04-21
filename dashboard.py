@@ -482,6 +482,20 @@ function money(v, digits) {
   return '$' + n.toFixed(d);
 }
 
+// US cities use Fahrenheit on Polymarket; rest of the world uses Celsius.
+// Forecast values are stored internally in °F, so US displays pass through
+// and international displays are converted.
+const US_CITIES = new Set([
+  'NYC', 'New York', 'New York City', 'Chicago', 'Seattle', 'Atlanta',
+  'Dallas', 'Miami', 'Houston', 'San Francisco', 'Phoenix',
+  'Los Angeles', 'Denver', 'Austin', 'Las Vegas',
+]);
+
+function isUSLocation(loc) {
+  if (!loc) return false;
+  return US_CITIES.has(loc) || US_CITIES.has(loc.replace(/\s+/g, ' ').trim());
+}
+
 function toCelsius(f) {
   const n = Number(f || 0);
   return n === 0 ? '—' : (n - 32) * 5 / 9;
@@ -496,6 +510,25 @@ function fmtCelsiusDelta(f) {
   // Spread is a delta (°F difference), not an absolute temp — convert without offset
   const n = Number(f || 0);
   return n === 0 ? '—°C' : (n * 5 / 9).toFixed(1) + '°C';
+}
+
+function fmtFahrenheit(f) {
+  const n = Number(f || 0);
+  return n === 0 ? '—°F' : n.toFixed(1) + '°F';
+}
+
+function fmtFahrenheitDelta(f) {
+  const n = Number(f || 0);
+  return n === 0 ? '—°F' : n.toFixed(1) + '°F';
+}
+
+// Display helpers that pick unit based on location
+function fmtTempForLoc(loc, f) {
+  return isUSLocation(loc) ? fmtFahrenheit(f) : fmtCelsius(f);
+}
+
+function fmtSpreadForLoc(loc, f) {
+  return isUSLocation(loc) ? fmtFahrenheitDelta(f) : fmtCelsiusDelta(f);
 }
 
 function fmtPnl(v) {
@@ -727,11 +760,11 @@ function renderSignals(d) {
           <span class="mono" style="font-size:11px">${s.date}</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;gap:8px">
-          <span style="color:var(--text-secondary);font-size:13px"><span class="mono">${fmtCelsius(s.temp)}</span> · ${s.metric}</span>
+          <span style="color:var(--text-secondary);font-size:13px"><span class="mono">${fmtTempForLoc(s.location, s.temp)}</span> · ${s.metric}</span>
           ${signalBadge(s.signal)}
         </div>
         <div class="faint" style="margin-top:4px">
-          ${s.models} models · spread <span class="mono">${fmtCelsiusDelta(s.spread)}</span>${s.agree !== 'N/A' ? ' · ' + s.agree + '% agree' : ''}
+          ${s.models} models · spread <span class="mono">${fmtSpreadForLoc(s.location, s.spread)}</span>${s.agree !== 'N/A' ? ' · ' + s.agree + '% agree' : ''}
         </div>
       </div>
     `).join('');
