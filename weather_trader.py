@@ -66,10 +66,10 @@ except ImportError:
 # exceptions are written here as structured JSON lines so the cron
 # output stays clean and errors persist for post-mortem analysis.
 # --------------------------------------------------------------------
-_ERRORS_LOG = _p.Path(__file__).parent / "data" / "errors.log"
+_ERRORS_LOG = _p.Path(__file__).parent / "errors.log"
 
 def log_error(kind: str, msg: str, **ctx):
-    """Append a structured entry to data/errors.log."""
+    """Append a structured entry to errors.log."""
     entry = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "kind": kind,
