@@ -774,10 +774,10 @@ function renderSignals(d) {
   );
 
   const INITIAL = 5;
-  let expanded = false;
+  if (window._signalExpanded === undefined) window._signalExpanded = false;
 
   function render() {
-    const visible = expanded ? sorted : sorted.slice(0, INITIAL);
+    const visible = window._signalExpanded ? sorted : sorted.slice(0, INITIAL);
     container.innerHTML = visible.map(s => `
       <div class="signal-row">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -805,7 +805,6 @@ function renderSignals(d) {
   }
 
   window._lastSignals = d.signals;
-  window._signalExpanded = false;
   render();
 }
 
