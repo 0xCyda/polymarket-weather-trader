@@ -629,7 +629,7 @@ def parse_weather_event(event_name: str) -> dict:
     if 'highest' in event_lower or 'high temp' in event_lower:
         metric = 'high'
     elif 'lowest' in event_lower or 'low temp' in event_lower:
-        metric = 'low'
+        return None  # Skip lowest-temp events — 0% conversion rate on Polymarket
     else:
         metric = 'high'
 
@@ -1457,7 +1457,7 @@ def check_exit_opportunities(dry_run: bool = False, use_safeguards: bool = True)
         question = pos.get("question", "").lower()
         sources = pos.get("sources", [])
         # Check if from weather skill OR has weather keywords
-        if TRADE_SOURCE in sources or any(kw in question for kw in ["temperature", "°f", "highest temp", "lowest temp"]):
+        if TRADE_SOURCE in sources or any(kw in question for kw in ["temperature", "°f", "highest temp"]):
             weather_positions.append(pos)
 
     if not weather_positions:

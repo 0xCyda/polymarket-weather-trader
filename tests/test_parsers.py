@@ -80,9 +80,9 @@ class TestParseWeatherEvent(unittest.TestCase):
         r = parse_weather_event("Highest temperature in Hong Kong on April 16?")
         self.assertEqual(r["location"], "Hong Kong")
 
-    def test_low_temp(self):
-        r = parse_weather_event("Lowest temperature in Chicago on March 10?")
-        self.assertEqual(r["metric"], "low")
+    def test_low_temp_skipped(self):
+        # Lowest-temp events are now skipped (0% conversion rate on Polymarket)
+        self.assertIsNone(parse_weather_event("Lowest temperature in Chicago on March 10?"))
 
     def test_invalid(self):
         self.assertIsNone(parse_weather_event(""))
