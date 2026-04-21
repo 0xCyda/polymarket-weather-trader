@@ -357,22 +357,31 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
     agreement_pct = round(100.0 * within_3 / models_count, 1)
 
     # METAR ground truth cross-check (D+0 only)
+    local_hour = datetime.now(city_tz).hour
+    metar_adjusted = False
     if metar_temp is not None:
+        # After 15:00 local, METAR is a hard lower bound on the daily high.
+        # Peak heating is typically 14:00-16:00; by 15:00+ the current temp
+        # is at or very near the day's max.
+        if is_today and metric == "high" and local_hour >= 15 and metar_temp > weighted_temp:
+            weighted_temp = round(metar_temp, 1)
+            metar_adjusted = True
         metar_delta = round(abs(weighted_temp - metar_temp), 1)
 
     # Signal strength classification.
-    # METAR downgrade is only applied after 14:00 local — before that, current
-    # temp is naturally far below the daily high and would falsely downgrade.
-    local_hour = datetime.now(city_tz).hour
-    metar_downgrade_active = is_today and metric == "high" and local_hour >= 14
+    # METAR downgrade: after 14:00 local, divergence from ensemble → lower confidence.
+    # METAR upgrade:   after 14:00 local, agreement with ensemble → higher confidence.
+    metar_check_active = is_today and metric == "high" and local_hour >= 14
     if models_count >= 4 and agreement_pct >= 70.0 and max_delta <= 6:
         signal_strength = "strong"
-        if metar_downgrade_active and metar_delta is not None and metar_delta > 5:
-            signal_strength = "moderate"  # downgrade: afternoon ground obs diverging from models
+        if metar_check_active and metar_delta is not None and metar_delta > 5:
+            signal_strength = "moderate"
     elif models_count >= 3 and max_delta <= 10:
         signal_strength = "moderate"
-        if metar_downgrade_active and metar_delta is not None and metar_delta > 8:
-            signal_strength = "weak"  # downgrade: large METAR divergence
+        if metar_check_active and metar_delta is not None and metar_delta > 8:
+            signal_strength = "weak"
+        elif metar_check_active and metar_delta is not None and metar_delta <= 3:
+            signal_strength = "strong"  # upgrade: afternoon METAR confirms ensemble
     else:
         signal_strength = "weak"
 
@@ -385,6 +394,7 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
         "signal_strength": signal_strength,
         "metar_temp": metar_temp,
         "metar_delta": metar_delta,
+        "metar_adjusted": metar_adjusted,
     }
 
 
