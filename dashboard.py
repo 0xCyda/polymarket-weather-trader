@@ -1354,16 +1354,12 @@ def _get_config() -> dict:
         except Exception:
             pass
 
-    # Load model weights from ensemble_forecast
-    ensemble_models = {
-        "aifs_ens": 0.20,
-        "ecmwf_ifs025": 0.28,
-        "gfs_seamless": 0.16,
-        "icon_global": 0.12,
-        "gem_global": 0.08,
-        "jma_seamless": 0.08,
-        "bom_access_global": 0.08,
-    }
+    # Load model weights from ensemble_forecast (single source of truth)
+    try:
+        from ensemble_forecast import ENSEMBLE_MODELS
+        ensemble_models = dict(ENSEMBLE_MODELS)
+    except Exception:
+        ensemble_models = {}
 
     # Detect API key presence (masked)
     simmer_key = os.environ.get("SIMMER_API_KEY", "")

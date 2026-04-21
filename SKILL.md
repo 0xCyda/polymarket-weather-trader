@@ -1,6 +1,6 @@
 ---
 name: polymarket-weather-trader
-description: Trade Polymarket weather markets using an AIFS ENS (ECMWF AI ensemble) + 6-model global blend. Uses signal strength and model agreement to dynamically adjust confidence. Simmer API handles market discovery and execution. Inspired by gopfan2's $2M+ strategy.
+description: Trade Polymarket weather markets using an AIFS ENS (ECMWF AI ensemble) + 8-model global blend. Uses signal strength and model agreement to dynamically adjust confidence. Simmer API handles market discovery and execution. Inspired by gopfan2's $2M+ strategy.
 metadata:
   author: Jarvis (SoleBrace)
   version: "1.17.2"
@@ -10,7 +10,7 @@ metadata:
 ---
 # Polymarket Weather Trader
 
-Trade temperature markets on Polymarket using an **AIFS ENS + 6-model global ensemble** with dynamic signal confidence.
+Trade temperature markets on Polymarket using an **AIFS ENS + 8-model global ensemble** with dynamic signal confidence.
 
 > Remix it with different forecast models, additional locations, or new market types (precipitation, wind, etc.). The skill handles all the plumbing — market discovery, ensemble fetching, bucket matching, trade execution, and safeguards.
 
@@ -20,13 +20,14 @@ The core change in v2.0: instead of single-source NOAA, the trader uses a **weig
 
 | Model | Weight | Source |
 |-------|--------|--------|
-| aifs_ens | 20% | ECMWF AI ensemble mean (GRIB download via AWS S3) |
-| ecmwf_ifs025 | 28% | Open-Meteo |
-| gfs_seamless | 16% | Open-Meteo |
-| icon_global | 12% | Open-Meteo |
-| gem_global | 8% | Open-Meteo |
-| jma_seamless | 8% | Open-Meteo |
-| bom_access_global | 8% | Open-Meteo |
+| aifs_ens | 18% | ECMWF AI ensemble mean (GRIB download via AWS S3) |
+| ecmwf_ifs025 | 24% | Open-Meteo |
+| gfs_seamless | 14% | Open-Meteo |
+| meteofrance_seamless | 10% | Open-Meteo (Météo-France ARPEGE) |
+| ukmo_seamless | 10% | Open-Meteo (UK Met Office) |
+| icon_global | 10% | Open-Meteo |
+| gem_global | 7% | Open-Meteo |
+| jma_seamless | 7% | Open-Meteo |
 
 `weighted_temp` = weighted average across all models that return data (weights renormalize if some models fail). The ensemble also computes `max_delta` (worst disagreement in degrees) and `agreement_pct` (% of models within 3° of the weighted average).
 
@@ -42,7 +43,7 @@ For same-day (D+0) markets after 14:00 local, live **METAR station observations*
 ## What's New
 
 - **AIFS ENS ensemble**: ECMWF AI-generated ensemble with CF (control) + PF (perturbed, 5 members) GRIB download. True ensemble spread and agreement computed from all members.
-- **6-model global blend**: Weighted combination of major global forecast models via Open-Meteo. All models run concurrently via ThreadPoolExecutor.
+- **8-model global blend**: Weighted combination of major global forecast models via Open-Meteo. All models run concurrently via ThreadPoolExecutor.
 - **Signal strength confidence**: Dynamic confidence based on ensemble agreement:
   - `strong` (≥4 models, agreement ≥70%, max_delta ≤6°): confidence = 0.88
   - `moderate` (≥3 models, max_delta ≤10°): confidence = 0.80
@@ -211,7 +212,7 @@ Each cycle:
   Grouped into 12 events
 
 📍 NYC 2026-04-18 (high temp)
-  Fetching ensemble forecast (AIFS ENS + 6-model blend)...
+  Fetching ensemble forecast (AIFS ENS + 8-model blend)...
   AIFS ENS: 63.5°F | signal: weak | 6 models | agree: 66.7% | spread: 10.2°
   ⚠️  No bucket found for 63.5°F
 

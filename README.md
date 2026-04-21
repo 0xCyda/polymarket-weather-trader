@@ -1,13 +1,13 @@
 # Polymarket Weather Trader
 
-Trade Polymarket weather markets using an **AIFS ENS (ECMWF AI ensemble) + 7-model global blend**. Dynamic signal confidence based on model agreement, with Simmer API handling market discovery and execution.
+Trade Polymarket weather markets using an **AIFS ENS (ECMWF AI ensemble) + 8-model global blend**. Dynamic signal confidence based on model agreement, with Simmer API handling market discovery and execution.
 
 Inspired by gopfan2's $2M+ weather trading strategy.
 
 ## Architecture
 
 - **AIFS ENS** — ECMWF AI ensemble system (51 member forecast)
-- **7-model global blend** — AIFS ENS, ECMWF IFS, GFS, ICON, GEM, JMA, BOM ACCESS
+- **8-model global blend** — AIFS ENS, ECMWF IFS, GFS, Météo-France ARPEGE, UK Met Office, ICON, GEM, JMA
 - **Signal confidence** — dynamically adjusted based on model agreement
 - **Simmer API** — market discovery and execution
 - **Two strategies**:
