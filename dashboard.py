@@ -175,6 +175,20 @@ DASHBOARD_HTML = """
     }
     .status-dot.warning { background: var(--accent-amber); box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.5); }
     .status-dot.error { background: var(--accent-red); box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.5); animation: none; }
+    .tab-btn {
+      background: transparent; border: 1px solid rgba(255,255,255,0.12);
+      color: var(--text-secondary); padding: 5px 14px; border-radius: 6px;
+      cursor: pointer; font-size: 0.8rem; font-family: inherit;
+    }
+    .tab-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+    .tab-btn.active { background: rgba(96,165,250,0.12); border-color: var(--accent-blue); color: var(--accent-blue); }
+    .config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    .config-section { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 14px 16px; }
+    .config-section h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary); margin: 0 0 10px 0; }
+    .config-table { width: 100%; border-collapse: collapse; }
+    .config-table tr:not(:last-child) td { border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .config-key { padding: 4px 0; color: var(--text-secondary); font-size: 0.82rem; }
+    .config-val { padding: 4px 0; text-align: right; font-size: 0.82rem; }
     @keyframes pulse {
       0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
       50% { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
@@ -435,8 +449,13 @@ DASHBOARD_HTML = """
     </div>
     <div class="last-updated">Last updated: <span id="last-updated">—</span></div>
   </div>
+  <div class="header-right">
+    <button class="tab-btn" id="btn-overview" onclick="showTab('overview')">Overview</button>
+    <button class="tab-btn" id="btn-config" onclick="showTab('config')">Config</button>
+  </div>
 </div>
 
+<div id="tab-overview">
 <div class="grid" id="summary-cards"></div>
 
 <div class="layout-main">
@@ -464,6 +483,12 @@ DASHBOARD_HTML = """
 <div class="card table-wrap" style="margin-top:20px">
   <h2>Recent Resolved Trades</h2>
   <table id="resolved-table"></table>
+</div>
+</div><!-- end #tab-overview -->
+
+<div class="card" id="config-card" style="margin-top:20px; display:none">
+  <h2>Configuration</h2>
+  <div id="config-content"></div>
 </div>
 
 <script>
@@ -827,6 +852,117 @@ function setStatus(state, msg) {
   text.textContent = msg;
 }
 
+function showTab(tab) {
+  document.getElementById('tab-overview').style.display = tab === 'overview' ? '' : 'none';
+  document.getElementById('config-card').style.display = tab === 'config' ? '' : 'none';
+  document.getElementById('btn-overview').classList.toggle('active', tab === 'overview');
+  document.getElementById('btn-config').classList.toggle('active', tab === 'config');
+  if (tab === 'config') renderConfig();
+}
+
+function renderConfig() {
+  const el = document.getElementById('config-content');
+  if (!el || el.dataset.loaded) return;
+  loadJson('/api/config').then(cfg => {
+    el.dataset.loaded = '1';
+    const sections = [
+      {
+        label: 'API Keys',
+        rows: [
+          { k: 'Simmer API', v: cfg.has_simmer_key ? '✓ configured' : '✗ missing' },
+          { k: 'OpenAI API', v: cfg.has_openai_key ? '✓ configured' : '✗ missing' },
+        ]
+      },
+      {
+        label: 'Ensemble Models',
+        rows: Object.entries(cfg.ensemble_models || {}).map(([m, w]) => ({
+          k: m, v: `${(w * 100).toFixed(0)}%`
+        }))
+      },
+      {
+        label: 'Cities',
+        rows: [{ k: 'Locations', v: cfg.locations ? cfg.locations.join(', ') : '—' }]
+      },
+      {
+        label: 'Core Trading',
+        rows: [
+          { k: 'Entry threshold', v: cfg.entry_threshold },
+          { k: 'Min edge', v: cfg.min_edge },
+          { k: 'Exit threshold', v: cfg.exit_threshold },
+          { k: 'Exit profit mult', v: cfg.exit_profit_multiplier },
+          { k: 'Max position', v: `$${cfg.max_position_usd}` },
+          { k: 'Sizing %', v: `${(cfg.sizing_pct * 100).toFixed(0)}%` },
+          { k: 'Max trades/run', v: cfg.max_trades_per_run },
+          { k: 'Order type', v: cfg.order_type },
+          { k: 'Paper balance', v: `$${cfg.paper_balance.toLocaleString()}` },
+          { k: 'Max daily loss', v: cfg.max_daily_loss_usd > 0 ? `$${cfg.max_daily_loss_usd}` : 'disabled' },
+        ]
+      },
+      {
+        label: 'Punt Mode',
+        rows: [
+          { k: 'Enabled', v: cfg.punt_mode ? 'Yes' : 'No' },
+          { k: 'Max position', v: `$${cfg.punt_max_position_usd}` },
+          { k: 'Price ceiling', v: `$${cfg.punt_price_ceiling}` },
+          { k: 'Min edge', v: cfg.punt_min_edge },
+          { k: 'Min confidence', v: `${(cfg.punt_min_confidence * 100).toFixed(0)}%` },
+          { k: 'Daily budget', v: `$${cfg.punt_daily_budget_usd}` },
+        ]
+      },
+      {
+        label: 'Filters',
+        rows: [
+          { k: 'Slippage max', v: `${(cfg.slippage_max * 100).toFixed(0)}%` },
+          { k: 'Min liquidity', v: cfg.min_liquidity > 0 ? `$${cfg.min_liquidity}` : 'disabled' },
+          { k: 'Binary only', v: cfg.binary_only ? 'Yes' : 'No' },
+        ]
+      },
+      {
+        label: 'Vol Targeting',
+        rows: [
+          { k: 'Enabled', v: cfg.vol_targeting ? 'Yes' : 'No' },
+          { k: 'Target vol', v: `${(cfg.target_vol * 100).toFixed(0)}%` },
+          { k: 'Max leverage', v: `${cfg.vol_max_leverage}×` },
+          { k: 'Min allocation', v: `${(cfg.vol_min_allocation * 100).toFixed(0)}%` },
+          { k: 'EWMA span', v: cfg.vol_span },
+        ]
+      },
+      {
+        label: 'Ladder Exits',
+        rows: [
+          { k: 'First exit price', v: cfg.ladder_first_exit > 0 ? `$${cfg.ladder_first_exit}` : 'disabled' },
+          { k: 'Fraction at first exit', v: cfg.ladder_first_exit > 0 ? `${(cfg.ladder_first_fraction * 100).toFixed(0)}%` : '—' },
+        ]
+      },
+      {
+        label: 'Discovery',
+        rows: [
+          { k: 'Cache TTL', v: `${cfg.discovery_cache_minutes} min` },
+          { k: 'Disk forecast cache', v: cfg.forecast_cache_disk ? 'Yes' : 'No' },
+          { k: 'Concurrent scans', v: cfg.concurrent_scans ? 'Yes' : 'No' },
+          { k: 'Log level', v: cfg.log_level },
+        ]
+      },
+    ];
+
+    el.innerHTML = `<div class="config-grid">${
+      sections.map(s => `
+        <div class="config-section">
+          <h3>${s.label}</h3>
+          <table class="config-table">
+            ${s.rows.map(r => `
+              <tr>
+                <td class="config-key">${r.k}</td>
+                <td class="config-val mono">${r.v}</td>
+              </tr>`).join('')}
+          </table>
+        </div>`).join('')
+    }</div>`;
+  }).catch(() => {
+    document.getElementById('config-content').innerHTML = '<div class="faint">Failed to load config.</div>';
+  });
+}
+
 async function refresh() {
   try {
     setStatus('warning', 'Refreshing…');
@@ -930,7 +1066,42 @@ def _get_simmer_positions() -> list[dict]:
 
 
 def _fetch_live_price(market_id: str) -> float | None:
-    """Fetch current price for a market from Simmer context API."""
+    """Fetch current price for a market — tries Gamma→CLOB for integer IDs,
+    falls back to Simmer for UUID-format IDs."""
+    if not market_id:
+        return None
+
+    # Plain integer = Gamma ID (e.g. "2019315"). Simmer can't resolve these.
+    # Route through Gamma API → extract clobTokenIds → CLOB /price.
+    if market_id.isdigit():
+        try:
+            import requests
+            gamma_resp = requests.get(
+                f"https://gamma-api.polymarket.com/markets/{market_id}",
+                timeout=5,
+            )
+            if gamma_resp.status_code != 200:
+                return None
+            market = gamma_resp.json()
+            if isinstance(market, dict):
+                ctids_raw = market.get("clobTokenIds", "")
+                if ctids_raw:
+                    import json
+                    ctids = json.loads(ctids_raw)
+                    yes_token = ctids[0] if len(ctids) > 0 else None
+                    if yes_token:
+                        clob_resp = requests.get(
+                            "https://clob.polymarket.com/price",
+                            params={"token_id": yes_token, "side": "buy"},
+                            timeout=5,
+                        )
+                        if clob_resp.status_code == 200:
+                            return float(clob_resp.json().get("price", 0) or 0)
+        except Exception:
+            pass
+        return None
+
+    # UUID-format market_id — use Simmer (works for CLOB UUIDs)
     try:
         api_key = os.environ.get("SIMMER_API_KEY")
         if not api_key:
@@ -1163,7 +1334,93 @@ def api_state():
             }
             for t in resolved[-20:]
         ],
+        "config": _get_config(),
     })
+
+
+@app.get("/api/config")
+def api_config():
+    """Return the current bot configuration."""
+    return JSONResponse(_get_config())
+
+
+def _get_config() -> dict:
+    """Load and format the bot config for the dashboard."""
+    # Load config.json
+    config = {}
+    if CONFIG_FILE.exists():
+        try:
+            config = json.loads(CONFIG_FILE.read_text())
+        except Exception:
+            pass
+
+    # Load model weights from ensemble_forecast
+    ensemble_models = {
+        "aifs_ens": 0.20,
+        "ecmwf_ifs025": 0.28,
+        "gfs_seamless": 0.16,
+        "icon_global": 0.12,
+        "gem_global": 0.08,
+        "jma_seamless": 0.08,
+        "bom_access_global": 0.08,
+    }
+
+    # Detect API key presence (masked)
+    simmer_key = os.environ.get("SIMMER_API_KEY", "")
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    has_simmer = bool(simmer_key)
+    has_openai = bool(openai_key)
+
+    # Locations
+    locations_raw = config.get("locations", os.environ.get("SIMMER_WEATHER_LOCATIONS", "NYC"))
+    locations = [l.strip() for l in locations_raw.split(",")] if locations_raw else []
+
+    return {
+        # Core trading params
+        "entry_threshold":    config.get("entry_threshold", 0.50),
+        "min_edge":           config.get("min_edge", 0.25),
+        "exit_threshold":     config.get("exit_threshold", 0.45),
+        "max_position_usd":   config.get("max_position_usd", 200.0),
+        "sizing_pct":         config.get("sizing_pct", 0.05),
+        "max_trades_per_run": config.get("max_trades_per_run", 10),
+        "paper_balance":      config.get("paper_balance", 10000.0),
+        "order_type":         config.get("order_type", "GTC"),
+        # Vol targeting
+        "vol_targeting":       config.get("vol_targeting", False),
+        "target_vol":          config.get("target_vol", 0.20),
+        "vol_max_leverage":    config.get("vol_max_leverage", 2.0),
+        "vol_min_allocation": config.get("vol_min_allocation", 0.2),
+        "vol_span":           config.get("vol_span", 10),
+        "max_daily_loss_usd": config.get("max_daily_loss_usd", 0.0),
+        # Profit taking
+        "exit_profit_multiplier": config.get("exit_profit_multiplier", 4.0),
+        "ladder_first_exit":      config.get("ladder_first_exit", 0.0),
+        "ladder_first_fraction":  config.get("ladder_first_fraction", 0.5),
+        # Filters
+        "slippage_max":      config.get("slippage_max", 0.15),
+        "min_liquidity":     config.get("min_liquidity", 0.0),
+        "binary_only":       config.get("binary_only", False),
+        # Punt mode
+        "punt_mode":            config.get("punt_mode", True),
+        "punt_max_position_usd": config.get("punt_max_position_usd", 15.0),
+        "punt_price_ceiling":   config.get("punt_price_ceiling", 0.06),
+        "punt_min_edge":        config.get("punt_min_edge", 0.50),
+        "punt_min_confidence":  config.get("punt_min_confidence", 0.70),
+        "punt_daily_budget_usd": config.get("punt_daily_budget_usd", 100.0),
+        # Discovery
+        "discovery_cache_minutes": config.get("discovery_cache_minutes", 180),
+        "forecast_cache_disk":     config.get("forecast_cache_disk", True),
+        "concurrent_scans":        config.get("concurrent_scans", True),
+        "log_level":              config.get("log_level", "INFO"),
+        # Models
+        "ensemble_models": ensemble_models,
+        "models_count": len(ensemble_models),
+        # Cities
+        "locations": locations,
+        # API keys (presence only, never the actual key)
+        "has_simmer_key": has_simmer,
+        "has_openai_key": has_openai,
+    }
 
 
 if __name__ == "__main__":

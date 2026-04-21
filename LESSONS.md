@@ -165,6 +165,32 @@ terminal("python3.12 dashboard.py", background=True)
 
 ---
 
+## 2026-04-21 — WSL: `terminal(background=True)` Also Fails for dashboard.py
+
+**Symptom:** `terminal(background=True, command="python3.12 /path/to/dashboard.py")` returns `Failed to start background process: [Errno 2] No such file or directory: 'None'`. Same failure mode across multiple invocations.
+
+**Root cause:** The Hermes terminal tool's background=True path has an internal bug/assertion failure when the working directory doesn't exist or the Python path can't be resolved. It produces no useful error.
+
+**Working workaround — use execute_code subprocess:**
+```python
+import subprocess, time
+subprocess.run(["pkill", "-f", "dashboard.py"], capture_output=True)
+time.sleep(1)
+proc = subprocess.Popen(
+    ["python3.12", "/home/brandon/.hermes/skills/solebrace-skills/polymarket-weather-trader/dashboard.py"],
+    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+)
+time.sleep(3)  # wait for uvicorn to bind
+# test
+import requests
+r = requests.get("http://localhost:8414/api/config", timeout=5)
+print(r.json())
+```
+
+**Alternative:** Use `hermes gateway restart --all` to restart all registered services including the dashboard if it's a registered gateway service.
+
+---
+
 ## 2026-04-20 — Weak Signal Override Caused Bad Trade Entry
 
 **Symptom:** NYC 58-59°F Apr 22 entered at $0.11 with `weak` signal (10.4° spread). Loss expected.
@@ -211,3 +237,41 @@ rm data/forecast_cache.json && python3.12 weather_trader.py --dry-run
 **Verification:** After fix, scan re-downloaded fresh 8.1MB `latest_cf.grib2` from ECMWF AWS S3 and returned valid forecast data.
 
 **Note:** The PF (perturbed forecast) file is ~39MB and download times out on slow connections. If PF times out, the scan still returns valid results using CF (control forecast) only — PF is part of the ensemble spread calculation but not critical for core functionality.
+
+---
+
+## 2026-04-21 — Gamma Integer IDs vs CLOB UUIDs: `_fetch_live_price` Returns $0 for HK/SZ
+
+**Symptom:** Dashboard showed Hong Kong and Shenzhen positions with `current_price = $0.000` and `uPNL = $0.00` even though both markets were still live and trading.
+
+**Root cause:** Two different market ID formats exist in Polymarket's ecosystem:
+
+| Format | Example | Source |
+|--------|---------|--------|
+| CLOB UUID | `ef0583a5-3d4e-4003-8ebd-6eebf1c969fb` | Bot-generated trades via CLOB API |
+| Gamma integer | `2019315`, `2019436` | Manual entries via Gamma UI; older or hand-placed trades |
+
+`_fetch_live_price()` in `dashboard.py` only called the Simmer API (`api.simmer.markets/api/sdk/context/{id}`) which **resolves CLOB UUIDs but returns nothing for Gamma integer IDs** — silently, with no error.
+
+The HK and SZ manual entries (backfilled from the bucket-match bug) both used Gamma integer IDs, so their prices were permanently $0.
+
+**Fix:** `_fetch_live_price()` now branches on ID format:
+- **If `market_id.isdigit()`** (integer): route through `GET https://gamma-api.polymarket.com/markets/{id}` → extract `clobTokenIds` (first element = YES token) → `GET https://clob.polymarket.com/price?token_id=...&side=buy`
+- **Otherwise** (UUID): use Simmer API as before
+
+**Files touched:** `dashboard.py` — `_fetch_live_price()` function (~line 899)
+
+**API test (live):**
+```
+GET https://gamma-api.polymarket.com/markets/2019315
+→ clobTokenIds[0] = "31522716..."  (YES token)
+→ GET https://clob.polymarket.com/price?token_id=31522...&side=buy
+→ {"price": "0.4"}  → HK current_price = $0.40 ✓
+
+GET https://gamma-api.polymarket.com/markets/2019436
+→ clobTokenIds[0] = "21667742..."  (YES token)
+→ GET https://clob.polymarket.com/price?token_id=21667...&side=buy
+→ {"price": "0.2"}  → SZ current_price = $0.20 ✓
+```
+
+**Pattern to remember:** Any time you see `$0.00` uPNL for active Polymarket positions, check whether the `market_id` is a plain integer. If so, the Gamma→CLOB path is required. Simmer only handles CLOB UUIDs.
