@@ -61,6 +61,28 @@ except ImportError:
     def get_open_positions(): return []
     def get_stats(): return {}
 
+# --------------------------------------------------------------------
+# Error log — all non-200 responses, API errors, and unexpected
+# exceptions are written here as structured JSON lines so the cron
+# output stays clean and errors persist for post-mortem analysis.
+# --------------------------------------------------------------------
+_ERRORS_LOG = _p.Path(__file__).parent / "data" / "errors.log"
+
+def log_error(kind: str, msg: str, **ctx):
+    """Append a structured entry to data/errors.log."""
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "kind": kind,
+        "msg": msg,
+        **ctx,
+    }
+    try:
+        _ERRORS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(_ERRORS_LOG, "a") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass  # Never let logging itself break the bot
+
 # Forecast accuracy history (observability only — doesn't affect trading)
 try:
     from forecast_history import log_forecast
@@ -246,6 +268,7 @@ def simmer_call(fn, *args, _label: str = None, **kwargs):
             return fn(*args, **kwargs)
         except Exception as exc:
             if not _is_429(exc):
+                log_error("api_error", str(exc), label=_label, fn=fn.__name__ if hasattr(fn, "__name__") else None)
                 raise
             # Record the 429 and check the breaker
             with _throttle_lock:
@@ -710,7 +733,8 @@ def get_market_context(market_id: str, my_probability: float = None) -> dict:
             data = simmer_call(get_client().get_market_context, market_id, _label="context")
         _context_cache[cache_key] = (now + _CONTEXT_CACHE_TTL, data)
         return data
-    except Exception:
+    except Exception as e:
+        log_error("context_fetch", str(e), market_id=market_id)
         return None
 
 
@@ -724,7 +748,8 @@ def get_price_history(market_id: str) -> list:
         data = simmer_call(get_client().get_price_history, market_id, _label="price_history")
         _history_cache[market_id] = (now + _HISTORY_CACHE_TTL, data)
         return data
-    except Exception:
+    except Exception as e:
+        log_error("price_history", str(e), market_id=market_id)
         return []
 
 
@@ -1163,6 +1188,7 @@ def discover_and_import_weather_markets(log=print):
                             return imported_count
                     else:
                         log(f"  Discovery search failed for '{term}': {e}")
+                        log_error("discovery_search", str(e), location=term)
                         break
 
             for m in results:
@@ -1191,8 +1217,10 @@ def discover_and_import_weather_markets(log=print):
                     err_str = str(e)
                     if "rate limit" in err_str.lower() or "429" in err_str:
                         log(f"  Import rate limit reached — stopping discovery")
+                        log_error("import_rate_limit", err_str, location=location)
                         _save_cache()
                         return imported_count
+                    log_error("import_failed", err_str, location=location, url=url)
                     log(f"  Import failed for {url[:50]}: {e}")
 
         # Mark location as scanned successfully
@@ -1636,8 +1664,10 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         agreement_pct = forecasts.get("agreement_pct", 0)
         spread = forecasts.get("max_delta")
         if forecast_temp is None:
+            err_msg = forecasts.get("error", "unknown")
             log(f"  ⚠️  No ensemble forecast for {date_str} (signal: {signal_strength})")
-            skip_reasons.append(f"no forecast: {forecasts.get('error', 'unknown')}")
+            skip_reasons.append(f"no forecast: {err_msg}")
+            log_error("no_forecast", err_msg, location=location, date=date_str, metric=metric, signal=signal_strength)
             continue
 
         unit_label = "°F"
