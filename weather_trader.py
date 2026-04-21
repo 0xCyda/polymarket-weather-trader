@@ -1383,11 +1383,15 @@ def check_signal_invalidation(dry_run: bool = False, log=print) -> tuple:
     Re-evaluate open paper trades against the latest ensemble forecast.
     If the models no longer support the position, exit early.
 
-    Triggers:
-      1. Forecast moved outside held bucket range by >2°
-      2. Signal degraded to "weak" (was strong/moderate at entry)
-      3. Model agreement collapsed (< 50%)
-      4. METAR afternoon obs outside bucket (D+0 high only, after 14:00 local)
+    Triggers (scaled by days-to-resolution):
+      1. Forecast drift outside held bucket — D+0: >2°, D+1: >3°, D+2+: >5°
+      2. Signal degraded to "weak" — D+0 and D+1 only
+      3. Agreement collapsed below 50% — D+0 and D+1 only
+      4. METAR contradiction — D+0 afternoon only
+
+    Exit price: entry_price × 0.5 (conservative ~50% recovery estimate).
+    We do NOT use model-implied bucket probability because it can diverge
+    wildly from the actual market price, creating fake near-total losses.
 
     Returns: (checked, invalidated)
     """
@@ -1405,6 +1409,7 @@ def check_signal_invalidation(dry_run: bool = False, log=print) -> tuple:
     log(f"\n🔄 Signal invalidation check: {len(open_trades)} open position(s)...")
     checked = 0
     invalidated = 0
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     for trade in open_trades:
         location = trade.get("location")
@@ -1413,7 +1418,6 @@ def check_signal_invalidation(dry_run: bool = False, log=print) -> tuple:
         bucket_str = trade.get("bucket", "")
         entry_signal = trade.get("signal_strength", "")
         entry_agreement = trade.get("agreement_pct", 100)
-        entry_forecast = trade.get("forecast_temp")
         trade_id = trade.get("trade_id")
 
         if not location or not date_str or not bucket_str:
@@ -1424,6 +1428,15 @@ def check_signal_invalidation(dry_run: bool = False, log=print) -> tuple:
         if not parsed:
             continue
         lo, hi, bucket_unit = parsed
+
+        # Days until resolution — scale trigger thresholds accordingly
+        try:
+            from datetime import date as _date
+            target = _date.fromisoformat(date_str)
+            today = _date.fromisoformat(today_str)
+            days_out = max(0, (target - today).days)
+        except Exception:
+            days_out = 99
 
         checked += 1
         reasons = []
@@ -1441,29 +1454,31 @@ def check_signal_invalidation(dry_run: bool = False, log=print) -> tuple:
         new_agreement = forecast.get("agreement_pct", 100)
         new_spread = forecast.get("max_delta")
         metar_temp = forecast.get("metar_temp")
-        metar_adjusted = forecast.get("metar_adjusted", False)
 
         if new_temp is None:
             continue
 
-        # --- Trigger 1: forecast moved outside bucket by >2° ---
+        # --- Trigger 1: forecast moved outside bucket ---
+        # Threshold widens with days-to-resolution: D+0=2°, D+1=3°, D+2+=5°
+        drift_threshold = {0: 2.0, 1: 3.0}.get(days_out, 5.0)
         bucket_lo = lo if lo != -999 else new_temp - 50
         bucket_hi = hi if hi != 999 else new_temp + 50
-        if new_temp < bucket_lo - 2:
-            reasons.append(f"forecast {new_temp:.1f}° dropped below bucket [{lo}–{hi}] by {bucket_lo - new_temp:.1f}°")
-        elif new_temp > bucket_hi + 2:
-            reasons.append(f"forecast {new_temp:.1f}° rose above bucket [{lo}–{hi}] by {new_temp - bucket_hi:.1f}°")
+        if new_temp < bucket_lo - drift_threshold:
+            reasons.append(f"forecast {new_temp:.1f}° dropped {bucket_lo - new_temp:.1f}° below bucket [{lo}–{hi}] (D+{days_out}, threshold {drift_threshold}°)")
+        elif new_temp > bucket_hi + drift_threshold:
+            reasons.append(f"forecast {new_temp:.1f}° rose {new_temp - bucket_hi:.1f}° above bucket [{lo}–{hi}] (D+{days_out}, threshold {drift_threshold}°)")
 
-        # --- Trigger 2: signal degraded to weak ---
-        if new_signal == "weak" and entry_signal in ("strong", "moderate"):
-            reasons.append(f"signal degraded {entry_signal} → weak")
+        # --- Trigger 2: signal degraded to weak (D+0 and D+1 only) ---
+        # D+2+ forecasts naturally fluctuate — don't penalize signal swings
+        if days_out <= 1 and new_signal == "weak" and entry_signal in ("strong", "moderate"):
+            reasons.append(f"signal degraded {entry_signal} → weak (D+{days_out})")
 
-        # --- Trigger 3: agreement collapsed (<50%) ---
-        if new_agreement < 50.0 and entry_agreement >= 70.0:
-            reasons.append(f"agreement collapsed {entry_agreement:.0f}% → {new_agreement:.0f}%")
+        # --- Trigger 3: agreement collapsed <50% (D+0 and D+1 only) ---
+        if days_out <= 1 and new_agreement < 50.0 and entry_agreement >= 70.0:
+            reasons.append(f"agreement collapsed {entry_agreement:.0f}% → {new_agreement:.0f}% (D+{days_out})")
 
-        # --- Trigger 4: METAR contradicts bucket (D+0 high, afternoon) ---
-        if metar_temp is not None and metric == "high":
+        # --- Trigger 4: METAR contradicts bucket (D+0 high, afternoon only) ---
+        if days_out == 0 and metar_temp is not None and metric == "high":
             from zoneinfo import ZoneInfo
             try:
                 loc_data = INTERNATIONAL_LOCATIONS.get(location) or LOCATIONS.get(location) or {}
@@ -1479,20 +1494,14 @@ def check_signal_invalidation(dry_run: bool = False, log=print) -> tuple:
         if not reasons:
             continue
 
-        # Signal invalidated — exit this position
-        reason_str = "; ".join(reasons)
-        log(f"  ⚠️  {location} {date_str} bucket [{bucket_str}]: INVALIDATED")
+        # Signal invalidated — exit at ~50% of entry (conservative recovery estimate).
+        entry_price = trade.get("entry_price", 0)
+        exit_price = round(entry_price * 0.5, 4)
+
+        log(f"  ⚠️  {location} {date_str} bucket [{bucket_str}] (D+{days_out}): INVALIDATED")
         for r in reasons:
             log(f"      → {r}")
-
-        # Estimate exit price from updated bucket probability
-        new_prob = _bucket_probability(lo, hi, new_temp, new_spread or 4.0)
-        exit_price = round(max(0.01, min(0.99, new_prob)), 4)
-
-        if dry_run:
-            log(f"      [PAPER] Closing at estimated ${exit_price:.4f} (was entry ${trade.get('entry_price', 0):.4f})")
-        else:
-            log(f"      Closing at estimated ${exit_price:.4f}")
+        log(f"      Closing at ${exit_price:.4f} (~50% of entry ${entry_price:.4f})")
 
         # Close in paper journal
         try:
@@ -1517,6 +1526,7 @@ def check_signal_invalidation(dry_run: bool = False, log=print) -> tuple:
                         "agreement": new_agreement,
                         "spread": new_spread,
                         "metar": metar_temp,
+                        "days_out": days_out,
                     }
                     if pnl < 0:
                         log_loss(t)
