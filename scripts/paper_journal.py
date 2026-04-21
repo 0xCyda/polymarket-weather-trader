@@ -539,7 +539,7 @@ def get_stats() -> dict:
         "resolved_trades": len(resolved),
         "wins": len(wins),
         "losses": len(losses),
-        "win_rate": round(len(wins) / len(resolved) * 100, 1) if resolved else None,
+        "win_rate": round(len(wins) / (len(wins) + len(losses)) * 100, 1) if (wins or losses) else None,
         "total_pnl": round(sum(pnls), 4),
         "avg_pnl": round(sum(pnls) / len(pnls), 4) if pnls else 0.0,
         "best_trade": max(pnls) if pnls else None,
