@@ -1378,7 +1378,7 @@ def calculate_position_size(default_size: float, smart_sizing: bool) -> float:
 # Exit Strategy
 # =============================================================================
 
-def check_signal_invalidation(dry_run: bool = False) -> tuple:
+def check_signal_invalidation(dry_run: bool = False, log=print) -> tuple:
     """
     Re-evaluate open paper trades against the latest ensemble forecast.
     If the models no longer support the position, exit early.
@@ -2374,7 +2374,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 log(f"  ❌ Punt trade failed: {result.get('error', 'unknown')}", force=True)
 
     # Signal invalidation: re-evaluate open positions against latest forecast
-    inv_checked, inv_closed = check_signal_invalidation(dry_run)
+    inv_checked, inv_closed = check_signal_invalidation(dry_run, log)
 
     exits_found, exits_executed = check_exit_opportunities(dry_run, use_safeguards)
 
