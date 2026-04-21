@@ -120,10 +120,11 @@ class TestParseMarketBucket(unittest.TestCase):
     """Verify the market-dict bucket extractor handles common Simmer/Polymarket shapes."""
 
     def test_outcome_name_has_bucket(self):
+        # question is now parsed first (outcome_name can be stale/wrong)
         market = {"outcome_name": "28°C", "question": "Will the highest temperature in Hong Kong be 28°C on April 21?"}
         bucket, label = parse_market_bucket(market)
         self.assertEqual(bucket, (28, 28, "C"))
-        self.assertEqual(label, "28°C")
+        self.assertIn("28°C", label)
 
     def test_outcome_name_yes_falls_back_to_question(self):
         # The bug we just fixed: Polymarket sometimes returns outcome_name="Yes"
