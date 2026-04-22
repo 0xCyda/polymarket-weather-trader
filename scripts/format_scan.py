@@ -30,6 +30,28 @@ DEFAULT_LOCATIONS = (
 )
 
 
+_CITY_DIFFICULTY = {
+    "TEL AVIV":      "easy",
+    "WARSAW":        "easy",
+    "SAN FRANCISCO": "easy",
+    "LOS ANGELES":   "easy",
+    "MILAN":         "easy",
+    "CHENGDU":       "easy",
+    "HOUSTON":       "easy",
+    "MUNICH":        "easy",
+    "SEOUL":         "easy",
+    "TOKYO":         "hard",
+    "SHANGHAI":      "hard",
+    "WELLINGTON":    "hard",
+    "BEIJING":       "hard",
+    "WUHAN":         "hard",
+}
+
+
+def city_tier(location: str) -> str:
+    return _CITY_DIFFICULTY.get((location or "").upper(), "medium")
+
+
 def get_awst_time():
     awst = tz.gettz("Australia/Perth")
     return datetime.now(awst).strftime("%Y-%m-%d %H:%M AWST")
@@ -226,6 +248,7 @@ def get_positions():
             else:
                 pos["current_price"] = 0.0
                 pos["upnl"] = 0.0
+            pos["tier"] = city_tier(pos.get("location", ""))
         return positions
     except Exception:
         return []
