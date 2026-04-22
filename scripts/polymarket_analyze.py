@@ -28,6 +28,13 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
+# Force UTF-8 output on Windows (cp1252 can't encode many chars used in market titles)
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 DATA_API = "https://data-api.polymarket.com"
 GAMMA_API = "https://gamma-api.polymarket.com"
 
@@ -262,9 +269,9 @@ def analyze(positions: list[dict], label: str) -> None:
         print(f"  Avg winner:     ${avg_w:,.2f}  (n={len(winner_sizes)})")
         print(f"  Avg loser:      ${avg_l:,.2f}  (n={len(loser_sizes)})")
         if ratio > 1.2:
-            print(f"  ⚠️  Losers {ratio:.1f}× larger than winners — sizing problem")
+            print(f"  [!] Losers {ratio:.1f}x larger than winners - sizing problem")
         elif ratio < 0.8:
-            print(f"  ✓  Winners {1/ratio:.1f}× larger than losers — good sizing")
+            print(f"  [OK] Winners {1/ratio:.1f}x larger than losers - good sizing")
 
     valid_sizes = [s for s in sizes if s > 0]
     if valid_sizes:
