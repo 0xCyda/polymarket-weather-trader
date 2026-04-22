@@ -24,9 +24,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 # Add scripts/ to path for paper_journal
 _BASE = Path(__file__).resolve().parent
-sys.path.insert(0, str(_BASE / "scripts"))
-from paper_journal import get_stats, get_open_positions, get_resolved_trades, _load_trades
-
 SKILL_DIR = _BASE
 DATA_DIR = SKILL_DIR / "data"
 SCAN_LOG = DATA_DIR / "forecast_history.jsonl"
@@ -142,12 +139,16 @@ DASHBOARD_HTML = """
 
     /* Header */
     .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: start;
       gap: 16px;
-      margin-bottom: 24px;
+      margin-bottom: 28px;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .header-left .subtitle {
       color: var(--text-secondary);
@@ -277,6 +278,25 @@ DASHBOARD_HTML = """
     @media (max-width: 960px) {
       .layout-main, .layout-split { grid-template-columns: 1fr; }
       body { padding: 20px 16px; }
+      .header {
+        grid-template-columns: 1fr 1fr;
+      }
+      .header-left {
+        grid-column: 1 / -1;
+      }
+    }
+    @media (max-width: 600px) {
+      .header {
+        grid-template-columns: 1fr;
+      }
+      .header-right {
+        justify-content: flex-start;
+      }
+      h1 { font-size: 22px; }
+      body { padding: 16px 12px 40px; }
+      .grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
     }
 
     /* Tables */
@@ -482,7 +502,7 @@ DASHBOARD_HTML = """
     <table id="positions-table"></table>
   </div>
   <div class="card">
-    <h2>AIFS ENS Signals</h2>
+    <h2>AIFS ENS Signals <span id="signals-scan-time" class="faint" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:4px"></span></h2>
     <div id="signals-list"></div>
   </div>
 </div>
@@ -647,6 +667,10 @@ function renderCards(d) {
       tone: winRate >= 55 ? 'positive' : winRate < 45 && winRate != null ? 'negative' : null,
       sub: `${d.stats.wins || 0}W · ${d.stats.losses || 0}L`,
     }),
+    metricCard('Today P&L', fmtPnl(d.stats.today_pnl || 0), {
+      tone: (d.stats.today_pnl || 0) > 0 ? 'positive' : (d.stats.today_pnl || 0) < 0 ? 'negative' : null,
+      sub: `${d.stats.today_trades || 0} resolved today`,
+    }),
     metricCard('Open', String(d.stats.open_trades || 0), {sub: 'positions'}),
     metricCard('Resolved', String(d.stats.resolved_trades || 0), {sub: 'settled'}),
     metricCard('Total', String(d.stats.total_trades || 0), {sub: 'all trades'}),
@@ -773,6 +797,17 @@ function renderSignals(d) {
   const container = document.getElementById('signals-list');
   // Accept either state object ({signals: [...]}) or bare array for re-render
   const signals = Array.isArray(d) ? d : (d && d.signals) || [];
+
+  // Update last scan time badge
+  const scanTimeEl = document.getElementById('signals-scan-time');
+  if (scanTimeEl && !Array.isArray(d) && d.signals_last_scan) {
+    const scanTime = new Date(d.signals_last_scan);
+    const agoMs = Date.now() - scanTime.getTime();
+    const agoMin = Math.round(agoMs / 60000);
+    const agoStr = agoMin < 60 ? `${agoMin}m ago` : `${Math.round(agoMin / 60)}h ago`;
+    scanTimeEl.textContent = `· scan ${agoStr}`;
+  }
+
   if (!signals.length) {
     container.innerHTML = emptyState('📡', 'No signals in latest scan');
     return;
@@ -790,7 +825,11 @@ function renderSignals(d) {
   container.innerHTML = visible.map(s => `
     <div class="signal-row">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <span style="font-weight:600;color:var(--text-primary);font-size:14px">${s.location}</span>
+        <span style="font-weight:600;color:var(--text-primary);font-size:14px">${
+          s.polymarket_url
+            ? `<a class="pm-link" href="${s.polymarket_url}" target="_blank" rel="noopener">${s.location}</a>`
+            : s.location
+        }</span>
         <span class="mono" style="font-size:11px">${s.date}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;gap:8px">
@@ -798,7 +837,7 @@ function renderSignals(d) {
         ${signalBadge(s.signal)}
       </div>
       <div class="faint" style="margin-top:4px">
-        ${s.models} models · spread <span class="mono">${fmtSpreadForLoc(s.location, s.spread)}</span>${s.agree !== 'N/A' ? ' · ' + s.agree + '% agree' : ''}
+        ${s.models} models · spread <span class="mono">${fmtSpreadForLoc(s.location, s.spread)}</span>${s.agree !== 'N/A' ? ' · ' + s.agree + ' agree' : ''}
       </div>
     </div>
   `).join('');
@@ -837,7 +876,7 @@ function renderResolved(d) {
   const start = page * RESOLVED_PAGE_SIZE;
   const slice = sorted.slice(start, start + RESOLVED_PAGE_SIZE);
 
-  const headers = ['Market', 'Strategy', 'Outcome', 'Entry', 'Exit', 'Shares', 'P&L', 'Resolved'];
+  const headers = ['Location', 'Strategy', 'Outcome', 'Entry', 'Exit', 'Shares', 'P&L', 'Resolved'];
   const rows = slice.map(t => {
     const exit = Number(t.exit_price || 0);
     const entry = Number(t.entry_price || 0);
@@ -1250,6 +1289,7 @@ def _parse_signals_from_history() -> list[dict]:
                 "models": str(models) if models else "—",
                 "agree": str(round(float(agree), 1)) + "%" if agree not in ("", None) else "N/A",
                 "spread": str(spread) if spread not in ("", None) else "—",
+                "polymarket_url": polymarket_event_url(loc, date, metric),
             })
     signals.sort(key=lambda s: (
         {"strong": 0, "moderate": 1, "weak": 2}.get(s["signal"], 3),
@@ -1275,10 +1315,16 @@ def _get_stats() -> dict:
     trades = _load_trades_jsonl(PAPER_TRADES)
     resolved = [t for t in trades if t.get("status") == "resolved"]
     open_trades = [t for t in trades if t.get("status") == "open"]
+
+    today = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%Y-%m-%d")
+    today_resolved = [t for t in resolved if (t.get("resolved_at") or "")[:10] == today]
+    today_pnl = round(sum(float(t.get("pnl") or 0) for t in today_resolved), 2)
+
     if not resolved:
         return dict(total_trades=len(trades), open_trades=len(open_trades),
                     resolved_trades=0, wins=0, losses=0, win_rate=None,
-                    total_pnl=0.0, avg_pnl=0.0, best_trade=None, worst_trade=None)
+                    total_pnl=0.0, avg_pnl=0.0, best_trade=None, worst_trade=None,
+                    today_pnl=today_pnl, today_trades=len(today_resolved))
     pnls = [float(t.get("pnl") or 0) for t in resolved]
     wins = [p for p in pnls if p > 0]
     losses = [p for p in pnls if p < 0]
@@ -1293,7 +1339,37 @@ def _get_stats() -> dict:
         avg_pnl=round(sum(pnls) / len(pnls), 4) if pnls else 0.0,
         best_trade=max(pnls) if pnls else None,
         worst_trade=min(pnls) if pnls else None,
+        today_pnl=today_pnl,
+        today_trades=len(today_resolved),
     )
+
+
+def _get_last_scan_time() -> str | None:
+    """Return most recent scan time — prefers forecast_history logged_at, falls back to forecast_cache mtime."""
+    history = _load_trades_jsonl(SCAN_LOG)
+    last_logged: datetime | None = None
+    for e in reversed(history):
+        if isinstance(e, dict) and e.get("logged_at"):
+            try:
+                last_logged = datetime.fromisoformat(e["logged_at"])
+            except ValueError:
+                pass
+            break
+
+    # Check forecast_cache mtime as fallback (written by weather_trader on every run)
+    cache_path = SKILL_DIR / "scripts" / "data" / "forecast_cache.json"
+    last_cache: datetime | None = None
+    if cache_path.exists():
+        mtime = cache_path.stat().st_mtime
+        last_cache = datetime.fromtimestamp(mtime, tz=timezone.utc)
+
+    if last_logged and last_cache:
+        return max(last_logged, last_cache).isoformat()
+    if last_cache:
+        return last_cache.isoformat()
+    if last_logged:
+        return last_logged.isoformat()
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1359,6 +1435,7 @@ def api_state():
         "timeseries": _build_timeseries(trades),
         "positions": positions,
         "signals": _parse_signals_from_history(),
+        "signals_last_scan": _get_last_scan_time(),
         "resolved": [
             {
                 "question": t.get("question", ""),
