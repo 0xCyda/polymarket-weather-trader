@@ -175,9 +175,21 @@ def _fetch_market_resolution(market_id: str) -> dict | None:
         m = data.get("market", {}) if isinstance(data, dict) else {}
         if not m:
             return None
+        resolved = m.get("status") == "resolved"
+        outcome = m.get("outcome")
+        # Simmer often leaves outcome=None even for resolved markets.
+        # Infer from final settlement price: <0.05 = NO, >0.95 = YES.
+        # Mid-range (0.05–0.95) stays None so historical fallback can settle.
+        if outcome is None and resolved:
+            price = m.get("current_price", 0.5)
+            if isinstance(price, (int, float)):
+                if price < 0.05:
+                    outcome = "no"
+                elif price > 0.95:
+                    outcome = "yes"
         return {
-            "resolved": m.get("status") == "resolved",
-            "outcome": m.get("outcome"),
+            "resolved": resolved,
+            "outcome": outcome,
             "end_date_utc": m.get("resolves_at", ""),
             "question": m.get("question", ""),
         }
@@ -311,16 +323,19 @@ def _parse_bucket_range(bucket_str: str) -> tuple | None:
 
 
 # Days past target_date before we fall back to historical-temp settlement
-_FALLBACK_DAYS_PAST = 2
+_FALLBACK_DAYS_PAST = 1
 
 
-def _historical_fallback_settlement(trade: dict) -> dict | None:
+def _historical_fallback_settlement(trade: dict, force: bool = False) -> dict | None:
     """
     Settle a stuck-open trade by checking the actual observed temperature
     against the bucket range via Open-Meteo archive.
 
     Returns {"outcome": "yes"/"no", "exit_price": 0.0|1.0, "actual_temp": float,
     "source": "historical_fallback"} or None if we can't determine.
+
+    force=True bypasses the _FALLBACK_DAYS_PAST guard (used when Simmer already
+    confirms resolved=True but outcome is ambiguous — no point waiting an extra day).
     """
     target_date = trade.get("target_date")
     location = trade.get("location")
@@ -334,7 +349,7 @@ def _historical_fallback_settlement(trade: dict) -> dict | None:
         target = datetime.strptime(target_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     except ValueError:
         return None
-    if (datetime.now(timezone.utc) - target).days < _FALLBACK_DAYS_PAST:
+    if not force and (datetime.now(timezone.utc) - target).days < _FALLBACK_DAYS_PAST:
         return None
 
     actual = fetch_historical_temp(location, target_date, metric, unit="F")
@@ -404,8 +419,11 @@ def update_resolved_trades() -> list:
             exit_price = 1.0 if outcome.lower() in ("yes", "true") else 0.0
             source = "simmer"
         else:
-            # Path 2: historical fallback (Simmer outcome=None OR just expired)
-            fb = _historical_fallback_settlement(trade)
+            # Path 2: historical fallback (Simmer outcome=None OR just expired).
+            # Pass force=True when Simmer already confirmed resolved — no point
+            # waiting _FALLBACK_DAYS_PAST extra days for Open-Meteo data.
+            simmer_resolved = bool(resolution and resolution.get("resolved"))
+            fb = _historical_fallback_settlement(trade, force=simmer_resolved)
             if fb:
                 outcome = fb["outcome"]
                 exit_price = fb["exit_price"]

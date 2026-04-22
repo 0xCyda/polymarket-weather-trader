@@ -175,18 +175,26 @@ def compute_upnl(position):
 
 
 def _fetch_live_price(market_id, api_key):
-    """Fetch current price for a market from Simmer API. Returns float or None."""
+    """Fetch current price for a market from Simmer API. Returns float or None.
+
+    Returns None for resolved markets with ambiguous price (0.05–0.95) so callers
+    don't display a fake uPNL based on stale mid-price.
+    """
     try:
         import json
         from urllib.request import urlopen, Request
-        from urllib.error import HTTPError, URLError
         url = f"https://api.simmer.markets/api/sdk/context/{market_id}"
         req = Request(url, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"})
         with urlopen(req, timeout=15) as resp:
             result = json.loads(resp.read().decode())
-        if isinstance(result, dict):
-            return float(result.get("market", {}).get("current_price", 0))
-        return None
+        if not isinstance(result, dict):
+            return None
+        m = result.get("market", {})
+        price = float(m.get("current_price", 0))
+        # Resolved markets with ambiguous price can't be trusted for uPNL
+        if m.get("status") == "resolved" and 0.05 <= price <= 0.95:
+            return None
+        return price
     except Exception:
         return None
 
