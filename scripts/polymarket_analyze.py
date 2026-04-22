@@ -22,8 +22,9 @@ import sys
 import time
 from collections import Counter, defaultdict
 from typing import Any
-
-import requests
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 DATA_API = "https://data-api.polymarket.com"
 GAMMA_API = "https://gamma-api.polymarket.com"
@@ -40,17 +41,25 @@ CITIES = [
 
 
 def _get(url: str, params: dict | None = None, retries: int = 3) -> Any:
-    """GET with basic retry and rate-limit tolerance."""
+    """GET with basic retry and rate-limit tolerance. Uses stdlib urllib."""
+    if params:
+        url = f"{url}?{urlencode(params)}"
     for attempt in range(retries):
         try:
-            r = requests.get(url, params=params, timeout=20)
-            if r.status_code == 200:
-                return r.json()
-            if r.status_code == 429:
+            req = Request(url, headers={"User-Agent": "polymarket-weather-trader/1.0"})
+            with urlopen(req, timeout=20) as resp:
+                return json.loads(resp.read().decode())
+        except HTTPError as e:
+            if e.code == 429:
                 time.sleep(2 ** attempt)
                 continue
-            print(f"  {r.status_code} on {url}: {r.text[:100]}", file=sys.stderr)
+            print(f"  {e.code} on {url}: {e.reason}", file=sys.stderr)
             return None
+        except URLError as e:
+            if attempt == retries - 1:
+                print(f"  error on {url}: {e.reason}", file=sys.stderr)
+                return None
+            time.sleep(2 ** attempt)
         except Exception as e:
             if attempt == retries - 1:
                 print(f"  error on {url}: {e}", file=sys.stderr)
