@@ -182,6 +182,13 @@ DASHBOARD_HTML = """
     }
     .tab-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
     .tab-btn.active { background: rgba(96,165,250,0.12); border-color: var(--accent-blue); color: var(--accent-blue); }
+    .pager-btn {
+      background: rgba(96,165,250,0.08); border: 1px solid var(--border-subtle);
+      color: var(--text-secondary); padding: 5px 12px; border-radius: 6px;
+      cursor: pointer; font-size: 0.8rem; font-family: inherit;
+    }
+    .pager-btn:hover:not(:disabled) { border-color: var(--accent-blue); color: var(--accent-blue); }
+    .pager-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
     .config-section { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 14px 16px; }
     .config-section h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary); margin: 0 0 10px 0; }
@@ -481,8 +488,9 @@ DASHBOARD_HTML = """
 </div>
 
 <div class="card table-wrap" style="margin-top:20px">
-  <h2>Recent Resolved Trades</h2>
+  <h2>Resolved Trades</h2>
   <table id="resolved-table"></table>
+  <div id="resolved-pager" style="margin-top:12px;display:flex;align-items:center;justify-content:flex-end;gap:4px"></div>
 </div>
 </div><!-- end #tab-overview -->
 
@@ -763,59 +771,74 @@ function renderPositions(d) {
 
 function renderSignals(d) {
   const container = document.getElementById('signals-list');
-  if (!d.signals.length) {
+  // Accept either state object ({signals: [...]}) or bare array for re-render
+  const signals = Array.isArray(d) ? d : (d && d.signals) || [];
+  if (!signals.length) {
     container.innerHTML = emptyState('📡', 'No signals in latest scan');
     return;
   }
 
   const SIGNAL_ORDER = { strong: 0, moderate: 1, weak: 2 };
-  const sorted = [...d.signals].sort((a, b) =>
+  const sorted = [...signals].sort((a, b) =>
     (SIGNAL_ORDER[a.signal] ?? 3) - (SIGNAL_ORDER[b.signal] ?? 3)
   );
 
   const INITIAL = 5;
   if (window._signalExpanded === undefined) window._signalExpanded = false;
 
-  function render() {
-    const visible = window._signalExpanded ? sorted : sorted.slice(0, INITIAL);
-    container.innerHTML = visible.map(s => `
-      <div class="signal-row">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <span style="font-weight:600;color:var(--text-primary);font-size:14px">${s.location}</span>
-          <span class="mono" style="font-size:11px">${s.date}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;gap:8px">
-          <span style="color:var(--text-secondary);font-size:13px"><span class="mono">${fmtTempForLoc(s.location, s.temp)}</span> · ${s.metric}</span>
-          ${signalBadge(s.signal)}
-        </div>
-        <div class="faint" style="margin-top:4px">
-          ${s.models} models · spread <span class="mono">${fmtSpreadForLoc(s.location, s.spread)}</span>${s.agree !== 'N/A' ? ' · ' + s.agree + '% agree' : ''}
-        </div>
+  const visible = window._signalExpanded ? sorted : sorted.slice(0, INITIAL);
+  container.innerHTML = visible.map(s => `
+    <div class="signal-row">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <span style="font-weight:600;color:var(--text-primary);font-size:14px">${s.location}</span>
+        <span class="mono" style="font-size:11px">${s.date}</span>
       </div>
-    `).join('');
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:5px;gap:8px">
+        <span style="color:var(--text-secondary);font-size:13px"><span class="mono">${fmtTempForLoc(s.location, s.temp)}</span> · ${s.metric}</span>
+        ${signalBadge(s.signal)}
+      </div>
+      <div class="faint" style="margin-top:4px">
+        ${s.models} models · spread <span class="mono">${fmtSpreadForLoc(s.location, s.spread)}</span>${s.agree !== 'N/A' ? ' · ' + s.agree + '% agree' : ''}
+      </div>
+    </div>
+  `).join('');
 
-    if (sorted.length > INITIAL) {
-      container.innerHTML += `
-        <button id="signal-toggle" onclick="window._signalExpanded=!window._signalExpanded;renderSignals(window._lastSignals)" style="
-          width:100%;margin-top:10px;padding:7px;background:rgba(96,165,250,0.08);border:1px solid var(--border-subtle);
-          border-radius:6px;color:var(--text-secondary);font-size:12px;cursor:pointer;
-        ">Show ${window._signalExpanded ? 'less' : 'more'} (${sorted.length - INITIAL} more)</button>
-      `;
-    }
+  if (sorted.length > INITIAL) {
+    container.innerHTML += `
+      <button id="signal-toggle" onclick="window._signalExpanded=!window._signalExpanded;renderSignals(window._lastSignals)" style="
+        width:100%;margin-top:10px;padding:7px;background:rgba(96,165,250,0.08);border:1px solid var(--border-subtle);
+        border-radius:6px;color:var(--text-secondary);font-size:12px;cursor:pointer;
+      ">Show ${window._signalExpanded ? 'less' : 'more'} (${sorted.length - INITIAL} more)</button>
+    `;
   }
 
-  window._lastSignals = d.signals;
-  render();
+  // Always store the array form so the toggle passes a consistent shape
+  window._lastSignals = signals;
 }
+
+const RESOLVED_PAGE_SIZE = 20;
 
 function renderResolved(d) {
   const container = document.getElementById('resolved-table');
-  if (!d.resolved.length) {
+  // Accept state object or bare array (for re-render on page change)
+  const all = Array.isArray(d) ? d : (d && d.resolved) || [];
+  if (!all.length) {
     container.innerHTML = `<tr><td colspan="8">${emptyState('✅', 'No resolved trades yet')}</td></tr>`;
     return;
   }
+
+  // Newest first
+  const sorted = all.slice().reverse();
+  const totalPages = Math.max(1, Math.ceil(sorted.length / RESOLVED_PAGE_SIZE));
+  if (window._resolvedPage === undefined) window._resolvedPage = 0;
+  // Clamp page if data shrank between renders
+  if (window._resolvedPage >= totalPages) window._resolvedPage = totalPages - 1;
+  const page = window._resolvedPage;
+  const start = page * RESOLVED_PAGE_SIZE;
+  const slice = sorted.slice(start, start + RESOLVED_PAGE_SIZE);
+
   const headers = ['Market', 'Strategy', 'Outcome', 'Entry', 'Exit', 'Shares', 'P&L', 'Resolved'];
-  const rows = d.resolved.slice().reverse().map(t => {
+  const rows = slice.map(t => {
     const exit = Number(t.exit_price || 0);
     const entry = Number(t.entry_price || 0);
     const shares = Number(t.shares || 0);
@@ -842,6 +865,26 @@ function renderResolved(d) {
     `<thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>` +
     rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('') +
     '</tbody>';
+
+  // Pagination controls (rendered in sibling div #resolved-pager)
+  const pager = document.getElementById('resolved-pager');
+  if (pager) {
+    if (totalPages <= 1) {
+      pager.innerHTML = `<span class="faint">${sorted.length} trade${sorted.length === 1 ? '' : 's'}</span>`;
+    } else {
+      const prevDisabled = page === 0 ? 'disabled' : '';
+      const nextDisabled = page >= totalPages - 1 ? 'disabled' : '';
+      pager.innerHTML = `
+        <button onclick="window._resolvedPage=Math.max(0,(window._resolvedPage||0)-1);renderResolved(window._lastResolved)"
+          ${prevDisabled} class="pager-btn">← Prev</button>
+        <span class="faint" style="margin:0 12px">Page ${page + 1} of ${totalPages} · ${sorted.length} trades</span>
+        <button onclick="window._resolvedPage=Math.min(${totalPages - 1},(window._resolvedPage||0)+1);renderResolved(window._lastResolved)"
+          ${nextDisabled} class="pager-btn">Next →</button>
+      `;
+    }
+  }
+
+  window._lastResolved = all;
 }
 
 function setStatus(state, msg) {
@@ -1332,7 +1375,7 @@ def api_state():
                 "strategy": t.get("strategy") or "core",
                 "polymarket_url": polymarket_event_url(t.get("location", ""), t.get("target_date", ""), t.get("metric") or "high"),
             }
-            for t in resolved[-20:]
+            for t in resolved
         ],
         "config": _get_config(),
     })
