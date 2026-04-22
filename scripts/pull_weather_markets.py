@@ -31,8 +31,11 @@ except Exception:
     pass
 
 GAMMA_API = "https://gamma-api.polymarket.com"
-OUT_FILE = pathlib.Path(__file__).parent.parent / "data" / "polymarket_events.jsonl"
+REPO_ROOT = pathlib.Path(__file__).parent.parent
+OUT_FILE = REPO_ROOT / "data" / "polymarket_events.jsonl"
+REPORTS_DIR = REPO_ROOT / "reports"
 OUT_FILE.parent.mkdir(exist_ok=True)
+REPORTS_DIR.mkdir(exist_ok=True)
 
 
 def _get(url: str, params: dict | None = None, retries: int = 3) -> Any:
@@ -206,29 +209,57 @@ def main():
     elif args.open_only:
         closed = False
 
-    mode = "resolved" if args.closed_only else "open" if args.open_only else "all"
-    print(f"Pulling {mode} weather events from Gamma API (tag={args.tag})...")
-    events = fetch_events(
-        tag=args.tag, closed=closed,
-        page_limit=args.page_limit, max_events=args.limit,
-    )
+    # Capture all stdout into a buffer so we can save a text report alongside
+    import io
+    from datetime import datetime as _dt
+    buf = io.StringIO()
+    class _Tee:
+        def __init__(self, *streams): self.streams = streams
+        def write(self, s):
+            for st in self.streams: st.write(s)
+        def flush(self):
+            for st in self.streams:
+                try: st.flush()
+                except Exception: pass
+    real_stdout = sys.stdout
+    sys.stdout = _Tee(real_stdout, buf)
 
-    # Defensive filter — some results may not actually be weather
-    weather = [e for e in events if is_weather_event(e)]
-    non_weather = len(events) - len(weather)
-    if non_weather > 0:
-        print(f"  Filtered out {non_weather} non-weather events")
+    try:
+        mode = "resolved" if args.closed_only else "open" if args.open_only else "all"
+        print(f"Polymarket Weather Events Pull — {_dt.now().strftime('%Y-%m-%d %H:%M UTC')}")
+        print(f"=" * 60)
+        print(f"Mode: {mode.upper()} | tag={args.tag}")
+        if args.limit:
+            print(f"Limit: {args.limit}")
+        print()
 
-    summarize(weather)
+        events = fetch_events(
+            tag=args.tag, closed=closed,
+            page_limit=args.page_limit, max_events=args.limit,
+        )
 
-    if args.dry_run:
-        print(f"\n  --dry-run: not writing output")
-        return
+        # Defensive filter — some results may not actually be weather
+        weather = [e for e in events if is_weather_event(e)]
+        non_weather = len(events) - len(weather)
+        if non_weather > 0:
+            print(f"  Filtered out {non_weather} non-weather events")
 
-    with OUT_FILE.open("w") as f:
-        for e in weather:
-            f.write(json.dumps(e, default=str) + "\n")
-    print(f"\n  Saved {len(weather)} events → {OUT_FILE}")
+        summarize(weather)
+
+        if args.dry_run:
+            print(f"\n  --dry-run: not writing output")
+        else:
+            with OUT_FILE.open("w") as f:
+                for e in weather:
+                    f.write(json.dumps(e, default=str) + "\n")
+            print(f"\n  Saved {len(weather)} events → {OUT_FILE}")
+    finally:
+        sys.stdout = real_stdout
+
+    # Save the full run log to reports/
+    report_file = REPORTS_DIR / f"polymarket_events_{_dt.now().strftime('%Y-%m-%d')}.txt"
+    report_file.write_text(buf.getvalue())
+    print(f"  Run log       → {report_file}")
 
 
 if __name__ == "__main__":

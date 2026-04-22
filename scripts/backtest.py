@@ -46,6 +46,8 @@ except Exception:
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 EVENTS_FILE = REPO_ROOT / "data" / "polymarket_events.jsonl"
 RESULTS_FILE = REPO_ROOT / "data" / "backtest_results.jsonl"
+REPORTS_DIR = REPO_ROOT / "reports"
+REPORTS_DIR.mkdir(exist_ok=True)
 
 # Minimal city → lat/lon/tz map, same cities our bot trades
 CITIES = {
@@ -406,6 +408,26 @@ def main():
         print(f"No {EVENTS_FILE} — run pull_weather_markets.py first", file=sys.stderr)
         sys.exit(1)
 
+    # Tee stdout → text report file for easy pasting / review later
+    import io
+    buf = io.StringIO()
+    class _Tee:
+        def __init__(self, *streams): self.streams = streams
+        def write(self, s):
+            for st in self.streams: st.write(s)
+        def flush(self):
+            for st in self.streams:
+                try: st.flush()
+                except Exception: pass
+    real_stdout = sys.stdout
+    sys.stdout = _Tee(real_stdout, buf)
+    print(f"Polymarket Weather Backtest — {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}")
+    print("=" * 60)
+    print(f"Params: min_edge={args.min_edge}  size=${args.size}"
+          + (f"  city={args.city}" if args.city else "")
+          + (f"  limit={args.limit}" if args.limit else "")
+          + "\n")
+
     events = []
     for line in EVENTS_FILE.read_text().splitlines():
         line = line.strip()
@@ -472,6 +494,12 @@ def main():
             for r in results:
                 f.write(json.dumps(r, default=str) + "\n")
         print(f"\n  Saved {len(results)} records → {RESULTS_FILE}")
+
+    # Restore stdout and save the run log
+    sys.stdout = real_stdout
+    report_file = REPORTS_DIR / f"backtest_{datetime.now().strftime('%Y-%m-%d_%H%M')}.txt"
+    report_file.write_text(buf.getvalue())
+    print(f"  Run log       → {report_file}")
 
 
 if __name__ == "__main__":
