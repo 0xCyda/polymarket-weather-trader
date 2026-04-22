@@ -2,18 +2,20 @@
 """
 Polymarket Trader Analysis — reverse-engineer any wallet's weather strategy.
 
-Pulls closed positions, open positions, and market metadata from the public
-Polymarket Data API, filters for weather markets, and reports patterns:
+Pulls closed positions, active positions, and redeemable positions from the
+public Polymarket Data API, filters for weather markets, and reports patterns:
   - Total P&L, win rate, trade count
-  - Favorite cities / metrics / bucket sizes
-  - D+0 vs D+1+ breakdown
-  - Position sizing patterns
-  - Best and worst trades
+  - Winner vs loser avg size (critical: high win rate ≠ profit)
+  - City breakdown with normalized names (NYC + New York merged)
+  - Bucket type extracted from TITLE (not outcome field)
+  - Metric (high vs low temp)
+  - Best / worst trades
+  - Monthly seasonality
 
 Usage:
-    python scripts/polymarket_analyze.py 0x56687bf447db6ffa42ffe2204a05edaa20f55839
-    python scripts/polymarket_analyze.py <wallet> --all       # all categories, not just weather
-    python scripts/polymarket_analyze.py <wallet> --json      # raw JSON dump
+    python scripts/polymarket_analyze.py 0x594edb9112f526fa6a80b8f858a6379c8a2c1c11
+    python scripts/polymarket_analyze.py <wallet> --all       # all categories
+    python scripts/polymarket_analyze.py <wallet> --json      # raw JSON
 """
 
 import json
@@ -30,14 +32,51 @@ DATA_API = "https://data-api.polymarket.com"
 GAMMA_API = "https://gamma-api.polymarket.com"
 
 WEATHER_KEYWORDS = ("temperature", "temp", "weather", "°f", "°c", "highest", "lowest")
-CITIES = [
-    "nyc", "new york", "chicago", "seattle", "atlanta", "dallas", "miami",
-    "houston", "san francisco", "phoenix", "los angeles", "denver", "austin",
-    "las vegas", "tel aviv", "munich", "london", "tokyo", "seoul", "ankara",
-    "lucknow", "wellington", "toronto", "paris", "milan", "sao paulo", "warsaw",
-    "singapore", "shanghai", "beijing", "shenzhen", "chengdu", "chongqing",
-    "wuhan", "hong kong", "buenos aires",
-]
+
+# City aliases → canonical name. Longest aliases must be matched first so
+# "new york city" beats "new york" which beats "nyc".
+CITY_ALIASES = {
+    "new york city": "NYC",
+    "new york":      "NYC",
+    "nyc":           "NYC",
+    "san francisco": "San Francisco",
+    "los angeles":   "Los Angeles",
+    "las vegas":     "Las Vegas",
+    "hong kong":     "Hong Kong",
+    "tel aviv":      "Tel Aviv",
+    "sao paulo":     "Sao Paulo",
+    "são paulo":     "Sao Paulo",
+    "buenos aires":  "Buenos Aires",
+    "chicago":       "Chicago",
+    "seattle":       "Seattle",
+    "atlanta":       "Atlanta",
+    "dallas":        "Dallas",
+    "miami":         "Miami",
+    "houston":       "Houston",
+    "phoenix":       "Phoenix",
+    "denver":        "Denver",
+    "austin":        "Austin",
+    "munich":        "Munich",
+    "london":        "London",
+    "tokyo":         "Tokyo",
+    "seoul":         "Seoul",
+    "ankara":        "Ankara",
+    "lucknow":       "Lucknow",
+    "wellington":    "Wellington",
+    "toronto":       "Toronto",
+    "paris":         "Paris",
+    "milan":         "Milan",
+    "warsaw":        "Warsaw",
+    "singapore":     "Singapore",
+    "shanghai":      "Shanghai",
+    "beijing":       "Beijing",
+    "shenzhen":      "Shenzhen",
+    "chengdu":       "Chengdu",
+    "chongqing":     "Chongqing",
+    "wuhan":         "Wuhan",
+}
+# Pre-sort aliases by length so longer ones match first
+_SORTED_ALIASES = sorted(CITY_ALIASES.keys(), key=len, reverse=True)
 
 
 def _get(url: str, params: dict | None = None, retries: int = 3) -> Any:
@@ -69,7 +108,6 @@ def _get(url: str, params: dict | None = None, retries: int = 3) -> Any:
 
 
 def fetch_traded_count(wallet: str) -> int | None:
-    """Return total markets this wallet has traded in."""
     data = _get(f"{DATA_API}/traded", params={"user": wallet})
     if data is None:
         return None
@@ -81,7 +119,6 @@ def fetch_traded_count(wallet: str) -> int | None:
 
 
 def fetch_closed_positions(wallet: str) -> list[dict]:
-    """Paginate /closed-positions until empty."""
     positions = []
     offset = 0
     limit = 50
@@ -99,7 +136,6 @@ def fetch_closed_positions(wallet: str) -> list[dict]:
 
 
 def fetch_open_positions(wallet: str) -> list[dict]:
-    """Fetch active + redeemable positions."""
     data = _get(f"{DATA_API}/positions", params={"user": wallet})
     if not data:
         return []
@@ -108,47 +144,53 @@ def fetch_open_positions(wallet: str) -> list[dict]:
     return data.get("positions", []) or []
 
 
-def is_weather(position: dict) -> bool:
-    """Heuristic: position relates to a weather market."""
-    blob = " ".join(str(position.get(k, "")).lower() for k in
+def _title_blob(p: dict) -> str:
+    """Join all text fields lowercased for keyword searches."""
+    return " ".join(str(p.get(k, "")).lower() for k in
                     ("title", "eventSlug", "slug", "question", "outcome"))
+
+
+def is_weather(p: dict) -> bool:
+    blob = _title_blob(p)
     if not any(kw in blob for kw in WEATHER_KEYWORDS):
         return False
-    return any(city in blob for city in CITIES)
+    return any(alias in blob for alias in _SORTED_ALIASES)
 
 
-def extract_city(position: dict) -> str | None:
-    blob = " ".join(str(position.get(k, "")).lower() for k in
-                    ("title", "eventSlug", "slug", "question"))
-    # Longest city names first so "hong kong" wins over "hong"
-    for city in sorted(CITIES, key=len, reverse=True):
-        if city in blob:
-            return city.title()
-    return None
+def extract_city(p: dict) -> str:
+    """Return canonical city name. NYC and New York collapse to 'NYC'."""
+    blob = _title_blob(p)
+    for alias in _SORTED_ALIASES:
+        if alias in blob:
+            return CITY_ALIASES[alias]
+    return "Unknown"
 
 
-def extract_metric(position: dict) -> str:
-    blob = " ".join(str(position.get(k, "")).lower() for k in
-                    ("title", "eventSlug", "slug", "question"))
+def extract_metric(p: dict) -> str:
+    blob = _title_blob(p)
     if "lowest" in blob or "low temp" in blob:
         return "low"
     return "high"
 
 
-def extract_bucket_size(position: dict) -> str:
-    """Classify the bucket as 'exact', 'range', or 'threshold'."""
-    outcome = str(position.get("outcome", "")).lower()
-    if "or above" in outcome or "or higher" in outcome or "or below" in outcome or "or less" in outcome:
+def extract_bucket_type(p: dict) -> str:
+    """
+    Parse bucket style from the TITLE (outcome field is 'Yes'/'No' — useless).
+    Returns: 'exact' | 'range' | 'threshold' | 'unknown'
+    """
+    title = str(p.get("title", "") or p.get("question", "")).lower()
+    if re.search(r"or (higher|above|more|below|less)", title):
         return "threshold"
-    if re.search(r"\d+\s*[-–to]\s*\d+", outcome):
+    if re.search(r"between\s+-?\d+\s*[-–to]\s*-?\d+", title):
         return "range"
-    return "exact"
-
-
-def extract_temp(position: dict) -> int | None:
-    outcome = str(position.get("outcome", ""))
-    m = re.search(r"(-?\d+)", outcome)
-    return int(m.group(1)) if m else None
+    if re.search(r"-?\d+\s*[-–to]\s*-?\d+\s*°", title):
+        return "range"
+    if re.search(r"be\s+-?\d+\s*°", title) or re.search(r"be\s+between", title):
+        # "be 28°C" or "be between" — bare single degree is exact
+        if "between" in title:
+            return "range"
+        return "exact"
+    return "unknown"
 
 
 def position_pnl(p: dict) -> float:
@@ -160,105 +202,176 @@ def position_pnl(p: dict) -> float:
 
 def position_size(p: dict) -> float:
     """Dollar cost basis — size of the entry."""
-    for k in ("totalBought", "initialValue", "size", "avgPrice"):
+    # Order matters: totalBought is most reliable, initialValue next, etc.
+    for k in ("totalBought", "initialValue", "size"):
         v = p.get(k)
         if v is not None:
             try:
-                return float(v)
+                f = float(v)
+                if f > 0:
+                    return f
             except (TypeError, ValueError):
                 pass
+    # Fall back to avgPrice × shares
+    try:
+        avg = float(p.get("avgPrice") or 0)
+        sh = float(p.get("size") or p.get("shares") or 0)
+        if avg > 0 and sh > 0:
+            return avg * sh
+    except (TypeError, ValueError):
+        pass
     return 0.0
 
 
-def analyze(weather_positions: list[dict], label: str) -> None:
-    if not weather_positions:
+def extract_month(p: dict) -> str:
+    """Best-effort extraction of target month from title."""
+    title = str(p.get("title", "")).lower()
+    months = ["january", "february", "march", "april", "may", "june",
+              "july", "august", "september", "october", "november", "december"]
+    for m in months:
+        if m in title:
+            return m.title()
+    return "Unknown"
+
+
+def analyze(positions: list[dict], label: str) -> None:
+    if not positions:
         print(f"\n  No {label} weather positions.")
         return
 
-    pnls = [position_pnl(p) for p in weather_positions]
-    sizes = [position_size(p) for p in weather_positions if position_size(p) > 0]
-    wins = [p for p in weather_positions if position_pnl(p) > 0]
-    losses = [p for p in weather_positions if position_pnl(p) < 0]
+    pnls = [position_pnl(p) for p in positions]
+    sizes = [position_size(p) for p in positions]
+    wins = [p for p in positions if position_pnl(p) > 0]
+    losses = [p for p in positions if position_pnl(p) < 0]
     total_pnl = sum(pnls)
+    resolved = len(wins) + len(losses)
 
-    print(f"\n  {label.upper()} ({len(weather_positions)} positions)")
+    print(f"\n  {label.upper()} ({len(positions)} positions)")
     print(f"  Total P&L:      ${total_pnl:,.2f}")
-    print(f"  Win rate:       {len(wins)}/{len(wins)+len(losses)} "
-          f"({100*len(wins)/max(1,len(wins)+len(losses)):.1f}%)")
-    if sizes:
-        print(f"  Avg size:       ${sum(sizes)/len(sizes):,.2f}")
-        print(f"  Size range:     ${min(sizes):,.0f} – ${max(sizes):,.0f}")
+    print(f"  Win rate:       {len(wins)}/{resolved} "
+          f"({100*len(wins)/max(1,resolved):.1f}%)")
 
-    # By city
-    by_city = defaultdict(lambda: {"n": 0, "pnl": 0.0, "w": 0, "l": 0})
-    for p in weather_positions:
-        c = extract_city(p) or "Unknown"
+    # Winner vs loser sizes — CRITICAL: high win rate can still lose if
+    # losing trades are larger than winning trades (the ColdMath problem).
+    winner_sizes = [position_size(p) for p in wins if position_size(p) > 0]
+    loser_sizes = [position_size(p) for p in losses if position_size(p) > 0]
+    if winner_sizes and loser_sizes:
+        avg_w = sum(winner_sizes) / len(winner_sizes)
+        avg_l = sum(loser_sizes) / len(loser_sizes)
+        ratio = avg_l / avg_w if avg_w > 0 else 0
+        print(f"  Avg winner:     ${avg_w:,.2f}  (n={len(winner_sizes)})")
+        print(f"  Avg loser:      ${avg_l:,.2f}  (n={len(loser_sizes)})")
+        if ratio > 1.2:
+            print(f"  ⚠️  Losers {ratio:.1f}× larger than winners — sizing problem")
+        elif ratio < 0.8:
+            print(f"  ✓  Winners {1/ratio:.1f}× larger than losers — good sizing")
+
+    valid_sizes = [s for s in sizes if s > 0]
+    if valid_sizes:
+        print(f"  Size range:     ${min(valid_sizes):,.0f} – ${max(valid_sizes):,.0f}")
+
+    # By city (merged NYC/New York)
+    by_city = defaultdict(lambda: {"n": 0, "pnl": 0.0, "w": 0, "l": 0,
+                                   "wsize": [], "lsize": []})
+    for p in positions:
+        c = extract_city(p)
         pnl = position_pnl(p)
+        sz = position_size(p)
         by_city[c]["n"] += 1
         by_city[c]["pnl"] += pnl
-        if pnl > 0: by_city[c]["w"] += 1
-        elif pnl < 0: by_city[c]["l"] += 1
+        if pnl > 0:
+            by_city[c]["w"] += 1
+            if sz > 0: by_city[c]["wsize"].append(sz)
+        elif pnl < 0:
+            by_city[c]["l"] += 1
+            if sz > 0: by_city[c]["lsize"].append(sz)
 
-    print(f"\n  By city (top 10):")
-    print(f"  {'City':<18s} {'n':>4s}  {'Win%':>6s}  {'P&L':>10s}")
-    print("  " + "-" * 44)
-    for city in sorted(by_city, key=lambda c: -by_city[c]["n"])[:10]:
+    print(f"\n  By city (top 15 by volume):")
+    print(f"  {'City':<18s} {'n':>5s}  {'Win%':>6s}  {'P&L':>12s}  {'W.size':>8s}  {'L.size':>8s}")
+    print("  " + "-" * 66)
+    for city in sorted(by_city, key=lambda c: -by_city[c]["n"])[:15]:
         d = by_city[city]
-        wr = d["w"] / max(1, d["w"] + d["l"]) * 100
-        print(f"  {city:<16s} {d['n']:4d}  {wr:5.1f}%  ${d['pnl']:>9,.2f}")
+        res = d["w"] + d["l"]
+        wr = d["w"] / max(1, res) * 100
+        avg_w = sum(d["wsize"])/len(d["wsize"]) if d["wsize"] else 0
+        avg_l = sum(d["lsize"])/len(d["lsize"]) if d["lsize"] else 0
+        print(f"  {city:<16s} {d['n']:5d}  {wr:5.1f}%  ${d['pnl']:>11,.2f}  "
+              f"${avg_w:>7,.0f}  ${avg_l:>7,.0f}")
 
-    # By city, ordered by difficulty (lowest win rate first = hardest).
-    # Require at least 3 resolved trades to filter out noise.
+    # City difficulty ranking (min 10 resolved, hardest first)
     ranked = []
     for city, d in by_city.items():
-        resolved = d["w"] + d["l"]
-        if resolved < 3:
+        if city == "Unknown":
             continue
-        wr = d["w"] / resolved * 100
-        ranked.append((city, wr, d["n"], d["pnl"], resolved))
+        res = d["w"] + d["l"]
+        if res < 10:
+            continue
+        wr = d["w"] / res * 100
+        ranked.append((city, wr, d["n"], d["pnl"], res))
 
     if ranked:
-        print(f"\n  City difficulty (win rate, hardest first — min 3 resolved):")
-        print(f"  {'City':<18s} {'n':>4s}  {'Win%':>6s}  {'P&L':>10s}")
-        print("  " + "-" * 44)
+        print(f"\n  City difficulty (win rate, min 10 resolved):")
+        print(f"  {'City':<18s} {'n':>5s}  {'Win%':>6s}  {'P&L':>12s}  {'Tier'}")
+        print("  " + "-" * 58)
         for city, wr, n, pnl, _ in sorted(ranked, key=lambda x: x[1]):
-            marker = "  HARD" if wr < 40 else "  EASY" if wr >= 70 else ""
-            print(f"  {city:<16s} {n:4d}  {wr:5.1f}%  ${pnl:>9,.2f}{marker}")
+            if wr < 55:   tier = "HARD"
+            elif wr >= 75: tier = "EASY"
+            else:          tier = "MEDIUM"
+            print(f"  {city:<16s} {n:5d}  {wr:5.1f}%  ${pnl:>11,.2f}  {tier}")
 
-    # By metric
-    hi = [p for p in weather_positions if extract_metric(p) == "high"]
-    lo = [p for p in weather_positions if extract_metric(p) == "low"]
-    print(f"\n  High temp: {len(hi)} positions, P&L ${sum(position_pnl(p) for p in hi):,.2f}")
-    print(f"  Low temp:  {len(lo)} positions, P&L ${sum(position_pnl(p) for p in lo):,.2f}")
+    # By metric (high vs low)
+    hi = [p for p in positions if extract_metric(p) == "high"]
+    lo = [p for p in positions if extract_metric(p) == "low"]
+    print(f"\n  High temp:  {len(hi):>5d} positions, P&L ${sum(position_pnl(p) for p in hi):>12,.2f}")
+    print(f"  Low temp:   {len(lo):>5d} positions, P&L ${sum(position_pnl(p) for p in lo):>12,.2f}")
 
-    # By bucket type
-    bucket_types = Counter(extract_bucket_size(p) for p in weather_positions)
-    print(f"\n  Bucket type preference:")
+    # By bucket type (from TITLE, not outcome)
+    bucket_types = Counter(extract_bucket_type(p) for p in positions)
+    print(f"\n  Bucket type preference (from title):")
     for bt, n in bucket_types.most_common():
-        bt_pnl = sum(position_pnl(p) for p in weather_positions
-                     if extract_bucket_size(p) == bt)
-        print(f"    {bt:<12s}  n={n:3d}  P&L=${bt_pnl:,.2f}")
+        bt_pnl = sum(position_pnl(p) for p in positions if extract_bucket_type(p) == bt)
+        pct = n / len(positions) * 100
+        print(f"    {bt:<12s}  n={n:5d}  ({pct:4.1f}%)  P&L=${bt_pnl:>11,.2f}")
+
+    # Monthly seasonality (top 5 months by volume)
+    by_month = defaultdict(lambda: {"n": 0, "pnl": 0.0, "w": 0, "l": 0})
+    for p in positions:
+        m = extract_month(p)
+        pnl = position_pnl(p)
+        by_month[m]["n"] += 1
+        by_month[m]["pnl"] += pnl
+        if pnl > 0: by_month[m]["w"] += 1
+        elif pnl < 0: by_month[m]["l"] += 1
+    if any(m != "Unknown" and d["n"] >= 5 for m, d in by_month.items()):
+        print(f"\n  By target month (top 5 by volume):")
+        print(f"  {'Month':<12s} {'n':>5s}  {'Win%':>6s}  {'P&L':>12s}")
+        print("  " + "-" * 42)
+        for month in sorted(by_month, key=lambda m: -by_month[m]["n"])[:5]:
+            if month == "Unknown":
+                continue
+            d = by_month[month]
+            res = d["w"] + d["l"]
+            wr = d["w"] / max(1, res) * 100
+            print(f"  {month:<12s} {d['n']:5d}  {wr:5.1f}%  ${d['pnl']:>11,.2f}")
 
     # Best / worst
     if pnls:
-        best = max(weather_positions, key=position_pnl)
-        worst = min(weather_positions, key=position_pnl)
+        best = max(positions, key=position_pnl)
+        worst = min(positions, key=position_pnl)
         print(f"\n  Best trade:  ${position_pnl(best):,.2f}")
-        print(f"    {best.get('title', best.get('eventSlug', ''))[:70]}")
-        print(f"    outcome: {best.get('outcome', '?')}")
+        print(f"    {(best.get('title') or best.get('eventSlug') or '')[:80]}")
+        print(f"    size: ${position_size(best):,.0f}  outcome: {best.get('outcome', '?')}")
         print(f"  Worst trade: ${position_pnl(worst):,.2f}")
-        print(f"    {worst.get('title', worst.get('eventSlug', ''))[:70]}")
-        print(f"    outcome: {worst.get('outcome', '?')}")
+        print(f"    {(worst.get('title') or worst.get('eventSlug') or '')[:80]}")
+        print(f"    size: ${position_size(worst):,.0f}  outcome: {worst.get('outcome', '?')}")
 
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Reverse-engineer a Polymarket trader's strategy")
+    parser = argparse.ArgumentParser(description="Reverse-engineer a Polymarket trader")
     parser.add_argument("wallet", help="0x-prefixed 40-hex wallet address")
-    parser.add_argument("--all", action="store_true",
-                        help="Analyze all categories, not just weather")
-    parser.add_argument("--json", action="store_true",
-                        help="Dump raw positions as JSON (no analysis)")
+    parser.add_argument("--all", action="store_true", help="All categories, not just weather")
+    parser.add_argument("--json", action="store_true", help="Raw JSON dump, no analysis")
     args = parser.parse_args()
 
     if not re.match(r"^0x[a-fA-F0-9]{40}$", args.wallet):
@@ -279,11 +392,8 @@ def main():
 
     if args.json:
         print(json.dumps({
-            "wallet": args.wallet,
-            "traded_count": traded_count,
-            "closed": closed,
-            "active": active,
-            "redeemable": redeemable,
+            "wallet": args.wallet, "traded_count": traded_count,
+            "closed": closed, "active": active, "redeemable": redeemable,
         }, indent=2, default=str))
         return
 
@@ -303,16 +413,17 @@ def main():
     print(f"  Active:      {len(active_subset)}/{len(active)}")
     print(f"  Redeemable:  {len(redeemable_subset)}/{len(redeemable)}")
 
-    # Combined resolved = closed + redeemable (redeemable = resolved but unclaimed)
+    # Combined resolved = closed + redeemable
     resolved = closed_subset + redeemable_subset
-    total_resolved_pnl = sum(position_pnl(p) for p in resolved)
+    total_pnl = sum(position_pnl(p) for p in resolved)
     active_exposure = sum(position_size(p) for p in active_subset)
-
-    print(f"\n  Resolved total P&L:  ${total_resolved_pnl:,.2f}")
+    print(f"\n  Resolved total P&L:  ${total_pnl:,.2f}")
     print(f"  Active exposure:     ${active_exposure:,.2f}")
 
-    analyze(closed_subset, "Closed")
-    analyze(redeemable_subset, "Redeemable (resolved but unclaimed)")
+    # Analyze ALL resolved positions together (closed + redeemable) — this is
+    # what pros actually reason about ("all my resolved trades").
+    if resolved:
+        analyze(resolved, "All Resolved (closed + redeemable)")
     analyze(active_subset, "Active (still running)")
 
 
