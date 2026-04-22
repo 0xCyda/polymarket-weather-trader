@@ -177,7 +177,7 @@ def city_report() -> None:
             s["losses"] += 1
         s["pnl"] += pnl
 
-    # --- By city ---
+    # --- By city (by volume) ---
     print(f"\n{'City':<18s} {'n':>4s}  {'Win%':>6s}  {'PnL':>9s}  {'MAE':>6s}")
     print("-" * 50)
     for city in sorted(by_city, key=lambda c: -(by_city[c]["wins"] + by_city[c]["losses"])):
@@ -188,6 +188,25 @@ def city_report() -> None:
         mae_str = f"{mae:5.1f}°" if mae is not None else "    —"
         flag = "  !!!" if n >= 3 and wr < 40 else ""
         print(f"  {city:<16s} {n:4d}  {wr:5.1f}%  ${c['pnl']:>8.2f}  {mae_str}{flag}")
+
+    # --- By difficulty (hardest to easiest, min 3 resolved) ---
+    ranked = []
+    for city, c in by_city.items():
+        n = c["wins"] + c["losses"]
+        if n < 3:
+            continue
+        wr = c["wins"] / n * 100
+        mae = sum(c["errors"]) / len(c["errors"]) if c["errors"] else None
+        ranked.append((city, wr, n, c["pnl"], mae))
+
+    if ranked:
+        print(f"\n  Ranked by difficulty (hardest first, min 3 trades):")
+        print(f"  {'City':<18s} {'n':>4s}  {'Win%':>6s}  {'PnL':>9s}  {'MAE':>6s}")
+        print("  " + "-" * 48)
+        for city, wr, n, pnl, mae in sorted(ranked, key=lambda x: x[1]):
+            mae_str = f"{mae:5.1f}°" if mae is not None else "    —"
+            marker = "  HARD" if wr < 40 else "  EASY" if wr >= 70 else ""
+            print(f"  {city:<16s} {n:4d}  {wr:5.1f}%  ${pnl:>8.2f}  {mae_str}{marker}")
 
     # --- By day of week ---
     print(f"\n{'Day':<12s} {'n':>4s}  {'Win%':>6s}  {'PnL':>9s}")
