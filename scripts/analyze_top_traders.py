@@ -14,17 +14,26 @@ import subprocess
 import sys
 from datetime import datetime
 
-# Verified via public sources (polymarketanalytics.com, Polymarket profiles, X posts).
-# See the research agent report for citations.
+# Verified via: (a) our own polymarket_analyze run showing they actually trade
+# weather markets (Hans323, ColdMath), or (b) polymarket.com/@handle redirect.
+# Wallets marked "UNVERIFIED" had no weather trades in our first run — leaving
+# them here so you can still run the script and confirm, or swap the address
+# if you find the correct one via polymarket.com/@<handle>.
 TOP_WEATHER_TRADERS = [
-    ("gopfan2",        "0xf2f6af4f27ec2dcf4072095ab804016e14cd5817",
-     "Rank #1 weather leaderboard, +$343k profit, $4.57M volume. Our bot's inspiration."),
-    ("Hans323",        "0x0f37cb80dee49d55b5f6d9e595d52591d6371410",
-     "~$1.1M from a legendary 8% London weather bet. Top-5 weather."),
-    ("gopfan",         "0x6af75d4e4aaf700450efbac3708cce1665810ff1",
-     "gopfan2's separate account. +$118k weather P&L."),
-    ("ColdMath",       "0x594edb9112f526fa6a80b8f858a6379c8a2c1c11",
-     "Pure temp trader (NYC/LA/Atlanta/Cape Town/Istanbul). +$95-110k, $8M volume."),
+    # VERIFIED weather traders
+    ("Hans323",   "0x0f37cb80dee49d55b5f6d9e595d52591d6371410",
+     "VERIFIED — 2805 weather trades, +$80k, 56% win. Famous for $1M London bet."),
+    ("ColdMath",  "0x594edb9112f526fa6a80b8f858a6379c8a2c1c11",
+     "VERIFIED — 6271 weather trades, -$173k despite 66% win (losers 2x winners)."),
+    # UNVERIFIED — wallet attribution from third-party sources is wrong or stale.
+    # To find the real wallet: open polymarket.com/@<handle> in a browser,
+    # copy the URL redirect to /profile/0x... and paste the address here.
+    ("gopfan2",   "0xf2f6af4f27ec2dcf4072095ab804016e14cd5817",
+     "UNVERIFIED — 0/1695 weather. Real wallet unknown; check polymarket.com/@gopfan2"),
+    ("aenews2",   "0x44c1dfe43260c94ed4f1d00de2e1f80fb113ebc1",
+     "CANDIDATE — from polymarket.com/@aenews2 profile. Untested."),
+    ("aenews-r2", "0xc5f87c6bbef505ae18b5bf6fed1378e2e6a19db2",
+     "CANDIDATE — from polymarketanalytics.com. Untested."),
 ]
 
 
