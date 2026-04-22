@@ -40,9 +40,17 @@ def main():
     reports_dir.mkdir(exist_ok=True)
 
     today = datetime.now().strftime("%Y-%m-%d")
+    combined_file = reports_dir / f"top_traders_{today}.txt"
 
     print(f"Analyzing {len(TOP_WEATHER_TRADERS)} top weather traders...")
     print(f"Reports → {reports_dir}/\n")
+
+    combined_parts = [
+        f"Polymarket Weather Trader Analysis — {today}",
+        "=" * 70,
+        f"Mode: {'ALL CATEGORIES' if args.all_categories else 'WEATHER ONLY'}",
+        "",
+    ]
 
     for handle, wallet, note in TOP_WEATHER_TRADERS:
         print(f"━━━ {handle} ━━━")
@@ -53,21 +61,39 @@ def main():
         if args.all_categories:
             cmd.append("--all")
 
-        out_file = reports_dir / f"trader_{handle}_{today}.txt"
+        per_trader_file = reports_dir / f"trader_{handle}_{today}.txt"
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            out_file.write_text(result.stdout + ("\n---STDERR---\n" + result.stderr if result.stderr else ""))
-            # Also echo summary lines to console
-            lines = result.stdout.splitlines()
-            for line in lines[:6]:
+            output = result.stdout
+            if result.stderr:
+                output += "\n---STDERR---\n" + result.stderr
+
+            # Per-trader file
+            per_trader_file.write_text(output)
+
+            # Append to combined file
+            combined_parts.append("=" * 70)
+            combined_parts.append(f"TRADER: {handle}  ({note})")
+            combined_parts.append(f"WALLET: {wallet}")
+            combined_parts.append("=" * 70)
+            combined_parts.append(output)
+            combined_parts.append("")
+
+            # Echo first lines to console
+            for line in output.splitlines()[:6]:
                 print(f"    {line}")
-            print(f"  → {out_file.relative_to(repo_root)}\n")
+            print(f"  → {per_trader_file.relative_to(repo_root)}\n")
         except subprocess.TimeoutExpired:
             print(f"  ⏱️  Timed out after 120s — skipping\n")
+            combined_parts.append(f"### {handle}: TIMED OUT\n")
         except Exception as e:
             print(f"  ❌  Error: {e}\n")
+            combined_parts.append(f"### {handle}: ERROR — {e}\n")
 
-    print(f"Done. Full reports saved to {reports_dir}/")
+    # Write combined file — paste this to share all 4 reports at once
+    combined_file.write_text("\n".join(combined_parts))
+    print(f"Done. Per-trader reports: {reports_dir}/trader_*_{today}.txt")
+    print(f"Combined report (paste this):\n  {combined_file}")
 
 
 if __name__ == "__main__":
