@@ -4,7 +4,7 @@ __pycache__/
 .env
 data/*.json
 logs/
-*.log
 .DS_Store
 !data/paper_trades.jsonl
 scripts/__pycache__/
+!data/losses.jsonl
