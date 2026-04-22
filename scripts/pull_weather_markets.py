@@ -209,25 +209,18 @@ def main():
     elif args.open_only:
         closed = False
 
-    # Capture all stdout into a buffer so we can save a text report alongside
-    import io
     from datetime import datetime as _dt
+    import io
+
+    # Capture output to StringIO first, then print + write to file at end
     buf = io.StringIO()
-    class _Tee:
-        def __init__(self, *streams): self.streams = streams
-        def write(self, s):
-            for st in self.streams: st.write(s)
-        def flush(self):
-            for st in self.streams:
-                try: st.flush()
-                except Exception: pass
     real_stdout = sys.stdout
-    sys.stdout = _Tee(real_stdout, buf)
+    sys.stdout = buf
 
     try:
         mode = "resolved" if args.closed_only else "open" if args.open_only else "all"
-        print(f"Polymarket Weather Events Pull — {_dt.now().strftime('%Y-%m-%d %H:%M UTC')}")
-        print(f"=" * 60)
+        print(f"Polymarket Weather Events Pull - {_dt.now().strftime('%Y-%m-%d %H:%M UTC')}")
+        print("=" * 60)
         print(f"Mode: {mode.upper()} | tag={args.tag}")
         if args.limit:
             print(f"Limit: {args.limit}")
@@ -238,7 +231,6 @@ def main():
             page_limit=args.page_limit, max_events=args.limit,
         )
 
-        # Defensive filter — some results may not actually be weather
         weather = [e for e in events if is_weather_event(e)]
         non_weather = len(events) - len(weather)
         if non_weather > 0:
@@ -252,14 +244,18 @@ def main():
             with OUT_FILE.open("w") as f:
                 for e in weather:
                     f.write(json.dumps(e, default=str) + "\n")
-            print(f"\n  Saved {len(weather)} events → {OUT_FILE}")
+            print(f"\n  Saved {len(weather)} events -> {OUT_FILE}")
     finally:
         sys.stdout = real_stdout
 
-    # Save the full run log to reports/
+    # Print to console
+    output = buf.getvalue()
+    print(output)
+
+    # Save report file
     report_file = REPORTS_DIR / f"polymarket_events_{_dt.now().strftime('%Y-%m-%d')}.txt"
-    report_file.write_text(buf.getvalue())
-    print(f"  Run log       → {report_file}")
+    report_file.write_text(output, encoding="utf-8")
+    print(f"  Run log -> {report_file}")
 
 
 if __name__ == "__main__":

@@ -408,20 +408,12 @@ def main():
         print(f"No {EVENTS_FILE} — run pull_weather_markets.py first", file=sys.stderr)
         sys.exit(1)
 
-    # Tee stdout → text report file for easy pasting / review later
+    # Capture to StringIO first, then print + save at end
     import io
     buf = io.StringIO()
-    class _Tee:
-        def __init__(self, *streams): self.streams = streams
-        def write(self, s):
-            for st in self.streams: st.write(s)
-        def flush(self):
-            for st in self.streams:
-                try: st.flush()
-                except Exception: pass
     real_stdout = sys.stdout
-    sys.stdout = _Tee(real_stdout, buf)
-    print(f"Polymarket Weather Backtest — {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}")
+    sys.stdout = buf
+    print(f"Polymarket Weather Backtest - {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}")
     print("=" * 60)
     print(f"Params: min_edge={args.min_edge}  size=${args.size}"
           + (f"  city={args.city}" if args.city else "")
@@ -493,13 +485,15 @@ def main():
         with RESULTS_FILE.open("w") as f:
             for r in results:
                 f.write(json.dumps(r, default=str) + "\n")
-        print(f"\n  Saved {len(results)} records → {RESULTS_FILE}")
+        print(f"\n  Saved {len(results)} records -> {RESULTS_FILE}")
 
-    # Restore stdout and save the run log
+    # Restore stdout, print to console, save report
     sys.stdout = real_stdout
+    output = buf.getvalue()
+    print(output)
     report_file = REPORTS_DIR / f"backtest_{datetime.now().strftime('%Y-%m-%d_%H%M')}.txt"
-    report_file.write_text(buf.getvalue())
-    print(f"  Run log       → {report_file}")
+    report_file.write_text(output, encoding="utf-8")
+    print(f"  Run log -> {report_file}")
 
 
 if __name__ == "__main__":
