@@ -366,6 +366,44 @@ LOCATIONS = {
 _locations_str = _config["locations"]
 ACTIVE_LOCATIONS = [loc.strip().upper() for loc in _locations_str.split(",") if loc.strip()]
 
+# Empirical city difficulty tiers derived from 9,165 resolved weather trades
+# across Hans323 (+$80k) and ColdMath (-$173k). EASY cities have ≥75% pro win
+# rate; HARD cities ≤55%. These drive risk-based position sizing:
+#   EASY   → 3% of paper balance per trade
+#   MEDIUM → 2%
+#   HARD   → 1%
+# Keys are uppercase to match ACTIVE_LOCATIONS. Unknown cities default to MEDIUM.
+CITY_DIFFICULTY = {
+    # EASY — ≥75% pro win rate (stable climates, predictable)
+    "TEL AVIV":      "easy",
+    "WARSAW":        "easy",
+    "SAN FRANCISCO": "easy",
+    "LOS ANGELES":   "easy",
+    "MILAN":         "easy",
+    "CHENGDU":       "easy",
+    "HOUSTON":       "easy",
+    "MUNICH":        "easy",
+    "SEOUL":         "easy",
+    # HARD — ≤55% pro win rate (volatile, hard to forecast accurately)
+    "TOKYO":         "hard",
+    "SHANGHAI":      "hard",
+    "WELLINGTON":    "hard",
+    "BEIJING":       "hard",
+    "WUHAN":         "hard",
+    # Everything else defaults to "medium" (55-75% win rate)
+}
+RISK_PCT_BY_TIER = {"easy": 0.03, "medium": 0.02, "hard": 0.01}
+
+
+def city_tier(location: str) -> str:
+    """Return difficulty tier for a city. Defaults to 'medium' if unknown."""
+    return CITY_DIFFICULTY.get((location or "").upper(), "medium")
+
+
+def city_risk_pct(location: str) -> float:
+    """Return per-trade risk % (0.01/0.02/0.03) for a given city."""
+    return RISK_PCT_BY_TIER[city_tier(location)]
+
 # =============================================================================
 # Structured logging
 # =============================================================================
@@ -905,6 +943,68 @@ def _bucket_probability(lo_f: float, hi_f: float, mean_f: float, spread_f: float
     return max(0.0, min(1.0, p_hi - p_lo))
 
 
+def rank_event_buckets_by_edge(event_markets: list, forecast_f: float,
+                               spread_f: float, signal_strength: str) -> list:
+    """
+    Rank ALL buckets in an event by edge (bucket_probability × signal_discount − price).
+
+    Unlike the old Pass 1/Pass 2 matching that only considered the one bucket
+    containing the forecast, this considers every parseable bucket. Range buckets
+    spanning the forecast get more probability mass and often beat exact buckets
+    on edge, which matches how pro traders (Hans323) profit — 72% of their
+    volume is range buckets vs 5% exact.
+
+    Signal strength applies a multiplicative discount:
+      strong=1.00, moderate=0.92, weak=0.80, unknown=0.85, single_source=0.75
+
+    Exact buckets (lo==hi) are widened to ±0.5° since Polymarket resolution
+    rounds the daily temp — an exact "87°F" bucket effectively covers 86.5–87.5.
+
+    Returns list of dicts sorted by edge desc, each with:
+      market, bucket (lo, hi, unit), outcome_name, price, raw_prob,
+      confidence (prob × discount), edge (confidence − price), lo_f, hi_f.
+    """
+    if spread_f is None or spread_f <= 0:
+        spread_f = 4.0
+    discount = {
+        "strong": 1.00, "moderate": 0.92, "weak": 0.80,
+        "single_source": 0.75, "unknown": 0.85,
+    }.get(signal_strength, 0.85)
+
+    ranked = []
+    for market in event_markets:
+        bucket, outcome_name = parse_market_bucket(market)
+        if not bucket:
+            continue
+        lo, hi, unit = bucket
+
+        # Convert °C bucket bounds to °F (forecast is always °F)
+        if unit == 'C':
+            lo_f = lo * 9 / 5 + 32 if lo != -999 else -999
+            hi_f = hi * 9 / 5 + 32 if hi != 999 else 999
+        else:
+            lo_f, hi_f = lo, hi
+
+        # Widen exact buckets ±0.5° (resolution rounds daily temp)
+        prob_lo, prob_hi = lo_f, hi_f
+        if lo_f == hi_f and lo_f != -999 and lo_f != 999:
+            prob_lo, prob_hi = lo_f - 0.5, hi_f + 0.5
+
+        raw_prob = _bucket_probability(prob_lo, prob_hi, forecast_f, spread_f)
+        confidence = raw_prob * discount
+        price = market.get("external_price_yes") or 0.5
+        edge = confidence - price
+
+        ranked.append({
+            "market": market, "bucket": bucket, "outcome_name": outcome_name,
+            "price": price, "raw_prob": raw_prob, "confidence": confidence,
+            "edge": edge, "lo_f": lo_f, "hi_f": hi_f, "unit": unit,
+        })
+
+    ranked.sort(key=lambda x: -x["edge"])
+    return ranked
+
+
 def find_punt_candidates(event_markets: list, forecast_temp: float, spread: float,
                          core_match_id: str | None, already_held: set,
                          location: str, date_str: str, metric: str,
@@ -1359,8 +1459,41 @@ def get_positions(venue: str = None, force_fresh: bool = False) -> list:
         return []
 
 
-def calculate_position_size(default_size: float, smart_sizing: bool) -> float:
-    """Calculate position size based on portfolio or fall back to default."""
+def calculate_position_size(default_size: float, smart_sizing: bool,
+                            location: str | None = None) -> float:
+    """
+    Position sizing hierarchy:
+      1. If location is given: use city-tier risk % (EASY 3% / MEDIUM 2% / HARD 1%)
+         of paper balance, capped by MAX_POSITION_USD.
+      2. Else if smart_sizing: use SMART_SIZING_PCT of live portfolio balance.
+      3. Otherwise return default_size (typically MAX_POSITION_USD).
+
+    City-tier sizing is additive to smart_sizing — city tier wins when both
+    are available. The empirical tiers were derived from 9k pro trades:
+    HARD cities (Tokyo, Shanghai, Wellington, Beijing, Wuhan) size down to
+    1% because even pros win <55% there; EASY cities (Tel Aviv, Warsaw, SF,
+    LA, Milan, Chengdu, Houston, Munich, Seoul) size up to 3%.
+    """
+    # Path 1: city-tier risk-based sizing (works in both live and paper modes)
+    if location:
+        tier = city_tier(location)
+        risk_pct = RISK_PCT_BY_TIER[tier]
+        # Try live balance first, fall back to paper balance
+        balance = None
+        if smart_sizing:
+            portfolio = get_portfolio()
+            if portfolio:
+                balance = portfolio.get("balance_usdc")
+        if balance is None or balance <= 0:
+            balance = _config.get("paper_balance", 10000.0)
+        city_size = balance * risk_pct
+        city_size = min(city_size, MAX_POSITION_USD)
+        city_size = max(city_size, 1.0)
+        print(f"  💡 City sizing: ${city_size:.2f} "
+              f"({risk_pct:.0%} of ${balance:.2f}, tier={tier.upper()})")
+        return city_size
+
+    # Path 2: legacy smart_sizing (portfolio % without city tier)
     if not smart_sizing:
         return default_size
 
@@ -1878,53 +2011,28 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         unit_label = "°F"
         log(f"  AIFS ENS: {forecast_temp}{unit_label} | signal: {signal_strength} | {models_used} models | agree: {agreement_pct}% | spread: {spread}°")
 
-        # Bucket matching: Pass 1 (exact range), then Pass 2 (threshold)
+        # Rank every bucket in this event by edge (Gaussian bucket probability
+        # × signal-strength discount − market price). Picks the BEST bucket
+        # per event, not just the one containing the forecast. Ranges and
+        # thresholds with fat probability mass naturally beat narrow exacts
+        # when the market prices them inefficiently — matching pro strategy
+        # (Hans323: 72% range, 22% threshold, 5% exact).
+        ranked_buckets = rank_event_buckets_by_edge(
+            event_markets, forecast_temp, spread, signal_strength,
+        )
         matching_market = None
-        threshold_markets = []
-        for market in event_markets:
-            bucket, outcome_name = parse_market_bucket(market)
-            if bucket:
-                lo, hi, unit = bucket
-                if unit == 'C':
-                    lo = lo * 9 / 5 + 32 if lo != -999 else -999
-                    hi = hi * 9 / 5 + 32 if hi != 999 else 999
-                if lo <= forecast_temp <= hi:
-                    matching_market = market
-                    break
-                # Also treat single-point buckets (lo == hi) as threshold boundaries
-                # e.g. "59°F" on a "Will it be 59°F or above?" market
-                if hi == 999 or lo == -999 or lo == hi:
-                    threshold_markets.append((market, lo, hi, outcome_name))
-
-        # Threshold markets: "X°F or above" (lo != -999, hi == 999)
-        # and "X°F or below" (lo == -999, hi != 999).
-        # Also match if forecast is within BUCKET_DISTANCE of the boundary
-        # (e.g. 58.2°F forecast vs 59°F "or above" bucket — within 0.8°).
-        BUCKET_DISTANCE = 2.0  # degrees F tolerance to accept a threshold bucket
-        if not matching_market and threshold_markets:
-            best_match, best_distance = None, float('inf')
-            for market, lo, hi, outcome_name in threshold_markets:
-                is_or_higher = (lo != -999 and hi == 999)
-                is_or_below = (lo == -999 and hi != 999)
-                if is_or_higher:
-                    # "X°F or above" — match if forecast is at or near the threshold
-                    if forecast_temp >= lo - BUCKET_DISTANCE:
-                        d = abs(forecast_temp - lo)
-                        if d < best_distance:
-                            best_distance, best_match = d, market
-                elif is_or_below:
-                    # "X°F or below" — match if forecast is at or near the threshold
-                    if forecast_temp <= hi + BUCKET_DISTANCE:
-                        d = abs(forecast_temp - hi)
-                        if d < best_distance:
-                            best_distance, best_match = d, market
-                elif lo == hi:
-                    # Single-point bucket (lo == hi) — match if forecast is near the point
-                    # e.g. "59-59°F" on a "59°F or above" market: forecast 58.2° is close enough
-                    d = abs(forecast_temp - lo)
-                    if d <= BUCKET_DISTANCE and d < best_distance:
-                        best_distance, best_match = d, market
-            matching_market = best_match
+        matched_rb = None
+        for rb in ranked_buckets:
+            p = rb["price"]
+            # Skip extreme / off-book prices, but keep walking the ranked list
+            if p < MIN_TICK_SIZE or p > (1 - MIN_TICK_SIZE):
+                continue
+            # List is sorted by edge desc — once below MIN_EDGE, nothing better remains
+            if rb["edge"] < MIN_EDGE:
+                break
+            matching_market = rb["market"]
+            matched_rb = rb
+            break
 
         # Punt scan: find deep tail-priced mispricings in this event.
         # Runs regardless of whether core matched — excludes core's bucket if any.
@@ -2034,8 +2142,12 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                       price=price, signal_strength=signal_strength, spread=spread)
             continue
 
-        # Signal → confidence
-        if signal_strength == "strong":
+        # Confidence comes from the bucket-specific probability computed in
+        # rank_event_buckets_by_edge (Gaussian prob × signal-strength discount).
+        # Fall back to flat signal-strength heuristic if ranking wasn't used.
+        if matched_rb is not None:
+            confidence = matched_rb["confidence"]
+        elif signal_strength == "strong":
             confidence = 0.88
         elif signal_strength == "moderate":
             confidence = 0.80
@@ -2197,7 +2309,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             elif trend["direction"] == "up":
                 trend_bonus = f" 📈 (up {trend['change_24h']:.0%} in 24h)"
 
-        position_size = calculate_position_size(MAX_POSITION_USD, smart_sizing)
+        position_size = calculate_position_size(MAX_POSITION_USD, smart_sizing, location=location)
         vol_meta = None
         if vol_targeting and history:
             current_vol = calculate_ewma_vol(history, span=VOL_SPAN)
