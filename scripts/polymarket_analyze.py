@@ -38,7 +38,16 @@ except Exception:
 DATA_API = "https://data-api.polymarket.com"
 GAMMA_API = "https://gamma-api.polymarket.com"
 
-WEATHER_KEYWORDS = ("temperature", "temp", "weather", "°f", "°c", "highest", "lowest")
+WEATHER_KEYWORDS = (
+    "temperature", "temp", "weather",
+    "°f", "°c", "degree",
+    "highest", "lowest", "hot", "cold",
+    "rain", "snow", "storm", "precipitation",
+    "celsius", "fahrenheit",
+)
+# Also catch any position where the title/slug has a bare temperature pattern
+# like "72°F", "28°C", or "be 70" near a city name.
+_TEMP_PATTERN = re.compile(r"\d+\s*°\s*[fc]", re.IGNORECASE)
 
 # City aliases → canonical name. Longest aliases must be matched first so
 # "new york city" beats "new york" which beats "nyc".
@@ -159,9 +168,15 @@ def _title_blob(p: dict) -> str:
 
 def is_weather(p: dict) -> bool:
     blob = _title_blob(p)
-    if not any(kw in blob for kw in WEATHER_KEYWORDS):
+    # Must mention a supported city
+    if not any(alias in blob for alias in _SORTED_ALIASES):
         return False
-    return any(alias in blob for alias in _SORTED_ALIASES)
+    # Weather if any weather keyword OR a bare temperature pattern (e.g. "72°F")
+    if any(kw in blob for kw in WEATHER_KEYWORDS):
+        return True
+    if _TEMP_PATTERN.search(blob):
+        return True
+    return False
 
 
 def extract_city(p: dict) -> str:
@@ -379,6 +394,8 @@ def main():
     parser.add_argument("wallet", help="0x-prefixed 40-hex wallet address")
     parser.add_argument("--all", action="store_true", help="All categories, not just weather")
     parser.add_argument("--json", action="store_true", help="Raw JSON dump, no analysis")
+    parser.add_argument("--debug-titles", action="store_true",
+                        help="Print sample titles (weather match vs not) to debug the filter")
     args = parser.parse_args()
 
     if not re.match(r"^0x[a-fA-F0-9]{40}$", args.wallet):
@@ -419,6 +436,15 @@ def main():
     print(f"  Closed:      {len(closed_subset)}/{len(closed)}")
     print(f"  Active:      {len(active_subset)}/{len(active)}")
     print(f"  Redeemable:  {len(redeemable_subset)}/{len(redeemable)}")
+
+    if args.debug_titles and not args.all:
+        print("\n  --- SAMPLE MATCHED (first 10) ---")
+        for p in closed_subset[:10]:
+            print(f"    MATCH: {(p.get('title') or p.get('eventSlug') or '')[:100]}")
+        print("\n  --- SAMPLE NOT-MATCHED (first 20) ---")
+        non_match = [p for p in closed if not is_weather(p)]
+        for p in non_match[:20]:
+            print(f"    SKIP:  {(p.get('title') or p.get('eventSlug') or '')[:100]}")
 
     # Combined resolved = closed + redeemable
     resolved = closed_subset + redeemable_subset
