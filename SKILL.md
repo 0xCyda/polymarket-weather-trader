@@ -55,8 +55,8 @@ For same-day (D+0) markets after 14:00 local, live **METAR station observations*
 - **METAR ground truth**: Same-day markets get live airport station observations as an extra signal quality check.
 
 ## Bot Repo Path (CRITICAL)
-- **Repo path:** `~/.hermes/skills/solebrace-skills/polymarket-weather-trader/`
-- **Git dir:** `~/.hermes/skills/solebrace-skills/polymarket-weather-trader/.git`
+- **Repo path:** `/home/brandon/projects/polymarket-weather-trader`
+- **Git dir:** `/home/brandon/projects/polymarket-weather-trader.git`
 - **Latest commit:** `4822936` — "Dashboard UI overhaul — glass-morphism"
 - **WRONG (ignore):** `~/.openclaw/workspace/skills/polymarket-weather-trader` — do NOT use this path
 

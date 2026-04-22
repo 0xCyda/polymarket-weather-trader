@@ -24,14 +24,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 # Add scripts/ to path for paper_journal
 _BASE = Path(__file__).resolve().parent
-sys.path.insert(0, str(_BASE / "scripts"))
-from paper_journal import get_stats, get_open_positions, get_resolved_trades, _load_trades
-
-SKILL_DIR = _BASE
-DATA_DIR = SKILL_DIR / "data"
-SCAN_LOG = DATA_DIR / "forecast_history.jsonl"
+_REPO = _BASE.parent
+DATA_DIR = _REPO / "data"
 PAPER_TRADES = DATA_DIR / "paper_trades.jsonl"
-CONFIG_FILE = SKILL_DIR / "config.json"
+SCAN_LOG = DATA_DIR / "forecast_history.jsonl"
+CONFIG_FILE = _REPO / "config.json"
 
 _MONTH_NAMES = {
     "01": "january", "02": "february", "03": "march", "04": "april",
@@ -60,7 +57,7 @@ def polymarket_event_url(location: str, target_date: str, metric: str) -> str | 
         return None
     return f"https://polymarket.com/event/{metric_word}-temperature-in-{loc_slug}-on-{month}-{int(d)}-{y}"
 
-DASHBOARD_HTML = """
+DASHBOARD_HTML = r"""
 <!doctype html>
 <html>
 <head>
@@ -1040,7 +1037,7 @@ setInterval(refresh, 1800000);
 
 def _load_env():
     """Load .env from skill directory into os.environ."""
-    env_file = SKILL_DIR / ".env"
+    env_file = _REPO / ".env"
     if env_file.exists():
         for line in env_file.read_text().splitlines():
             line = line.strip()
