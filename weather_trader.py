@@ -985,10 +985,13 @@ def rank_event_buckets_by_edge(event_markets: list, forecast_f: float,
         else:
             lo_f, hi_f = lo, hi
 
-        # Widen exact buckets ±0.5° (resolution rounds daily temp)
+        # Widen exact buckets by ±0.5 of the native unit (resolution rounds daily temp).
+        # °C markets resolve in Celsius, so ±0.5°C = ±0.9°F. Applying ±0.5°F to a
+        # Celsius bucket underwidened by nearly half, causing boundary-zone misses.
         prob_lo, prob_hi = lo_f, hi_f
         if lo_f == hi_f and lo_f != -999 and lo_f != 999:
-            prob_lo, prob_hi = lo_f - 0.5, hi_f + 0.5
+            widen_f = 0.9 if unit == 'C' else 0.5
+            prob_lo, prob_hi = lo_f - widen_f, hi_f + widen_f
 
         raw_prob = _bucket_probability(prob_lo, prob_hi, forecast_f, spread_f)
         confidence = raw_prob * discount
