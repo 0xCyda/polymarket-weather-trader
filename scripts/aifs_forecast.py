@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 # Hard cap on socket-level I/O during GRIB downloads. The ecmwf-opendata/multiurl
 # library has no per-request timeout; without this a stalled S3 connection hangs
 # the process until the cron job's process-level timeout kills the whole scan.
-_GRIB_DOWNLOAD_SOCKET_TIMEOUT_S = 120
+_GRIB_DOWNLOAD_SOCKET_TIMEOUT_S = 300
 
 # Ensures only one thread downloads the GRIB at a time. Without this, concurrent
 # city forecast threads each detect a stale cache and race to write the same file.
