@@ -1,5 +1,6 @@
 {
   "max_position_usd": 200.00,
   "paper_balance": 10000.0,
-  "discovery_cache_minutes": 180
+  "discovery_cache_minutes": 180,
+  "entry_threshold": 0.55
 }
