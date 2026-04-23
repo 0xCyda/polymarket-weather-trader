@@ -1,18 +1,19 @@
 # Polymarket Weather Trader
 
-Trade Polymarket weather markets using an **AIFS ENS (ECMWF AI ensemble) + 8-model global blend**. Dynamic signal confidence based on model agreement, with Simmer API handling market discovery and execution.
+Trade Polymarket weather markets using an **AIFS ENS (ECMWF AI ensemble) + 4-model global blend**. Dynamic signal confidence based on model agreement, with Simmer API handling market discovery and execution.
 
 Inspired by gopfan2's $2M+ weather trading strategy.
 
 ## Architecture
 
 - **AIFS ENS** — ECMWF AI ensemble system (51 member forecast)
-- **8-model global blend** — AIFS ENS, ECMWF IFS, GFS, Météo-France ARPEGE, UK Met Office, ICON, GEM, JMA
+- **4-model global blend** — AIFS ENS (18%), ECMWF IFS (24%), GFS (14%), Météo-France ARPEGE (10%). Trimmed from the original 8; UK Met Office, ICON, GEM, and JMA were dropped because they inflated spread and blocked valid signals.
 - **Signal confidence** — dynamically adjusted based on model agreement
 - **Simmer API** — market discovery and execution
-- **Two strategies**:
-  - **Core** — edge-based entry (min_edge 0.25) on well-matched buckets, $200 per trade, dynamic profit-take exits
-  - **Punt** — hunts tail mispricings (buckets priced ≤6¢ where model says ≥70%), fixed $15 stake, $100/day budget cap
+- **Three strategies**:
+  - **Core** — edge-based entry (min_edge 0.25) on well-matched buckets, $200 per trade, dynamic profit-take exits. Runs every 4h.
+  - **Punt** — hunts tail mispricings (buckets priced ≤6¢ where model says ≥70%), fixed $15 stake, $100/day budget cap. Runs alongside Core.
+  - **Late** — day-of intraday entry at 3pm local per city. Uses TWC observed running daily max rather than forecasts; per-city ceilings derived from backtest hit rates. Runs hourly.
 
 ## Setup
 
@@ -39,9 +40,10 @@ python dashboard.py
 ## Key Files
 
 - `weather_trader.py` — main entry point, core + punt strategies
+- `scripts/late_trader.py` — late-mode hourly intraday trader
 - `dashboard.py` — local HTML dashboard for paper journal
 - `scripts/aifs_forecast.py` — AIFS ENS fetch and parsing
-- `scripts/ensemble_forecast.py` — 7-model global ensemble
+- `scripts/ensemble_forecast.py` — 4-model global ensemble
 - `scripts/forecast_validator.py` — cross-model validation
 - `scripts/paper_journal.py` — paper trade logging (JSONL)
 - `scripts/forecast_history.py` — forecast accuracy tracking
