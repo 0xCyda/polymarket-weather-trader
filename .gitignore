@@ -10,6 +10,7 @@ scripts/__pycache__/
 !data/losses.jsonl
 *Zone.Identifier
 losses.log
+errors.log
 scripts/data/forecast_cache.json
 scripts/data/discovery_cache.json
 data/late_daily_budget.json
