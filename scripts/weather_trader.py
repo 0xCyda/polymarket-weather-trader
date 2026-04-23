@@ -159,6 +159,26 @@ CONFIG_SCHEMA = {
                           "help": "Min model probability for a punt. Don't punt on weak tail signals."},
     "punt_daily_budget_usd":{"env": "SIMMER_WEATHER_PUNT_DAILY_BUDGET","default": 100.0,"type": float,
                           "help": "Max USD spent on punts per day. Safety cap."},
+    # Late mode: day-of intraday strategy. At ~3pm local, buys the bucket
+    # containing the observed running daily max/min from TWC. Orthogonal
+    # to CORE (model forecast) and PUNT (tail lottery). Runs separately
+    # via scripts/late_trader.py on an hourly cron.
+    "late_mode":         {"env": "SIMMER_WEATHER_LATE_MODE",         "default": True,  "type": bool,
+                          "help": "Enable LATE mode: day-of intraday entry based on TWC observations."},
+    "late_price_ceiling":{"env": "SIMMER_WEATHER_LATE_PRICE_CEILING","default": 0.90,  "type": float,
+                          "help": "Max entry price for a LATE candidate. Breakeven on good cities is ~0.91 after Simmer fee."},
+    "late_max_position_usd":{"env": "SIMMER_WEATHER_LATE_POSITION_USD","default": 100.0,"type": float,
+                          "help": "Max USD per LATE trade."},
+    "late_daily_budget_usd":{"env": "SIMMER_WEATHER_LATE_DAILY_BUDGET","default": 500.0,"type": float,
+                          "help": "Max USD spent across all LATE trades in a UTC day."},
+    "late_entry_hour":   {"env": "SIMMER_WEATHER_LATE_ENTRY_HOUR",   "default": 15,    "type": int,
+                          "help": "Local hour at which LATE mode takes its snapshot (15 = 3pm local)."},
+    "late_edge_buffer_c":{"env": "SIMMER_WEATHER_LATE_EDGE_BUFFER_C","default": 0.3,   "type": float,
+                          "help": "Min distance (°C) from running temp to bucket edges to count as locked in."},
+    "late_cities":       {"env": "SIMMER_WEATHER_LATE_CITIES",
+                          "default": "London,Toronto,Singapore,Sao Paulo,Shanghai,Paris,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas",
+                          "type": str,
+                          "help": "Comma-separated whitelist of cities eligible for LATE mode (>=70% hit rate in backtest)."},
 }
 
 # Backwards-compatible env var aliases (old name -> new name)
@@ -1839,7 +1859,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
     log(f"  Min edge:        {MIN_EDGE:+.0%} (primary entry gate: confidence - price)")
     log(f"  Entry ceiling:   {ENTRY_THRESHOLD:.0%} (price sanity cap)")
     log(f"  Exit threshold:  {EXIT_THRESHOLD:.0%} (sell above this)")
-      log(f"  Max trades/run:  {MAX_TRADES_PER_RUN}")
+    log(f"  Max trades/run:  {MAX_TRADES_PER_RUN}")
     log(f"  Locations:       {', '.join(ACTIVE_LOCATIONS)}")
     log(f"  Smart sizing:    {'✓ Enabled' if smart_sizing else '✗ Disabled'}")
     log(f"  Safeguards:      {'✓ Enabled' if use_safeguards else '✗ Disabled'}")
@@ -2596,8 +2616,25 @@ if __name__ == "__main__":
     parser.add_argument("--no-trends", action="store_true", help="Disable price trend detection")
     parser.add_argument("--vol-targeting", action="store_true", help="Enable volatility targeting (dynamic position sizing based on realized vol)")
     parser.add_argument("--punt-mode", action="store_true", help="Enable punt mode: buy deeply-mispriced tail buckets with small stakes (side strategy)")
+    parser.add_argument("--late", action="store_true", help="Run LATE mode only: day-of intraday scan using TWC observations (no CORE/PUNT pass).")
+    parser.add_argument("--late-force", action="store_true", help="With --late, ignore the local time-of-day window.")
+    parser.add_argument("--late-city", help="With --late, process only this city.")
     parser.add_argument("--quiet", "-q", action="store_true", help="Only output when trades execute or errors occur (ideal for high-frequency runs)")
     args = parser.parse_args()
+
+    if args.late:
+        # Delegate to the standalone LATE runner. Kept separate because its
+        # signal source (TWC intraday) has nothing in common with the ensemble
+        # forecast pipeline that CORE and PUNT share.
+        import subprocess
+        cmd = [sys.executable, str(_p.Path(__file__).parent / "late_trader.py")]
+        if args.live:
+            cmd.append("--live")
+        if args.late_force:
+            cmd.append("--force")
+        if args.late_city:
+            cmd.extend(["--city", args.late_city])
+        sys.exit(subprocess.call(cmd))
 
     # Handle --set config updates
     if args.set:
