@@ -199,6 +199,22 @@ DASHBOARD_HTML = """
     .config-table tr:not(:last-child) td { border-bottom: 1px solid rgba(255,255,255,0.05); }
     .config-key { padding: 4px 0; color: var(--text-secondary); font-size: 0.82rem; }
     .config-val { padding: 4px 0; text-align: right; font-size: 0.82rem; }
+    .modes-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+    @media (max-width: 720px) { .modes-grid { grid-template-columns: 1fr; } }
+    .mode-tile { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 14px 16px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 8px; }
+    .mode-tile .mode-name { font-size: 0.78rem; letter-spacing: 0.08em; color: var(--text-secondary); text-transform: uppercase; }
+    .mode-tile .mode-desc { font-size: 0.78rem; color: var(--text-faint); line-height: 1.35; }
+    .mode-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .mode-status { font-size: 0.82rem; font-weight: 600; }
+    .mode-status.on { color: var(--accent-green); }
+    .mode-status.off { color: var(--accent-red); }
+    .mode-toggle {
+      background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.35);
+      color: var(--accent-green); padding: 4px 12px; border-radius: 6px;
+      cursor: pointer; font-size: 0.75rem; font-family: inherit;
+    }
+    .mode-toggle.off { background: rgba(248,113,113,0.08); border-color: rgba(248,113,113,0.35); color: var(--accent-red); }
+    .mode-toggle:hover { filter: brightness(1.2); }
     @keyframes pulse {
       0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
       50% { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
@@ -1030,6 +1046,18 @@ function renderConfig() {
         ]
       },
       {
+        label: 'Late Mode',
+        rows: [
+          { k: 'Enabled', v: cfg.late_mode ? 'Yes' : 'No' },
+          { k: 'Entry hour (local)', v: `${cfg.late_entry_hour}:00` },
+          { k: 'Price ceiling', v: `$${cfg.late_price_ceiling}` },
+          { k: 'Edge buffer', v: `${cfg.late_edge_buffer_c}°C` },
+          { k: 'Max position', v: `$${cfg.late_max_position_usd}` },
+          { k: 'Daily budget', v: `$${cfg.late_daily_budget_usd}` },
+          { k: 'Cities', v: (cfg.late_cities || '').split(',').filter(Boolean).length || '—' },
+        ]
+      },
+      {
         label: 'Filters',
         rows: [
           { k: 'Slippage max', v: `${(cfg.slippage_max * 100).toFixed(0)}%` },
@@ -1065,7 +1093,28 @@ function renderConfig() {
       },
     ];
 
-    el.innerHTML = `<div class="config-grid">${
+    const modes = [
+      { id: 'core', name: 'CORE', desc: 'Forecast-driven ensemble trader (CORE scan every 4h).', enabled: true },
+      { id: 'punt', name: 'PUNT', desc: 'Tail-priced lottery buckets (runs alongside CORE).', enabled: cfg.punt_mode !== false },
+      { id: 'late', name: 'LATE', desc: 'Day-of intraday entry from TWC obs at 3pm local (hourly scan).', enabled: cfg.late_mode !== false },
+    ];
+    const modesHtml = `<div class="modes-grid">${
+      modes.map(m => `
+        <div class="mode-tile" data-mode="${m.id}">
+          <div class="mode-row">
+            <span class="mode-name">${m.name}</span>
+            <span class="mode-status ${m.enabled ? 'on' : 'off'}">${m.enabled ? 'Enabled' : 'Disabled'}</span>
+          </div>
+          <div class="mode-desc">${m.desc}</div>
+          <div class="mode-row" style="margin-top:4px">
+            <span style="font-size:0.72rem;color:var(--text-faint)">UI only — does not affect runtime</span>
+            <button class="mode-toggle ${m.enabled ? '' : 'off'}" onclick="toggleMode('${m.id}')">${m.enabled ? 'Disable' : 'Enable'}</button>
+          </div>
+        </div>
+      `).join('')
+    }</div>`;
+
+    el.innerHTML = modesHtml + `<div class="config-grid">${
       sections.map(s => `
         <div class="config-section">
           <h3>${s.label}</h3>
@@ -1081,6 +1130,21 @@ function renderConfig() {
   }).catch(() => {
     document.getElementById('config-content').innerHTML = '<div class="faint">Failed to load config.</div>';
   });
+}
+
+// UI-only toggle: flips the visible status + button label on the tile.
+// Does NOT hit the backend or change any runtime flag.
+function toggleMode(id) {
+  const tile = document.querySelector(`.mode-tile[data-mode="${id}"]`);
+  if (!tile) return;
+  const status = tile.querySelector('.mode-status');
+  const btn = tile.querySelector('.mode-toggle');
+  const on = status.classList.contains('on');
+  status.classList.toggle('on', !on);
+  status.classList.toggle('off', on);
+  status.textContent = on ? 'Disabled' : 'Enabled';
+  btn.classList.toggle('off', on);
+  btn.textContent = on ? 'Enable' : 'Disable';
 }
 
 async function refresh() {
@@ -1724,6 +1788,14 @@ def _get_config() -> dict:
         "punt_min_edge":        config.get("punt_min_edge", 0.50),
         "punt_min_confidence":  config.get("punt_min_confidence", 0.70),
         "punt_daily_budget_usd": config.get("punt_daily_budget_usd", 100.0),
+        # Late mode (day-of intraday)
+        "late_mode":             config.get("late_mode", True),
+        "late_price_ceiling":    config.get("late_price_ceiling", 0.90),
+        "late_max_position_usd": config.get("late_max_position_usd", 100.0),
+        "late_daily_budget_usd": config.get("late_daily_budget_usd", 500.0),
+        "late_entry_hour":       config.get("late_entry_hour", 15),
+        "late_edge_buffer_c":    config.get("late_edge_buffer_c", 0.3),
+        "late_cities":           config.get("late_cities", "London,Toronto,Singapore,Sao Paulo,Shanghai,Paris,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas"),
         # Discovery
         "discovery_cache_minutes": config.get("discovery_cache_minutes", 180),
         "forecast_cache_disk":     config.get("forecast_cache_disk", True),
