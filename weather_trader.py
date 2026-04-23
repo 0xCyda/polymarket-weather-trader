@@ -2011,8 +2011,18 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             log_error("no_forecast", err_msg, location=location, date=date_str, metric=metric, signal=signal_strength)
             continue
 
-        unit_label = "°F"
-        log(f"  AIFS ENS: {forecast_temp}{unit_label} | signal: {signal_strength} | {models_used} models | agree: {agreement_pct}% | spread: {spread}°")
+        # Markets resolve in whole degrees. Round to the nearest integer in the
+        # market's native unit so bucket selection reflects what will actually settle.
+        if is_international:
+            rounded_c = round((forecast_temp - 32) * 5 / 9)
+            forecast_temp = rounded_c * 9 / 5 + 32  # store as °F for probability math
+            unit_label = "°C"
+            display_temp = f"{rounded_c}°C"
+        else:
+            forecast_temp = round(forecast_temp)
+            unit_label = "°F"
+            display_temp = f"{forecast_temp}°F"
+        log(f"  AIFS ENS: {display_temp} | signal: {signal_strength} | {models_used} models | agree: {agreement_pct}% | spread: {spread}°")
 
         # Rank every bucket in this event by edge (Gaussian bucket probability
         # × signal-strength discount − market price). Picks the BEST bucket
@@ -2072,9 +2082,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                     unparsed_count += 1
             nearest = min(all_buckets, key=lambda b: min(abs(b[0]-forecast_temp), abs(b[1]-forecast_temp))) if all_buckets else None
             if nearest:
-                log(f"  ⚠️  No bucket found for {forecast_temp}{unit_label} — nearest: {nearest[2]} ({nearest[0]:.0f}-{nearest[1]:.0f}{unit_label})")
+                log(f"  ⚠️  No bucket found for {display_temp} — nearest: {nearest[2]} ({nearest[0]:.0f}-{nearest[1]:.0f}{unit_label})")
             else:
-                log(f"  ⚠️  No bucket found for {forecast_temp}{unit_label} — {len(event_markets)} markets, {unparsed_count} unparseable")
+                log(f"  ⚠️  No bucket found for {display_temp} — {len(event_markets)} markets, {unparsed_count} unparseable")
                 # Diagnostic: show what fields the markets actually expose so we
                 # can see whether bucket info is in outcome_name, question, or elsewhere.
                 for m in event_markets[:3]:
@@ -2226,6 +2236,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             "signal_strength": signal_strength, "models_used": models_used,
             "agreement_pct": agreement_pct, "spread": spread,
             "forecast_temp": forecast_temp, "unit_label": unit_label,
+            "display_temp": display_temp,
             "is_international": is_international,
         })
         opportunities_found += 1
@@ -2275,6 +2286,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         confidence = c["confidence"]
         forecast_temp = c["forecast_temp"]
         unit_label = c["unit_label"]
+        display_temp = c["display_temp"]
         outcome_name = c["outcome_name"]
         location = c["location"]
         date_str = c["date_str"]
@@ -2334,7 +2346,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
         _mt = forecasts.get("model_temps", {})
         _mt_str = ", ".join(f"{k}:{v:.1f}°" for k, v in sorted(_mt.items())) if _mt else "?"
-        log(f"  ✅ BUY opportunity!{trend_bonus} | {_mt_str} → {forecast_temp}{unit_label}")
+        log(f"  ✅ BUY opportunity!{trend_bonus} | {_mt_str} → {display_temp}")
         tag = "SIMULATED" if dry_run else "LIVE"
         log(f"  Executing trade ({tag})...", force=True)
 
@@ -2357,7 +2369,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
         result = execute_trade(
             market_id, "yes", position_size,
-            reasoning=f"Ensemble {forecast_temp}{unit_label} → bucket {outcome_name} underpriced at {price:.0%}",
+            reasoning=f"Ensemble {display_temp} → bucket {outcome_name} underpriced at {price:.0%}",
             signal_data=signal,
         )
 
@@ -2374,7 +2386,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 log_trade(
                     trade_id=trade_id,
                     source=TRADE_SOURCE, skill_slug=SKILL_SLUG,
-                    thesis=f"{'Open-Meteo' if is_international else 'Ensemble'} forecasts {forecast_temp}{unit_label} for {location} on {date_str}, bucket '{outcome_name}' @ ${price:.2f}",
+                    thesis=f"{'Open-Meteo' if is_international else 'Ensemble'} forecasts {display_temp} for {location} on {date_str}, bucket '{outcome_name}' @ ${price:.2f}",
                     confidence=round(journal_confidence, 2),
                     location=location, forecast_temp=forecast_temp,
                     target_date=date_str, metric=metric,
