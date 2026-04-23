@@ -31,7 +31,6 @@ import argparse
 import json
 import os
 import sys
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -43,8 +42,9 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from weather_trader import (
-    CONFIG_SCHEMA, get_client, simmer_call, fetch_weather_markets, parse_market_bucket,
+    CONFIG_SCHEMA, fetch_weather_markets, parse_market_bucket,
     parse_weather_event, execute_trade, log_error,
+    validate_live_trading_prereqs,
 )
 from paper_journal import (
     _HISTORICAL_LOCATIONS as LOCATIONS,
@@ -65,9 +65,27 @@ LATE_ENTRY_HOUR      = int(_cfg.get("late_entry_hour", 15))
 LATE_EDGE_BUFFER_C   = float(_cfg.get("late_edge_buffer_c", 0.3))
 LATE_ALLOWED_CITIES  = [c.strip() for c in str(_cfg.get("late_cities", "")).split(",") if c.strip()]
 
+# Per-city price ceilings derived from the Jan-Apr 2026 backtest hit rate
+# with a 3¢ safety margin. Formula: hit * 0.9 / (hit * 0.9 + 1 - hit) - 0.03,
+# capped at 0.95 (don't pay near-certainty prices). The effective ceiling
+# for any city is min(LATE_PRICE_CEILING, LATE_CITY_CEILINGS[city]), so the
+# global knob still acts as a portfolio-wide cap.
+LATE_CITY_CEILINGS: dict[str, float] = {
+    "Los Angeles": 0.95, "London": 0.95, "Seattle": 0.95,
+    "Miami": 0.94, "Chicago": 0.92, "Singapore": 0.91,
+    "Toronto": 0.89, "Sao Paulo": 0.88, "Shanghai": 0.88,
+    "Dallas": 0.83,
+    "Tokyo": 0.73, "Beijing": 0.72, "Paris": 0.72,
+}
+
 TWC_API_KEY = os.environ.get("TWC_API_KEY", "6532d6454b8aa370768e63d6ba5a832e")
 
 _BUDGET_FILE = _HERE / "data" / "late_daily_budget.json"
+
+
+def _effective_ceiling(city: str) -> float:
+    """Tighter of the global LATE_PRICE_CEILING and this city's backtest-derived cap."""
+    return min(LATE_PRICE_CEILING, LATE_CITY_CEILINGS.get(city, LATE_PRICE_CEILING))
 
 
 # ----- TWC intraday fetch -----
@@ -190,7 +208,7 @@ def _cities_in_window(force: bool, specific: str | None) -> list[str]:
     return out
 
 
-def _scan_city(city: str, dry_run: bool, log=print) -> dict:
+def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print) -> dict:
     result = {"city": city, "status": "skip", "reason": None, "price": None, "bucket": None}
     loc = LOCATIONS.get(city)
     station = STATIONS.get(city)
@@ -208,8 +226,10 @@ def _scan_city(city: str, dry_run: bool, log=print) -> dict:
         result["reason"] = "twc_empty"
         return result
 
-    # Today's markets for this city
-    markets = fetch_weather_markets()
+    # Today's markets for this city. Accept a preloaded list so the main loop
+    # only hits Simmer once per scan across all cities.
+    if markets is None:
+        markets = fetch_weather_markets()
     candidates = []
     for m in markets:
         info = parse_weather_event(m.get("event_name") or m.get("question", "") or "")
@@ -265,8 +285,10 @@ def _scan_city(city: str, dry_run: bool, log=print) -> dict:
     if edge_c < LATE_EDGE_BUFFER_C:
         result["reason"] = f"borderline_edge_{edge_c:.2f}C"
         return result
-    if price > LATE_PRICE_CEILING:
-        result["reason"] = f"price_too_high_{price:.3f}"
+    ceiling = _effective_ceiling(city)
+    result["ceiling"] = ceiling
+    if price > ceiling:
+        result["reason"] = f"price_too_high_{price:.3f}_vs_{ceiling:.2f}"
         return result
 
     # Budget check
@@ -292,7 +314,7 @@ def _scan_city(city: str, dry_run: bool, log=print) -> dict:
     reasoning = (
         f"LATE: {city} running {metric} at {local_now.strftime('%H:%M %Z')} = "
         f"{running_c:.1f}°C, locked into {result['bucket']} (edge {edge_c:.2f}°C). "
-        f"Entry price ${price:.3f} <= ceiling ${LATE_PRICE_CEILING:.2f}."
+        f"Entry price ${price:.3f} <= effective ceiling ${ceiling:.2f}."
     )
     signal_data = {
         "mode": "late",
@@ -363,18 +385,24 @@ def main():
         return 0
 
     dry = not args.live
+    if not dry:
+        validate_live_trading_prereqs()
+
     cities = _cities_in_window(force=args.force or bool(args.city), specific=args.city)
     if not cities:
         print(f"LATE: no allowed cities currently at local hour {LATE_ENTRY_HOUR} (whitelist: {LATE_ALLOWED_CITIES})")
         return 0
 
     print(f"LATE mode ({'DRY' if dry else 'LIVE'}): scanning {len(cities)} cities at entry window")
-    print(f"  ceiling=${LATE_PRICE_CEILING:.2f}  max_size=${LATE_MAX_POSITION:.0f}  "
+    print(f"  global_ceiling=${LATE_PRICE_CEILING:.2f}  max_size=${LATE_MAX_POSITION:.0f}  "
           f"edge>=${LATE_EDGE_BUFFER_C:.2f}°C  hour={LATE_ENTRY_HOUR}")
+
+    # Fetch Simmer market list once per scan and reuse across cities.
+    markets = fetch_weather_markets()
 
     n_buy = 0
     for city in cities:
-        r = _scan_city(city, dry_run=dry)
+        r = _scan_city(city, dry_run=dry, markets=markets)
         if r["status"] == "buy":
             n_buy += 1
         elif r["status"] == "skip":
