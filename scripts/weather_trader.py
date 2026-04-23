@@ -1483,7 +1483,7 @@ def calculate_position_size(default_size: float, smart_sizing: bool,
     """
     Position sizing hierarchy:
       1. If location is given: use city-tier risk % (EASY 3% / MEDIUM 2% / HARD 1%)
-         of paper balance, capped by MAX_POSITION_USD.
+         of paper balance — no cap.
       2. Else if smart_sizing: use SMART_SIZING_PCT of live portfolio balance.
       3. Otherwise return default_size (typically MAX_POSITION_USD).
 
@@ -1506,7 +1506,6 @@ def calculate_position_size(default_size: float, smart_sizing: bool,
         if balance is None or balance <= 0:
             balance = _config.get("paper_balance", 10000.0)
         city_size = balance * risk_pct
-        city_size = min(city_size, MAX_POSITION_USD)
         city_size = max(city_size, 1.0)
         print(f"  💡 City sizing: ${city_size:.2f} "
               f"({risk_pct:.0%} of ${balance:.2f}, tier={tier.upper()})")
@@ -1527,7 +1526,6 @@ def calculate_position_size(default_size: float, smart_sizing: bool,
         return default_size
 
     smart_size = balance * SMART_SIZING_PCT
-    smart_size = min(smart_size, MAX_POSITION_USD)
     smart_size = max(smart_size, 1.0)
 
     print(f"  💡 Smart sizing: ${smart_size:.2f} ({SMART_SIZING_PCT:.0%} of ${balance:.2f} balance)")
@@ -1841,8 +1839,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
     log(f"  Min edge:        {MIN_EDGE:+.0%} (primary entry gate: confidence - price)")
     log(f"  Entry ceiling:   {ENTRY_THRESHOLD:.0%} (price sanity cap)")
     log(f"  Exit threshold:  {EXIT_THRESHOLD:.0%} (sell above this)")
-    log(f"  Max position:    ${MAX_POSITION_USD:.2f}")
-    log(f"  Max trades/run:  {MAX_TRADES_PER_RUN}")
+      log(f"  Max trades/run:  {MAX_TRADES_PER_RUN}")
     log(f"  Locations:       {', '.join(ACTIVE_LOCATIONS)}")
     log(f"  Smart sizing:    {'✓ Enabled' if smart_sizing else '✗ Disabled'}")
     log(f"  Safeguards:      {'✓ Enabled' if use_safeguards else '✗ Disabled'}")
