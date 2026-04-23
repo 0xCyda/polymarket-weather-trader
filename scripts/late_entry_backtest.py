@@ -15,6 +15,7 @@ import sys
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -53,34 +54,51 @@ STATIONS = {
     "Sao Paulo":     "SBGR:9:BR",
 }
 
-# Local time offset from UTC for "entry time" at 15:00 local (UTC hour of 3pm local)
-# We check obs up to this UTC hour on the measurement date
-CITY_ENTRY_UTC_HOUR = {
-    "New York":   20,   # 15:00 ET (UTC-5)
-    "Chicago":    21,   # 15:00 CT (UTC-6)
-    "Seattle":    23,   # 15:00 PT (UTC-8)
-    "Dallas":     21,
-    "Miami":      20,
-    "Houston":    21,
-    "Phoenix":    22,   # 15:00 MT (UTC-7)
-    "Los Angeles": 23,
-    "Toronto":    20,
-    "Sao Paulo":  18,   # 15:00 BRT (UTC-3)
-    "São Paulo":  18,
-    "London":     15,   # 15:00 GMT (UTC+0) / 14:00 BST (UTC+1) -- use 15 as baseline
-    "Paris":      14,   # 15:00 CET (UTC+1)
-    "Dubai":      11,   # 15:00 GST (UTC+4)
-    "Bangkok":     8,   # 15:00 ICT (UTC+7)
-    "Singapore":   7,   # 15:00 SGT (UTC+8)
-    "Hong Kong":   7,
-    "Shanghai":    7,
-    "Shenzhen":    7,
-    "Beijing":     7,
-    "Seoul":       6,   # 15:00 KST (UTC+9)
-    "Tokyo":       6,
-    "Sydney":      5,   # 15:00 AEDT (UTC+11) / AEST (UTC+10) -- use 5
-    "Mumbai":      9,   # 15:00 IST (UTC+5:30) -- use 9
+# City -> IANA timezone for DST-aware "3pm local" conversion.
+# The old hardcoded UTC hours were wrong during DST transitions.
+CITY_TZ = {
+    "New York":    "America/New_York",
+    "Chicago":     "America/Chicago",
+    "Seattle":     "America/Los_Angeles",
+    "Dallas":      "America/Chicago",
+    "Miami":       "America/New_York",
+    "Houston":     "America/Chicago",
+    "Phoenix":     "America/Phoenix",
+    "Los Angeles": "America/Los_Angeles",
+    "Toronto":     "America/Toronto",
+    "Sao Paulo":   "America/Sao_Paulo",
+    "São Paulo":   "America/Sao_Paulo",
+    "London":      "Europe/London",
+    "Paris":       "Europe/Paris",
+    "Dubai":       "Asia/Dubai",
+    "Bangkok":     "Asia/Bangkok",
+    "Singapore":   "Asia/Singapore",
+    "Hong Kong":   "Asia/Hong_Kong",
+    "Shanghai":    "Asia/Shanghai",
+    "Shenzhen":    "Asia/Shanghai",
+    "Beijing":     "Asia/Shanghai",
+    "Seoul":       "Asia/Seoul",
+    "Tokyo":       "Asia/Tokyo",
+    "Sydney":      "Australia/Sydney",
+    "Mumbai":      "Asia/Kolkata",
 }
+
+ENTRY_LOCAL_HOUR = 15
+
+
+def _entry_utc_hour(city: str, date_str: str) -> int:
+    """Compute the UTC hour that corresponds to 3pm local on a specific date.
+    Handles DST correctly (e.g., London 3pm = 15 UTC in winter, 14 UTC in summer)."""
+    tz_name = CITY_TZ.get(city)
+    if not tz_name:
+        return 14
+    try:
+        local_tz = ZoneInfo(tz_name)
+        y, m, d = date_str.split("-")
+        local_3pm = datetime(int(y), int(m), int(d), ENTRY_LOCAL_HOUR, tzinfo=local_tz)
+        return local_3pm.astimezone(timezone.utc).hour
+    except Exception:
+        return 14
 
 
 def fetch_twc_intraday(station: str, date_str: str) -> list[dict]:
@@ -282,7 +300,7 @@ def backtest(events: list[dict], entry_prices: list[float], stake: float = 100.0
         seen.add(key)
 
         station = STATIONS[city]
-        entry_utc_hour = CITY_ENTRY_UTC_HOUR.get(city, 14)
+        entry_utc_hour = _entry_utc_hour(city, date_str)
 
         obs = get_intraday(station, date_str, cache)
         if not obs:
@@ -326,9 +344,13 @@ def backtest(events: list[dict], entry_prices: list[float], stake: float = 100.0
             if o.get("obsTimeUtc") and datetime.fromisoformat(o["obsTimeUtc"].replace("Z", "+00:00")).hour <= entry_utc_hour
         )
 
-        # Confidence: if running_val is clearly in a 2°F bucket (not borderline)
+        # Confidence: if running_val is clearly in a 2F bucket (not borderline)
         running_f = running_val * 9 / 5 + 32
-        borderline = (ev["winner_lo_f"] - running_f) > -0.5 or (running_f - ev["winner_hi_f"]) > -0.5
+        lo_f, hi_f = ev["winner_lo_f"], ev["winner_hi_f"]
+        # Borderline = within 0.5F of either bucket edge
+        edge_lo = abs(running_f - lo_f) if lo_f != -999 else 999
+        edge_hi = abs(running_f - hi_f) if hi_f != 999 else 999
+        borderline = min(edge_lo, edge_hi) < 0.5
         confident = obs_before >= 4 and not borderline
 
         results.append({

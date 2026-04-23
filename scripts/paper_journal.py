@@ -87,18 +87,46 @@ def _load_trades() -> list:
     return trades
 
 
+_LOCK_FILE = JOURNAL_FILE.with_suffix(".lock")
+
+
 def _save_trades(trades: list) -> None:
     """
     Atomically rewrite JSONL with all trades.
 
-    Writes to a sibling temp file then os.replace() — this is atomic on POSIX
-    and NTFS, so a crash during write leaves either the old or new file intact,
-    never a truncated one.
+    Uses a lockfile to prevent concurrent processes (core + late) from
+    clobbering each other's writes. The lock is advisory (fcntl on POSIX,
+    msvcrt on Windows). Falls back to unlocked write if locking unavailable.
     """
+    import contextlib
+
+    @contextlib.contextmanager
+    def _file_lock():
+        lock_fd = None
+        try:
+            lock_fd = open(_LOCK_FILE, "w")
+            try:
+                import fcntl
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            except (ImportError, OSError):
+                try:
+                    import msvcrt
+                    msvcrt.locking(lock_fd.fileno(), msvcrt.LK_LOCK, 1)
+                except (ImportError, OSError):
+                    pass
+            yield
+        finally:
+            if lock_fd:
+                try:
+                    lock_fd.close()
+                except Exception:
+                    pass
+
     tmp = JOURNAL_FILE.with_suffix(JOURNAL_FILE.suffix + ".tmp")
     payload = "\n".join(json.dumps(t, default=str) for t in trades) + "\n"
-    tmp.write_text(payload)
-    os.replace(tmp, JOURNAL_FILE)
+    with _file_lock():
+        tmp.write_text(payload)
+        os.replace(tmp, JOURNAL_FILE)
 
 
 def log_paper_trade(

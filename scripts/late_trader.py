@@ -90,22 +90,31 @@ def _effective_ceiling(city: str) -> float:
 
 # ----- TWC intraday fetch -----
 
-def _fetch_twc_intraday(station: str, date_str: str) -> list[dict]:
-    """Fetch hourly obs for a station on a date (YYYY-MM-DD)."""
+def _fetch_twc_intraday(station: str, date_str: str, retries: int = 3) -> list[dict]:
+    """Fetch hourly obs for a station on a date (YYYY-MM-DD).
+    Retries with exponential backoff on transient errors and 429s."""
+    import time as _time
     compact = date_str.replace("-", "")
     url = (
         f"https://api.weather.com/v1/location/{station}/observations/historical.json"
         f"?apiKey={TWC_API_KEY}&units=m&startDate={compact}&endDate={compact}"
     )
-    try:
-        r = requests.get(url, timeout=15)
-        if r.status_code != 200:
-            log_error("twc_http", f"status={r.status_code}", station=station, date=date_str)
-            return []
-        return r.json().get("observations", []) or []
-    except Exception as e:
-        log_error("twc_exc", str(e), station=station, date=date_str)
-        return []
+    for attempt in range(retries):
+        try:
+            r = requests.get(url, timeout=15)
+            if r.status_code == 429:
+                _time.sleep(2 ** attempt)
+                continue
+            if r.status_code != 200:
+                log_error("twc_http", f"status={r.status_code}", station=station, date=date_str)
+                return []
+            return r.json().get("observations", []) or []
+        except Exception as e:
+            if attempt == retries - 1:
+                log_error("twc_exc", str(e), station=station, date=date_str)
+                return []
+            _time.sleep(2 ** attempt)
+    return []
 
 
 def _running_extreme(obs: list[dict], local_tz: ZoneInfo, up_to_hour: int, metric: str) -> float | None:
@@ -221,6 +230,18 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
     date_str = local_now.date().isoformat()
     cur_hour = local_now.hour
 
+    # Check for duplicate: skip if core/punt already holds this city+date
+    try:
+        from paper_journal import get_open_positions
+        for pos in get_open_positions():
+            if (pos.get("location") == city
+                    and pos.get("target_date") == date_str
+                    and pos.get("strategy") != "late"):
+                result["reason"] = f"already_held_by_{pos.get('strategy', 'core')}"
+                return result
+    except Exception:
+        pass
+
     obs = _fetch_twc_intraday(station, date_str)
     if not obs:
         result["reason"] = "twc_empty"
@@ -291,10 +312,20 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
         result["reason"] = f"price_too_high_{price:.3f}_vs_{ceiling:.2f}"
         return result
 
-    # Budget check
+    # Budget check (daily cap + paper balance)
     budget = _load_budget()
     remaining = LATE_DAILY_BUDGET - budget["spent"]
     size = min(LATE_MAX_POSITION, remaining)
+    # Also respect paper balance — sum all open trade costs
+    try:
+        from paper_journal import get_open_positions, get_stats
+        stats = get_stats()
+        paper_balance = float(_cfg.get("paper_balance", 10000.0))
+        open_exposure = sum(float(p.get("cost", 0)) for p in get_open_positions())
+        available = paper_balance + stats.get("total_pnl", 0) - open_exposure
+        size = min(size, max(0, available * 0.5))  # never use more than 50% of remaining balance
+    except Exception:
+        pass
     if size < 5:
         result["reason"] = "daily_budget_exhausted"
         return result
