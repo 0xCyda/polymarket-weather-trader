@@ -66,16 +66,24 @@ LATE_EDGE_BUFFER_C   = float(_cfg.get("late_edge_buffer_c", 0.3))
 LATE_ALLOWED_CITIES  = [c.strip() for c in str(_cfg.get("late_cities", "")).split(",") if c.strip()]
 
 # Per-city price ceilings derived from the Jan-Apr 2026 backtest hit rate
-# with a 3¢ safety margin. Formula: hit * 0.9 / (hit * 0.9 + 1 - hit) - 0.03,
-# capped at 0.95 (don't pay near-certainty prices). The effective ceiling
-# for any city is min(LATE_PRICE_CEILING, LATE_CITY_CEILINGS[city]), so the
-# global knob still acts as a portfolio-wide cap.
+# (DST-corrected 3pm-local snapshot) with a 3¢ safety margin.
+# Formula: hit * 0.9 / (hit * 0.9 + 1 - hit) - 0.03, capped at 0.95.
+# The effective ceiling for any city is min(LATE_PRICE_CEILING, city), so
+# the global knob still acts as a portfolio-wide cap.
 LATE_CITY_CEILINGS: dict[str, float] = {
-    "Los Angeles": 0.95, "London": 0.95, "Seattle": 0.95,
-    "Miami": 0.94, "Chicago": 0.92, "Singapore": 0.91,
-    "Toronto": 0.89, "Sao Paulo": 0.88, "Shanghai": 0.88,
-    "Dallas": 0.83,
-    "Tokyo": 0.73, "Beijing": 0.72, "Paris": 0.72,
+    "Los Angeles": 0.95,  # 100.0% hit
+    "Miami":       0.94,  # 97.7%
+    "London":      0.92,  # 95.5%
+    "Seattle":     0.92,  # 95.4%
+    "Singapore":   0.91,  # 94.9%
+    "Sao Paulo":   0.88,  # 92.3%
+    "Shanghai":    0.88,  # 92.3%
+    "Chicago":     0.87,  # 90.9%
+    "Toronto":     0.82,  # 86.4%
+    "Dallas":      0.81,  # 85.1%
+    "Tokyo":       0.73,  # 78.6%
+    "Beijing":     0.72,  # 77.4%
+    # Paris dropped from whitelist (69.7% post-DST fix, below 70% threshold).
 }
 
 TWC_API_KEY = os.environ.get("TWC_API_KEY", "6532d6454b8aa370768e63d6ba5a832e")

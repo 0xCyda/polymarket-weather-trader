@@ -1854,7 +1854,7 @@ def _get_config() -> dict:
         "late_daily_budget_usd": config.get("late_daily_budget_usd", 500.0),
         "late_entry_hour":       config.get("late_entry_hour", 15),
         "late_edge_buffer_c":    config.get("late_edge_buffer_c", 0.3),
-        "late_cities":           config.get("late_cities", "London,Toronto,Singapore,Sao Paulo,Shanghai,Paris,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas"),
+        "late_cities":           config.get("late_cities", "London,Toronto,Singapore,Sao Paulo,Shanghai,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas"),
         # Discovery
         "discovery_cache_minutes": config.get("discovery_cache_minutes", 180),
         "forecast_cache_disk":     config.get("forecast_cache_disk", True),

@@ -176,9 +176,9 @@ CONFIG_SCHEMA = {
     "late_edge_buffer_c":{"env": "SIMMER_WEATHER_LATE_EDGE_BUFFER_C","default": 0.3,   "type": float,
                           "help": "Min distance (°C) from running temp to bucket edges to count as locked in."},
     "late_cities":       {"env": "SIMMER_WEATHER_LATE_CITIES",
-                          "default": "London,Toronto,Singapore,Sao Paulo,Shanghai,Paris,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas",
+                          "default": "London,Toronto,Singapore,Sao Paulo,Shanghai,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas",
                           "type": str,
-                          "help": "Comma-separated whitelist of cities eligible for LATE mode (>=70% hit rate in backtest)."},
+                          "help": "Comma-separated whitelist of cities eligible for LATE mode (>=70% hit rate in DST-corrected Jan-Apr 2026 backtest)."},
 }
 
 # Backwards-compatible env var aliases (old name -> new name)
