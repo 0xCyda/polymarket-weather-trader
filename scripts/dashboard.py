@@ -215,6 +215,19 @@ DASHBOARD_HTML = """
     }
     .mode-toggle.off { background: rgba(248,113,113,0.08); border-color: rgba(248,113,113,0.35); color: var(--accent-red); }
     .mode-toggle:hover { filter: brightness(1.2); }
+    .overview-card {
+      background: linear-gradient(135deg, rgba(96,165,250,0.06), rgba(52,211,153,0.04));
+      border: 1px solid rgba(96,165,250,0.18);
+      border-radius: 10px; padding: 18px 22px; margin-bottom: 18px;
+    }
+    .overview-card h2 { margin: 0 0 4px 0; font-size: 1.05rem; color: var(--text-primary); }
+    .overview-tag { display: inline-block; font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-blue); margin-bottom: 10px; }
+    .overview-card p { margin: 8px 0; font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary); }
+    .overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-top: 14px; }
+    .overview-cell { background: rgba(0,0,0,0.18); border-radius: 8px; padding: 12px 14px; }
+    .overview-cell h4 { margin: 0 0 6px 0; font-size: 0.78rem; color: var(--text-primary); letter-spacing: 0.04em; }
+    .overview-cell ul { margin: 0; padding-left: 18px; font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5; }
+    .overview-cell ul li { margin-bottom: 2px; }
     @keyframes pulse {
       0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
       50% { box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
@@ -1093,6 +1106,50 @@ function renderConfig() {
       },
     ];
 
+    const overviewHtml = `
+      <div class="overview-card">
+        <div class="overview-tag">Overview</div>
+        <h2>Polymarket Weather Trader</h2>
+        <p>A paper-trading bot that takes positions in Polymarket daily-temperature markets via the Simmer API. It pulls weather forecasts and live intraday observations, finds mispriced buckets, and sizes entries based on model confidence. All fills are simulated; real fills require a wallet key.</p>
+        <div class="overview-grid">
+          <div class="overview-cell">
+            <h4>Data Sources</h4>
+            <ul>
+              <li>ECMWF AIFS ENS (ensemble GRIB)</li>
+              <li>Open-Meteo 7-model blend (IFS, GFS, Météo-France, UK Met, ICON, GEM, JMA)</li>
+              <li>TWC / Wunderground intraday obs</li>
+              <li>METAR live airport feeds (US, D+0)</li>
+            </ul>
+          </div>
+          <div class="overview-cell">
+            <h4>Three Trading Modes</h4>
+            <ul>
+              <li><strong>CORE</strong>: 4-hourly, buys bucket with highest model edge vs market price</li>
+              <li><strong>PUNT</strong>: tail lottery, buys deeply-mispriced tail buckets (&le;6¢) with fixed small stakes</li>
+              <li><strong>LATE</strong>: hourly, buys bucket containing observed daily max at 3pm local</li>
+            </ul>
+          </div>
+          <div class="overview-cell">
+            <h4>Risk &amp; Sizing</h4>
+            <ul>
+              <li>Per-mode daily budgets and max-position caps</li>
+              <li>Volatility targeting available (EWMA-based)</li>
+              <li>Laddered exits + dynamic profit multiplier</li>
+              <li>Optional daily-loss hard stop</li>
+            </ul>
+          </div>
+          <div class="overview-cell">
+            <h4>Observability</h4>
+            <ul>
+              <li>Paper trade journal with strategy tags (CORE / PUNT / LATE)</li>
+              <li>Forecast-accuracy history for post-hoc model scoring</li>
+              <li>Skipped-trade log for funnel analysis</li>
+              <li>4-hourly Discord scan report to #polymarket</li>
+            </ul>
+          </div>
+        </div>
+      </div>`;
+
     const modes = [
       { id: 'core', name: 'CORE', desc: 'Forecast-driven ensemble trader (CORE scan every 4h).', enabled: true },
       { id: 'punt', name: 'PUNT', desc: 'Tail-priced lottery buckets (runs alongside CORE).', enabled: cfg.punt_mode !== false },
@@ -1114,7 +1171,7 @@ function renderConfig() {
       `).join('')
     }</div>`;
 
-    el.innerHTML = modesHtml + `<div class="config-grid">${
+    el.innerHTML = overviewHtml + modesHtml + `<div class="config-grid">${
       sections.map(s => `
         <div class="config-section">
           <h3>${s.label}</h3>
