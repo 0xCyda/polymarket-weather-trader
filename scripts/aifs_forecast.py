@@ -16,6 +16,7 @@ import json
 import os
 import shutil
 import socket
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -26,6 +27,10 @@ from zoneinfo import ZoneInfo
 # library has no per-request timeout; without this a stalled S3 connection hangs
 # the process until the cron job's process-level timeout kills the whole scan.
 _GRIB_DOWNLOAD_SOCKET_TIMEOUT_S = 120
+
+# Ensures only one thread downloads the GRIB at a time. Without this, concurrent
+# city forecast threads each detect a stale cache and race to write the same file.
+_GRIB_DOWNLOAD_LOCK = threading.Lock()
 
 
 AIFS_CACHE_DIR = Path.home() / ".cache" / "aifs_ens"
@@ -429,47 +434,50 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
             "error": f"Missing deps: {', '.join(deps['missing'])}",
         }
 
-    if _is_cache_fresh(cf_cache):
-        ds = cfgrib_mod.open_file(str(cf_cache))
-        time_ts = float(ds.variables["time"].data)
-        run_dt = datetime.fromtimestamp(time_ts, tz=timezone.utc)
-        run_date_str = run_dt.strftime("%Y-%m-%d")
-        run_hour_int = run_dt.hour
-        download = {
-            "cf_path": str(cf_cache),
-            "pf_path": str(pf_cache) if pf_cache.exists() else None,
-            "cached": True,
-            "run_date": run_date_str,
-            "run_hour": run_hour_int,
-        }
-    else:
-        import tempfile as _tmp
-        with _tmp.TemporaryDirectory(prefix="aifs_ens_") as tmpdir:
-            cf_tmp = str(Path(tmpdir) / "latest_cf.grib2")
-            try:
-                download = _download_aifs_grib(
-                    target_path=cf_tmp,
-                    run_date=run_date,
-                    run_hour=run_hour,
-                    steps=DEFAULT_STEPS,
-                )
-            except Exception as exc:
-                return {
-                    "ensemble_mean": None,
-                    "spread": None,
-                    "agreement_pct": 0.0,
-                    "member_count": 0,
-                    "run_date": run_date,
-                    "run_hour": run_hour,
-                    "source": "aifs_ens",
-                    "error": str(exc),
-                }
-            cf_path = download.get("cf_path")
-            if cf_path and Path(cf_path).exists():
-                shutil.copy2(cf_path, cf_cache)
-            pf_path = download.get("pf_path")
-            if pf_path and Path(pf_path).exists():
-                shutil.copy2(pf_path, pf_cache)
+    # Acquire lock before checking cache — prevents concurrent threads from each
+    # detecting a stale cache and racing to write the same GRIB file simultaneously.
+    with _GRIB_DOWNLOAD_LOCK:
+        if _is_cache_fresh(cf_cache):
+            ds = cfgrib_mod.open_file(str(cf_cache))
+            time_ts = float(ds.variables["time"].data)
+            run_dt = datetime.fromtimestamp(time_ts, tz=timezone.utc)
+            run_date_str = run_dt.strftime("%Y-%m-%d")
+            run_hour_int = run_dt.hour
+            download = {
+                "cf_path": str(cf_cache),
+                "pf_path": str(pf_cache) if pf_cache.exists() else None,
+                "cached": True,
+                "run_date": run_date_str,
+                "run_hour": run_hour_int,
+            }
+        else:
+            import tempfile as _tmp
+            with _tmp.TemporaryDirectory(prefix="aifs_ens_") as tmpdir:
+                cf_tmp = str(Path(tmpdir) / "latest_cf.grib2")
+                try:
+                    download = _download_aifs_grib(
+                        target_path=cf_tmp,
+                        run_date=run_date,
+                        run_hour=run_hour,
+                        steps=DEFAULT_STEPS,
+                    )
+                except Exception as exc:
+                    return {
+                        "ensemble_mean": None,
+                        "spread": None,
+                        "agreement_pct": 0.0,
+                        "member_count": 0,
+                        "run_date": run_date,
+                        "run_hour": run_hour,
+                        "source": "aifs_ens",
+                        "error": str(exc),
+                    }
+                cf_path = download.get("cf_path")
+                if cf_path and Path(cf_path).exists():
+                    shutil.copy2(cf_path, cf_cache)
+                pf_path = download.get("pf_path")
+                if pf_path and Path(pf_path).exists():
+                    shutil.copy2(pf_path, pf_cache)
 
     member_values_c: list[float] = []
 
@@ -530,6 +538,57 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
         "source": "aifs_ens",
         "error": None,
     }
+
+
+def prewarm_grib_cache(run_date: str | None = None, run_hour: int | None = None) -> bool:
+    """
+    Download the GRIB files once, synchronously, before the scan loop starts.
+    Returns True if cache is warm (fresh or just downloaded), False on failure.
+    Call this from the main scan thread so city forecast threads always hit warm cache.
+    """
+    deps = _load_aifs_dependencies()
+    if deps["missing"] or deps["cfgrib"] is None:
+        return False
+
+    AIFS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cf_cache = AIFS_CACHE_DIR / "latest_cf.grib2"
+    pf_cache = AIFS_CACHE_DIR / "latest_pf.grib2"
+
+    cfgrib_mod = deps["cfgrib"]
+
+    def _is_cache_fresh(path: Path) -> bool:
+        if not path.exists():
+            return False
+        age_hours = (datetime.now(timezone.utc) - datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)).total_seconds() / 3600
+        if age_hours >= AIFS_CACHE_MAX_AGE_HOURS:
+            return False
+        try:
+            cfgrib_mod.open_file(str(path))
+            return True
+        except Exception:
+            return False
+
+    with _GRIB_DOWNLOAD_LOCK:
+        if _is_cache_fresh(cf_cache):
+            return True
+        import tempfile as _tmp
+        with _tmp.TemporaryDirectory(prefix="aifs_prewarm_") as tmpdir:
+            try:
+                download = _download_aifs_grib(
+                    target_path=str(Path(tmpdir) / "latest_cf.grib2"),
+                    run_date=run_date,
+                    run_hour=run_hour,
+                    steps=DEFAULT_STEPS,
+                )
+            except Exception:
+                return False
+            cf_path = download.get("cf_path")
+            if cf_path and Path(cf_path).exists():
+                shutil.copy2(cf_path, cf_cache)
+            pf_path = download.get("pf_path")
+            if pf_path and Path(pf_path).exists():
+                shutil.copy2(pf_path, pf_cache)
+    return _is_cache_fresh(cf_cache)
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ _sys_path = _p.Path(__file__).parent / "scripts"
 if str(_sys_path) not in sys.path:
     sys.path.insert(0, str(_sys_path))
 from ensemble_forecast import get_ensemble_forecast
+from aifs_forecast import prewarm_grib_cache
 
 # Force line-buffered stdout so output is visible in non-TTY environments (cron, Docker, OpenClaw)
 sys.stdout.reconfigure(line_buffering=True)
@@ -1964,6 +1965,13 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         events[event_key].append(market)
 
     log(f"  Grouped into {len(events)} events")
+
+    # Pre-warm GRIB cache once, synchronously, before city forecast threads start.
+    # Without this, every city thread detects a stale cache simultaneously and races
+    # to download the same 47MB GRIB file, corrupting it and timing out the scan.
+    log("  Pre-warming AIFS GRIB cache...")
+    grib_warm = prewarm_grib_cache()
+    log(f"  GRIB cache: {'warm' if grib_warm else 'unavailable (will use other models)'}")
 
     # Load persisted forecast cache from disk + fresh set for this run
     forecast_cache = _load_forecast_disk_cache()
