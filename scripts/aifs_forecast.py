@@ -15,15 +15,21 @@ import argparse
 import json
 import os
 import shutil
+import socket
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 from zoneinfo import ZoneInfo
 
+# Hard cap on socket-level I/O during GRIB downloads. The ecmwf-opendata/multiurl
+# library has no per-request timeout; without this a stalled S3 connection hangs
+# the process until the cron job's process-level timeout kills the whole scan.
+_GRIB_DOWNLOAD_SOCKET_TIMEOUT_S = 120
+
 
 AIFS_CACHE_DIR = Path.home() / ".cache" / "aifs_ens"
-AIFS_CACHE_MAX_AGE_HOURS = 24  # Re-download once per 24h window — ECMWF AIFS runs 00z and 12z; one download per day is sufficient
+AIFS_CACHE_MAX_AGE_HOURS = 12  # Re-download every 12h to match AIFS ENS cycle (00z and 12z runs)
 # Covers next-day midnight forecasts at steps 12-36
 DEFAULT_STEPS = tuple(range(0, 73, 6))   # 0,6,12,18,24,30,36,42,48,54,60,66,72 (covers D+2 targets)
 DEFAULT_RUN_HOURS = (0, 12)
@@ -155,7 +161,12 @@ def _download_aifs_grib(target_path: str,
             try:
                 if os.path.exists(path):
                     os.unlink(path)
-                client.retrieve(date=date_str, time=hour, **request)
+                prev_timeout = socket.getdefaulttimeout()
+                socket.setdefaulttimeout(_GRIB_DOWNLOAD_SOCKET_TIMEOUT_S)
+                try:
+                    client.retrieve(date=date_str, time=hour, **request)
+                finally:
+                    socket.setdefaulttimeout(prev_timeout)
                 if os.path.exists(path) and os.path.getsize(path) > min_bytes:
                     return True, None
                 last_err = f"{label}: file missing or too small after retrieve"

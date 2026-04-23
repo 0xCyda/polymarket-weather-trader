@@ -575,6 +575,14 @@ INTERNATIONAL_LOCATIONS = {
     "Buenos Aires": {"lat": -34.6037, "lon": -58.3816, "tz": "America/Argentina/Buenos_Aires"},
 }
 
+# Per-location bias correction in °C. NWP gridded models and Open-Meteo archive data
+# diverge from official weather station readings (Polymarket's resolution source).
+# Values derived from resolved trade analysis; update as more data accumulates.
+LOCATION_BIAS_C = {
+    "Hong Kong": 0.8,   # HKO station consistently reads ~+0.8°C above gridded model output
+    "Shenzhen":  1.0,   # Models ran cold by ~1°C across all resolved Shenzhen trades
+}
+
 # Forecasts are fetched exclusively via ensemble_forecast.get_ensemble_forecast.
 # Legacy get_noaa_forecast / get_openmeteo_forecast / fetch_json helpers were
 # removed — they were never called anywhere.
@@ -944,7 +952,8 @@ def _bucket_probability(lo_f: float, hi_f: float, mean_f: float, spread_f: float
 
 
 def rank_event_buckets_by_edge(event_markets: list, forecast_f: float,
-                               spread_f: float, signal_strength: str) -> list:
+                               spread_f: float, signal_strength: str,
+                               is_international: bool = False) -> list:
     """
     Rank ALL buckets in an event by edge (bucket_probability × signal_discount − price).
 
@@ -978,6 +987,12 @@ def rank_event_buckets_by_edge(event_markets: list, forecast_f: float,
             continue
         lo, hi, unit = bucket
 
+        # International locations (HK, Tokyo, etc.) use Celsius markets exclusively.
+        # Reject any °F-denominated bucket to avoid matching against domestic-style
+        # events (e.g. Simmer-native Fahrenheit markets) that appear in discovery.
+        if is_international and unit == 'F':
+            continue
+
         # Convert °C bucket bounds to °F (forecast is always °F)
         if unit == 'C':
             lo_f = lo * 9 / 5 + 32 if lo != -999 else -999
@@ -985,10 +1000,13 @@ def rank_event_buckets_by_edge(event_markets: list, forecast_f: float,
         else:
             lo_f, hi_f = lo, hi
 
-        # Widen exact buckets ±0.5° (resolution rounds daily temp)
+        # Widen exact buckets by ±0.5 of the native unit (resolution rounds daily temp).
+        # °C markets resolve in Celsius, so ±0.5°C = ±0.9°F. Applying ±0.5°F to a
+        # Celsius bucket underwidened by nearly half, causing boundary-zone misses.
         prob_lo, prob_hi = lo_f, hi_f
         if lo_f == hi_f and lo_f != -999 and lo_f != 999:
-            prob_lo, prob_hi = lo_f - 0.5, hi_f + 0.5
+            widen_f = 0.9 if unit == 'C' else 0.5
+            prob_lo, prob_hi = lo_f - widen_f, hi_f + widen_f
 
         raw_prob = _bucket_probability(prob_lo, prob_hi, forecast_f, spread_f)
         confidence = raw_prob * discount
@@ -2008,8 +2026,21 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             log_error("no_forecast", err_msg, location=location, date=date_str, metric=metric, signal=signal_strength)
             continue
 
-        unit_label = "°F"
-        log(f"  AIFS ENS: {forecast_temp}{unit_label} | signal: {signal_strength} | {models_used} models | agree: {agreement_pct}% | spread: {spread}°")
+        # Markets resolve in whole degrees. Round to the nearest integer in the
+        # market's native unit so bucket selection reflects what will actually settle.
+        if is_international:
+            raw_c = (forecast_temp - 32) * 5 / 9
+            bias_c = LOCATION_BIAS_C.get(location, 0.0)
+            rounded_c = round(raw_c + bias_c)
+            forecast_temp = rounded_c * 9 / 5 + 32  # store as °F for probability math
+            unit_label = "°C"
+            bias_str = f" (bias {bias_c:+.1f}°C)" if bias_c else ""
+            display_temp = f"{rounded_c}°C{bias_str}"
+        else:
+            forecast_temp = round(forecast_temp)
+            unit_label = "°F"
+            display_temp = f"{forecast_temp}°F"
+        log(f"  AIFS ENS: {display_temp} | signal: {signal_strength} | {models_used} models | agree: {agreement_pct}% | spread: {spread}°")
 
         # Rank every bucket in this event by edge (Gaussian bucket probability
         # × signal-strength discount − market price). Picks the BEST bucket
@@ -2019,6 +2050,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         # (Hans323: 72% range, 22% threshold, 5% exact).
         ranked_buckets = rank_event_buckets_by_edge(
             event_markets, forecast_temp, spread, signal_strength,
+            is_international=is_international,
         )
         matching_market = None
         matched_rb = None
@@ -2069,9 +2101,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                     unparsed_count += 1
             nearest = min(all_buckets, key=lambda b: min(abs(b[0]-forecast_temp), abs(b[1]-forecast_temp))) if all_buckets else None
             if nearest:
-                log(f"  ⚠️  No bucket found for {forecast_temp}{unit_label} — nearest: {nearest[2]} ({nearest[0]:.0f}-{nearest[1]:.0f}{unit_label})")
+                log(f"  ⚠️  No bucket found for {display_temp} — nearest: {nearest[2]} ({nearest[0]:.0f}-{nearest[1]:.0f}{unit_label})")
             else:
-                log(f"  ⚠️  No bucket found for {forecast_temp}{unit_label} — {len(event_markets)} markets, {unparsed_count} unparseable")
+                log(f"  ⚠️  No bucket found for {display_temp} — {len(event_markets)} markets, {unparsed_count} unparseable")
                 # Diagnostic: show what fields the markets actually expose so we
                 # can see whether bucket info is in outcome_name, question, or elsewhere.
                 for m in event_markets[:3]:
@@ -2223,6 +2255,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             "signal_strength": signal_strength, "models_used": models_used,
             "agreement_pct": agreement_pct, "spread": spread,
             "forecast_temp": forecast_temp, "unit_label": unit_label,
+            "display_temp": display_temp,
             "is_international": is_international,
         })
         opportunities_found += 1
@@ -2272,6 +2305,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         confidence = c["confidence"]
         forecast_temp = c["forecast_temp"]
         unit_label = c["unit_label"]
+        display_temp = c["display_temp"]
         outcome_name = c["outcome_name"]
         location = c["location"]
         date_str = c["date_str"]
@@ -2331,7 +2365,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
         _mt = forecasts.get("model_temps", {})
         _mt_str = ", ".join(f"{k}:{v:.1f}°" for k, v in sorted(_mt.items())) if _mt else "?"
-        log(f"  ✅ BUY opportunity!{trend_bonus} | {_mt_str} → {forecast_temp}{unit_label}")
+        log(f"  ✅ BUY opportunity!{trend_bonus} | {_mt_str} → {display_temp}")
         tag = "SIMULATED" if dry_run else "LIVE"
         log(f"  Executing trade ({tag})...", force=True)
 
@@ -2354,7 +2388,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
         result = execute_trade(
             market_id, "yes", position_size,
-            reasoning=f"Ensemble {forecast_temp}{unit_label} → bucket {outcome_name} underpriced at {price:.0%}",
+            reasoning=f"Ensemble {display_temp} → bucket {outcome_name} underpriced at {price:.0%}",
             signal_data=signal,
         )
 
@@ -2371,7 +2405,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 log_trade(
                     trade_id=trade_id,
                     source=TRADE_SOURCE, skill_slug=SKILL_SLUG,
-                    thesis=f"{'Open-Meteo' if is_international else 'Ensemble'} forecasts {forecast_temp}{unit_label} for {location} on {date_str}, bucket '{outcome_name}' @ ${price:.2f}",
+                    thesis=f"{'Open-Meteo' if is_international else 'Ensemble'} forecasts {display_temp} for {location} on {date_str}, bucket '{outcome_name}' @ ${price:.2f}",
                     confidence=round(journal_confidence, 2),
                     location=location, forecast_temp=forecast_temp,
                     target_date=date_str, metric=metric,

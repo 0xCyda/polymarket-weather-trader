@@ -24,11 +24,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 # Add scripts/ to path for paper_journal
 _BASE = Path(__file__).resolve().parent
-_REPO = _BASE.parent
-DATA_DIR = _REPO / "data"
-PAPER_TRADES = DATA_DIR / "paper_trades.jsonl"
+SKILL_DIR = _BASE
+DATA_DIR = SKILL_DIR / "data"
 SCAN_LOG = DATA_DIR / "forecast_history.jsonl"
-CONFIG_FILE = _REPO / "config.json"
+PAPER_TRADES = DATA_DIR / "paper_trades.jsonl"
+CONFIG_FILE = SKILL_DIR / "config.json"
 
 _MONTH_NAMES = {
     "01": "january", "02": "february", "03": "march", "04": "april",
@@ -57,7 +57,7 @@ def polymarket_event_url(location: str, target_date: str, metric: str) -> str | 
         return None
     return f"https://polymarket.com/event/{metric_word}-temperature-in-{loc_slug}-on-{month}-{int(d)}-{y}"
 
-DASHBOARD_HTML = r"""
+DASHBOARD_HTML = """
 <!doctype html>
 <html>
 <head>
@@ -556,23 +556,23 @@ function toCelsius(f) {
 
 function fmtCelsius(f) {
   const c = toCelsius(f);
-  return c === '—' ? '—°C' : c.toFixed(1) + '°C';
+  return c === '—' ? '—°C' : Math.round(c) + '°C';
 }
 
 function fmtCelsiusDelta(f) {
   // Spread is a delta (°F difference), not an absolute temp — convert without offset
   const n = Number(f || 0);
-  return n === 0 ? '—°C' : (n * 5 / 9).toFixed(1) + '°C';
+  return n === 0 ? '—°C' : Math.round(n * 5 / 9) + '°C';
 }
 
 function fmtFahrenheit(f) {
   const n = Number(f || 0);
-  return n === 0 ? '—°F' : n.toFixed(1) + '°F';
+  return n === 0 ? '—°F' : Math.round(n) + '°F';
 }
 
 function fmtFahrenheitDelta(f) {
   const n = Number(f || 0);
-  return n === 0 ? '—°F' : n.toFixed(1) + '°F';
+  return n === 0 ? '—°F' : Math.round(n) + '°F';
 }
 
 // Display helpers that pick unit based on location
@@ -1079,7 +1079,7 @@ setInterval(refresh, 1800000);
 
 def _load_env():
     """Load .env from skill directory into os.environ."""
-    env_file = _REPO / ".env"
+    env_file = SKILL_DIR / ".env"
     if env_file.exists():
         for line in env_file.read_text().splitlines():
             line = line.strip()
@@ -1357,7 +1357,7 @@ def _get_last_scan_time() -> str | None:
             break
 
     # Check forecast_cache mtime as fallback (written by weather_trader on every run)
-    cache_path = _REPO / "scripts" / "data" / "forecast_cache.json"
+    cache_path = SKILL_DIR / "scripts" / "data" / "forecast_cache.json"
     last_cache: datetime | None = None
     if cache_path.exists():
         mtime = cache_path.stat().st_mtime
