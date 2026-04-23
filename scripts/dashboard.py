@@ -1115,8 +1115,10 @@ function renderConfig() {
           <div class="overview-cell">
             <h4>Data Sources</h4>
             <ul>
-              <li>ECMWF AIFS ENS (ensemble GRIB)</li>
-              <li>Open-Meteo 7-model blend (IFS, GFS, Météo-France, UK Met, ICON, GEM, JMA)</li>
+              <li>ECMWF AIFS ENS (18%)</li>
+              <li>ECMWF IFS 0.25° (24%)</li>
+              <li>NOAA GFS seamless (14%)</li>
+              <li>Météo-France ARPEGE (10%)</li>
               <li>TWC / Wunderground intraday obs</li>
               <li>METAR live airport feeds (US, D+0)</li>
             </ul>
