@@ -25,7 +25,9 @@ from fastapi.responses import HTMLResponse, JSONResponse
 # Add scripts/ to path for paper_journal
 _BASE = Path(__file__).resolve().parent
 SKILL_DIR = _BASE
-DATA_DIR = SKILL_DIR / "data"
+# Data files live at project root/data/, one level up from scripts/
+_PROJECT_ROOT = _BASE.parent
+DATA_DIR = _PROJECT_ROOT / "data"
 SCAN_LOG = DATA_DIR / "forecast_history.jsonl"
 PAPER_TRADES = DATA_DIR / "paper_trades.jsonl"
 CONFIG_FILE = SKILL_DIR / "config.json"
@@ -479,7 +481,23 @@ DASHBOARD_HTML = """
   <div class="header-right">
     <button class="tab-btn" id="btn-overview" onclick="showTab('overview')">Overview</button>
     <button class="tab-btn" id="btn-config" onclick="showTab('config')">Config</button>
+    <button class="tab-btn" id="btn-scan" onclick="triggerScan()" style="border-color:rgba(52,211,153,0.35);color:var(--accent-green)">Scan Now</button>
   </div>
+</div>
+
+<div id="scan-toast" style="
+  display:none;
+  position:fixed;top:20px;right:20px;z-index:9999;
+  background:var(--bg-card);border:1px solid var(--border-strong);
+  border-radius:12px;padding:14px 18px;min-width:280px;max-width:400px;
+  backdrop-filter:blur(16px);box-shadow:0 8px 32px rgba(0,0,0,0.4);
+  font-size:13px;
+">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <span id="scan-toast-title" style="font-weight:600;color:var(--text-primary)">Scanning…</span>
+    <button onclick="document.getElementById('scan-toast').style.display='none'" style="background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:16px;padding:0;line-height:1">×</button>
+  </div>
+  <div id="scan-toast-body" style="color:var(--text-secondary);line-height:1.5"></div>
 </div>
 
 <div id="tab-overview">
@@ -862,7 +880,7 @@ function renderResolved(d) {
   // Accept state object or bare array (for re-render on page change)
   const all = Array.isArray(d) ? d : (d && d.resolved) || [];
   if (!all.length) {
-    container.innerHTML = `<tr><td colspan="8">${emptyState('✅', 'No resolved trades yet')}</td></tr>`;
+    container.innerHTML = `<tr><td colspan="9">${emptyState('✅', 'No resolved trades yet')}</td></tr>`;
     return;
   }
 
@@ -876,7 +894,7 @@ function renderResolved(d) {
   const start = page * RESOLVED_PAGE_SIZE;
   const slice = sorted.slice(start, start + RESOLVED_PAGE_SIZE);
 
-  const headers = ['Location', 'Strategy', 'Outcome', 'Entry', 'Exit', 'Shares', 'P&L', 'Resolved'];
+  const headers = ['Location', 'Strategy', 'Outcome', 'Forecast', 'Actual', 'Entry', 'Exit', 'P&L', 'Resolved'];
   const rows = slice.map(t => {
     const exit = Number(t.exit_price || 0);
     const entry = Number(t.entry_price || 0);
@@ -889,13 +907,33 @@ function renderResolved(d) {
       ? `<a class="pm-link" href="${t.polymarket_url}" target="_blank" rel="noopener" title="Open on Polymarket">${locName}</a>`
       : locName;
     const srcBadge = t.resolution_source ? ' ' + sourceBadge(t.resolution_source) : '';
+
+    // Forecast temp
+    let forecastCell = '—';
+    if (t.forecast_temp != null) {
+      forecastCell = `<span class="mono">${fmtTempForLoc(t.location, t.forecast_temp)}</span>`;
+    }
+
+    // Actual temp — show if recorded, otherwise blank
+    let actualCell;
+    if (t.actual_temp != null) {
+      const delta = t.forecast_temp != null ? Number(t.actual_temp) - Number(t.forecast_temp) : null;
+      const deltaStr = delta != null
+        ? `<span style="color:${Math.abs(delta) <= 3 ? 'var(--accent-green)' : 'var(--accent-amber)'};font-size:10px"> (${delta > 0 ? '+' : ''}${isUSLocation(t.location) ? Math.round(delta) + '°F' : Math.round(delta * 5/9) + '°C'})</span>`
+        : '';
+      actualCell = `<span class="mono">${fmtTempForLoc(t.location, t.actual_temp)}</span>${deltaStr}`;
+    } else {
+      actualCell = `<span class="faint">—</span>`;
+    }
+
     return [
       locCell,
       strategyBadge(t.strategy),
       positionBadge(outcome),
+      forecastCell,
+      actualCell,
       `<span class="mono">$${entry.toFixed(3)}</span>`,
       `<span class="mono">$${exit.toFixed(3)}</span>`,
-      `<span class="mono">${shares.toFixed(1)}</span>`,
       winBadge(pnl),
       `<span class="mono">${resolvedDate.substring(0, 10)}</span>${srcBadge}`,
     ];
@@ -1067,6 +1105,79 @@ async function refresh() {
 
 refresh();
 setInterval(refresh, 1800000);
+
+let _scanPollTimer = null;
+
+function showToast(title, body, color) {
+  const toast = document.getElementById('scan-toast');
+  document.getElementById('scan-toast-title').textContent = title;
+  document.getElementById('scan-toast-title').style.color = color || 'var(--text-primary)';
+  document.getElementById('scan-toast-body').innerHTML = body;
+  toast.style.display = 'block';
+}
+
+function setScanBtn(state) {
+  const btn = document.getElementById('btn-scan');
+  if (state === 'running') {
+    btn.disabled = true;
+    btn.textContent = 'Scanning…';
+    btn.style.opacity = '0.55';
+  } else {
+    btn.disabled = false;
+    btn.textContent = 'Scan Now';
+    btn.style.opacity = '1';
+  }
+}
+
+function pollScanStatus() {
+  fetch('/api/scan/status', {cache: 'no-store'})
+    .then(r => r.json())
+    .then(s => {
+      if (s.status === 'running') {
+        const elapsed = s.started_at ? Math.round((Date.now() - new Date(s.started_at).getTime()) / 1000) : '?';
+        showToast('Scanning…', `Fetching forecasts across 25 cities… (${elapsed}s)`, 'var(--accent-amber)');
+        _scanPollTimer = setTimeout(pollScanStatus, 4000);
+      } else if (s.status === 'done') {
+        clearTimeout(_scanPollTimer);
+        setScanBtn('idle');
+        const lines = (s.summary || ['No trades']).map(l => `<div style="margin:2px 0;font-family:monospace;font-size:11px">${l}</div>`).join('');
+        showToast('Scan complete', lines, 'var(--accent-green)');
+        setTimeout(refresh, 1000);
+      } else if (s.status === 'error') {
+        clearTimeout(_scanPollTimer);
+        setScanBtn('idle');
+        showToast('Scan failed', `<span style="color:var(--accent-red)">${s.error || 'Unknown error'}</span>`, 'var(--accent-red)');
+      }
+    })
+    .catch(() => {
+      clearTimeout(_scanPollTimer);
+      setScanBtn('idle');
+    });
+}
+
+async function triggerScan() {
+  try {
+    setScanBtn('running');
+    showToast('Scan started', 'Initialising weather scan…', 'var(--accent-amber)');
+    const r = await fetch('/api/scan', {method: 'POST', cache: 'no-store'});
+    const data = await r.json();
+    if (!data.ok) {
+      showToast('Already running', data.error || '', 'var(--accent-amber)');
+      setScanBtn('running');
+      pollScanStatus();
+      return;
+    }
+    pollScanStatus();
+  } catch(e) {
+    setScanBtn('idle');
+    showToast('Error', String(e), 'var(--accent-red)');
+  }
+}
+
+// Resume polling if a scan was running before page load
+fetch('/api/scan/status', {cache: 'no-store'}).then(r => r.json()).then(s => {
+  if (s.status === 'running') { setScanBtn('running'); pollScanStatus(); }
+});
 </script>
 </body>
 </html>
@@ -1357,7 +1468,7 @@ def _get_last_scan_time() -> str | None:
             break
 
     # Check forecast_cache mtime as fallback (written by weather_trader on every run)
-    cache_path = SKILL_DIR / "scripts" / "data" / "forecast_cache.json"
+    cache_path = SKILL_DIR / "data" / "forecast_cache.json"
     last_cache: datetime | None = None
     if cache_path.exists():
         mtime = cache_path.stat().st_mtime
@@ -1373,6 +1484,71 @@ def _get_last_scan_time() -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Scan runner (background thread)
+# ---------------------------------------------------------------------------
+
+import subprocess
+import threading
+
+_scan_lock = threading.Lock()
+_scan_state: dict = {"status": "idle", "started_at": None, "finished_at": None, "summary": None, "error": None}
+
+_LOCATIONS = (
+    "NYC,Chicago,Seattle,Atlanta,Dallas,Miami,Houston,San Francisco,Phoenix,LA,"
+    "Tel Aviv,Munich,London,Tokyo,Seoul,Ankara,Lucknow,Wellington,Toronto,Paris,"
+    "Milan,Sao Paulo,Warsaw,Singapore,Hong Kong"
+)
+_TRADER_SCRIPT = str(Path(__file__).resolve().parent / "weather_trader.py")
+_VENV_PYTHON = "/home/brandon/.openclaw/venv/bin/python3"
+_SIMMER_KEY_FILE = "/home/brandon/.openclaw/workspace/SOLEBRACE/API/.simmer-key"
+
+
+def _run_scan_bg():
+    global _scan_state
+    try:
+        api_key = ""
+        try:
+            api_key = Path(_SIMMER_KEY_FILE).read_text().strip()
+        except Exception:
+            api_key = os.environ.get("SIMMER_API_KEY", "")
+
+        env = dict(os.environ)
+        env["SIMMER_API_KEY"] = api_key
+        env["SIMMER_WEATHER_LOCATIONS"] = _LOCATIONS
+
+        result = subprocess.run(
+            [_VENV_PYTHON, _TRADER_SCRIPT, "--smart-sizing", "--punt-mode"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=480,
+            cwd=str(Path(_TRADER_SCRIPT).parent),
+        )
+        output = result.stdout + result.stderr
+
+        # Extract summary lines
+        summary_lines = []
+        for line in output.splitlines():
+            stripped = line.strip()
+            if any(k in stripped for k in ("Events scanned:", "Entry opportunities:", "Trades executed:", "Punts executed:", "BUY", "SELL", "punt", "Bought", "Sold", "Error", "error")):
+                summary_lines.append(stripped)
+
+        with _scan_lock:
+            _scan_state.update({
+                "status": "done",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "summary": summary_lines or ["Scan complete — no signals"],
+                "error": None,
+            })
+    except subprocess.TimeoutExpired:
+        with _scan_lock:
+            _scan_state.update({"status": "error", "finished_at": datetime.now(timezone.utc).isoformat(), "error": "Timed out after 8 min", "summary": None})
+    except Exception as exc:
+        with _scan_lock:
+            _scan_state.update({"status": "error", "finished_at": datetime.now(timezone.utc).isoformat(), "error": str(exc), "summary": None})
+
+
+# ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
 
@@ -1381,6 +1557,24 @@ app = FastAPI(title="AIFS ENS Weather Scan Dashboard")
 @app.get("/", response_class=HTMLResponse)
 def home():
     return DASHBOARD_HTML
+
+
+@app.post("/api/scan")
+def api_scan_trigger():
+    """Kick off a fresh weather scan in the background."""
+    with _scan_lock:
+        if _scan_state["status"] == "running":
+            return JSONResponse({"ok": False, "error": "Scan already running"}, status_code=409)
+        _scan_state.update({"status": "running", "started_at": datetime.now(timezone.utc).isoformat(), "finished_at": None, "summary": None, "error": None})
+    t = threading.Thread(target=_run_scan_bg, daemon=True)
+    t.start()
+    return JSONResponse({"ok": True, "status": "running"})
+
+
+@app.get("/api/scan/status")
+def api_scan_status():
+    with _scan_lock:
+        return JSONResponse(dict(_scan_state))
 
 
 @app.get("/api/state")
@@ -1450,6 +1644,9 @@ def api_state():
                 "resolution_date": t.get("resolution_date", ""),
                 "resolution_source": t.get("resolution_source", ""),
                 "strategy": t.get("strategy") or "core",
+                "forecast_temp": t.get("forecast_temp"),
+                "actual_temp": t.get("actual_temp"),
+                "bucket": t.get("bucket", ""),
                 "polymarket_url": polymarket_event_url(t.get("location", ""), t.get("target_date", ""), t.get("metric") or "high"),
             }
             for t in resolved

@@ -244,11 +244,86 @@ _HISTORICAL_LOCATIONS = {
 }
 
 
+# TWC (Wunderground) station codes: "{ICAO}:9:{ISO2}" — same source Polymarket uses
+_TWC_STATION_CODES = {
+    "NYC":           "KLGA:9:US",
+    "Chicago":       "KORD:9:US",
+    "Seattle":       "KSEA:9:US",
+    "Atlanta":       "KATL:9:US",
+    "Dallas":        "KDFW:9:US",
+    "Miami":         "KMIA:9:US",
+    "Houston":       "KIAH:9:US",
+    "San Francisco": "KSFO:9:US",
+    "Phoenix":       "KPHX:9:US",
+    "Los Angeles":   "KLAX:9:US",
+    "Denver":        "KDEN:9:US",
+    "Austin":        "KAUS:9:US",
+    "Las Vegas":     "KLAS:9:US",
+    "Tokyo":         "RJTT:9:JP",
+    "Seoul":         "RKSS:9:KR",
+    "Munich":        "EDDM:9:DE",
+    "Warsaw":        "EPWA:9:PL",
+    "London":        "EGLL:9:GB",
+    "Paris":         "LFPG:9:FR",
+    "Ankara":        "LTAC:9:TR",
+    "Toronto":       "CYYZ:9:CA",
+    "Wellington":    "NZWN:9:NZ",
+    "Sao Paulo":     "SBGR:9:BR",
+    "Shanghai":      "ZSPD:9:CN",
+    "Tel Aviv":      "LLBG:9:IL",
+    "Singapore":     "WSSS:9:SG",
+    "Hong Kong":     "VHHH:9:HK",
+    "Buenos Aires":  "SAEZ:9:AR",
+    "Beijing":       "ZBAA:9:CN",
+    "Chengdu":       "ZUUU:9:CN",
+    "Chongqing":     "ZUCK:9:CN",
+    "Lucknow":       "VILK:9:IN",
+    "Milan":         "LIMC:9:IT",
+    "Shenzhen":      "ZGSZ:9:CN",
+    "Wuhan":         "ZHHH:9:CN",
+}
+_TWC_API_KEY = "6532d6454b8aa370768e63d6ba5a832e"
+
+
+def _fetch_twc_temp(location: str, date_str: str, metric: str) -> float | None:
+    """Fetch daily high/low in °C from TWC (Wunderground's data source)."""
+    station = _TWC_STATION_CODES.get(location)
+    if not station:
+        return None
+    date_compact = date_str.replace("-", "")
+    url = (
+        f"https://api.weather.com/v1/location/{station}/observations/historical.json"
+        f"?apiKey={_TWC_API_KEY}&units=m&startDate={date_compact}&endDate={date_compact}"
+    )
+    try:
+        resp = requests.get(url, timeout=15)
+        if resp.status_code != 200:
+            return None
+        obs = resp.json().get("observations", [])
+        if not obs:
+            return None
+        temps = [o.get("temp") for o in obs if o.get("temp") is not None]
+        if not temps:
+            return None
+        val_c = max(temps) if metric == "high" else min(temps)
+        # Return in °F (our internal storage unit)
+        return round(val_c * 9 / 5 + 32, 1)
+    except Exception:
+        return None
+
+
 def fetch_historical_temp(location: str, date_str: str, metric: str, unit: str = "F") -> float | None:
     """
-    Fetch the actual observed high/low temperature for a past date via Open-Meteo
-    archive API. Returns the temp in requested unit (°F default) or None on failure.
+    Fetch the actual observed high/low temperature for a past date.
+    Tries TWC (Wunderground — same source as Polymarket) first, falls back to Open-Meteo.
+    Returns the temp in requested unit (°F default) or None on failure.
     """
+    # Primary: TWC / Wunderground (matches Polymarket resolution source)
+    val_f = _fetch_twc_temp(location, date_str, metric)
+    if val_f is not None:
+        return round(val_f, 1) if unit == "F" else round((val_f - 32) * 5 / 9, 1)
+
+    # Fallback: Open-Meteo archive
     loc = _HISTORICAL_LOCATIONS.get(location)
     if not loc:
         return None
@@ -418,6 +493,18 @@ def update_resolved_trades() -> list:
             outcome = resolution["outcome"]
             exit_price = 1.0 if outcome.lower() in ("yes", "true") else 0.0
             source = "simmer"
+            # Fetch and persist actual temp once at resolution time (not on every dashboard load)
+            if trade.get("actual_temp") is None:
+                try:
+                    loc = trade.get("location", "")
+                    date_str = trade.get("target_date") or trade.get("resolution_date", "")[:10]
+                    metric = trade.get("metric", "high")
+                    if loc and date_str:
+                        actual = fetch_historical_temp(loc, date_str, metric, unit="F")
+                        if actual is not None:
+                            trade["actual_temp"] = actual
+                except Exception:
+                    pass
         else:
             # Path 2: historical fallback (Simmer outcome=None OR just expired).
             # Pass force=True when Simmer already confirmed resolved — no point

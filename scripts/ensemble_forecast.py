@@ -5,14 +5,13 @@ Multi-Model Ensemble Forecast — Degen Doppler style.
 Fetches Open-Meteo models plus AIFS ENS and returns a weighted ensemble forecast.
 
 Models & weights (normalized to 1.0):
-  aifs_ens               0.18  (ECMWF AIFS ensemble mean)
   ecmwf_ifs025           0.24  (Open-Meteo ECMWF deterministic)
+  aifs_ens               0.18  (ECMWF AIFS ensemble mean)
   gfs_seamless           0.14  (NOAA GFS, good global coverage)
   meteofrance_seamless   0.10  (Météo-France ARPEGE, strong globally)
-  ukmo_seamless          0.10  (UK Met Office, 2nd in WMO verification)
-  icon_global            0.10  (DWD ICON, strong in Europe)
-  gem_global             0.07  (Canadian GEM)
-  jma_seamless           0.07  (JMA, strong in Asia-Pacific)
+
+  Dropped: ukmo_seamless, icon_global, gem_global, jma_seamless
+  Reason: outlier models were inflating spread, blocking valid signals
 
 Signal strength:
   "strong"        = >=4 models, agreement_pct>=70%, max_delta<=6°
@@ -124,14 +123,10 @@ OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast"
 
 # Model definitions: name -> base weight (normalized to sum to 1.0)
 ENSEMBLE_MODELS = {
-    "aifs_ens":                0.18,
     "ecmwf_ifs025":            0.24,
+    "aifs_ens":                0.18,
     "gfs_seamless":            0.14,
     "meteofrance_seamless":    0.10,
-    "ukmo_seamless":           0.10,
-    "icon_global":             0.10,
-    "gem_global":              0.07,
-    "jma_seamless":            0.07,
 }
 
 
@@ -276,7 +271,7 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
     is_today = (date_str == today_str)
 
     # Fetch all models + METAR (if D+0) concurrently
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         futures = {}
         for model_name in ENSEMBLE_MODELS:
             if model_name == "aifs_ens":
