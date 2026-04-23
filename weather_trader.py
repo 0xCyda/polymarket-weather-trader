@@ -575,6 +575,14 @@ INTERNATIONAL_LOCATIONS = {
     "Buenos Aires": {"lat": -34.6037, "lon": -58.3816, "tz": "America/Argentina/Buenos_Aires"},
 }
 
+# Per-location bias correction in °C. NWP gridded models and Open-Meteo archive data
+# diverge from official weather station readings (Polymarket's resolution source).
+# Values derived from resolved trade analysis; update as more data accumulates.
+LOCATION_BIAS_C = {
+    "Hong Kong": 0.8,   # HKO station consistently reads ~+0.8°C above gridded model output
+    "Shenzhen":  1.0,   # Models ran cold by ~1°C across all resolved Shenzhen trades
+}
+
 # Forecasts are fetched exclusively via ensemble_forecast.get_ensemble_forecast.
 # Legacy get_noaa_forecast / get_openmeteo_forecast / fetch_json helpers were
 # removed — they were never called anywhere.
@@ -944,7 +952,8 @@ def _bucket_probability(lo_f: float, hi_f: float, mean_f: float, spread_f: float
 
 
 def rank_event_buckets_by_edge(event_markets: list, forecast_f: float,
-                               spread_f: float, signal_strength: str) -> list:
+                               spread_f: float, signal_strength: str,
+                               is_international: bool = False) -> list:
     """
     Rank ALL buckets in an event by edge (bucket_probability × signal_discount − price).
 
@@ -977,6 +986,12 @@ def rank_event_buckets_by_edge(event_markets: list, forecast_f: float,
         if not bucket:
             continue
         lo, hi, unit = bucket
+
+        # International locations (HK, Tokyo, etc.) use Celsius markets exclusively.
+        # Reject any °F-denominated bucket to avoid matching against domestic-style
+        # events (e.g. Simmer-native Fahrenheit markets) that appear in discovery.
+        if is_international and unit == 'F':
+            continue
 
         # Convert °C bucket bounds to °F (forecast is always °F)
         if unit == 'C':
@@ -2014,10 +2029,13 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         # Markets resolve in whole degrees. Round to the nearest integer in the
         # market's native unit so bucket selection reflects what will actually settle.
         if is_international:
-            rounded_c = round((forecast_temp - 32) * 5 / 9)
+            raw_c = (forecast_temp - 32) * 5 / 9
+            bias_c = LOCATION_BIAS_C.get(location, 0.0)
+            rounded_c = round(raw_c + bias_c)
             forecast_temp = rounded_c * 9 / 5 + 32  # store as °F for probability math
             unit_label = "°C"
-            display_temp = f"{rounded_c}°C"
+            bias_str = f" (bias {bias_c:+.1f}°C)" if bias_c else ""
+            display_temp = f"{rounded_c}°C{bias_str}"
         else:
             forecast_temp = round(forecast_temp)
             unit_label = "°F"
@@ -2032,6 +2050,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         # (Hans323: 72% range, 22% threshold, 5% exact).
         ranked_buckets = rank_event_buckets_by_edge(
             event_markets, forecast_temp, spread, signal_strength,
+            is_international=is_international,
         )
         matching_market = None
         matched_rb = None
