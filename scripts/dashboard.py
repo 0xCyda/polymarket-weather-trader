@@ -142,8 +142,8 @@ DASHBOARD_HTML = """
     /* Header */
     .header {
       display: grid;
-      grid-template-columns: 1fr auto auto;
-      align-items: start;
+      grid-template-columns: 1fr auto auto auto;
+      align-items: center;
       gap: 16px;
       margin-bottom: 28px;
     }
@@ -152,6 +152,33 @@ DASHBOARD_HTML = """
       align-items: center;
       gap: 6px;
     }
+    .header-scan {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    .status-line {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .scan-pill {
+      background: var(--accent-green);
+      border: 1px solid var(--accent-green);
+      color: #ffffff;
+      padding: 7px 18px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      font-family: inherit;
+      letter-spacing: 0.01em;
+      transition: filter 0.15s ease, transform 0.15s ease;
+    }
+    .scan-pill:hover { filter: brightness(1.1); }
+    .scan-pill:active { transform: translateY(1px); }
+    .scan-pill:disabled { opacity: 0.6; cursor: not-allowed; }
     .header-left .subtitle {
       color: var(--text-secondary);
       font-size: 13px;
@@ -235,9 +262,8 @@ DASHBOARD_HTML = """
     .last-updated {
       font-size: 11px;
       color: var(--text-faint);
-      margin-top: 6px;
-      text-align: right;
       font-family: 'JetBrains Mono', monospace;
+      white-space: nowrap;
     }
 
     /* Cards */
@@ -310,18 +336,26 @@ DASHBOARD_HTML = """
       .layout-main, .layout-split { grid-template-columns: 1fr; }
       body { padding: 20px 16px; }
       .header {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr auto;
       }
       .header-left {
+        grid-column: 1 / -1;
+      }
+      .header-right {
+        grid-column: 1;
+        justify-self: start;
+      }
+      .header-scan {
+        grid-column: 2;
+        justify-self: end;
+      }
+      .status-line {
         grid-column: 1 / -1;
       }
     }
     @media (max-width: 600px) {
       .header {
-        grid-template-columns: 1fr;
-      }
-      .header-right {
-        justify-content: flex-start;
+        grid-template-columns: 1fr auto;
       }
       h1 { font-size: 22px; }
       body { padding: 16px 12px 40px; }
@@ -500,7 +534,7 @@ DASHBOARD_HTML = """
     <h1>AIFS ENS · Weather Dashboard</h1>
     <div class="subtitle">Paper trading · Polymarket weather markets · Core + Punt strategies</div>
   </div>
-  <div>
+  <div class="status-line">
     <div class="status-pill" id="status-pill">
       <span class="status-dot" id="status-dot"></span>
       <span id="status-text">Connecting…</span>
@@ -510,7 +544,9 @@ DASHBOARD_HTML = """
   <div class="header-right">
     <button class="tab-btn" id="btn-overview" onclick="showTab('overview')">Overview</button>
     <button class="tab-btn" id="btn-config" onclick="showTab('config')">Config</button>
-    <button class="tab-btn" id="btn-scan" onclick="triggerScan()" style="border-color:rgba(52,211,153,0.35);color:var(--accent-green)">Scan Now</button>
+  </div>
+  <div class="header-scan">
+    <button class="scan-pill" id="btn-scan" onclick="triggerScan()">Scan Now</button>
   </div>
 </div>
 
@@ -607,9 +643,11 @@ function fmtCelsius(f) {
 }
 
 function fmtCelsiusDelta(f) {
-  // Spread is a delta (°F difference), not an absolute temp — convert without offset
+  // Spread shown with the raw numeric value the data emits (standard rounding).
+  // The underlying model unit is °F, but the display treats the spread as a
+  // unitless ensemble disagreement magnitude and labels °C for non-US rows.
   const n = Number(f || 0);
-  return n === 0 ? '—°C' : Math.round(n * 5 / 9) + '°C';
+  return n === 0 ? '—°C' : Math.round(n) + '°C';
 }
 
 function fmtFahrenheit(f) {
@@ -1039,8 +1077,10 @@ function renderConfig() {
           { k: 'Min edge', v: cfg.min_edge },
           { k: 'Exit threshold', v: cfg.exit_threshold },
           { k: 'Exit profit mult', v: cfg.exit_profit_multiplier },
-          { k: 'Max position', v: `$${cfg.max_position_usd}` },
-          { k: 'Sizing %', v: `${(cfg.sizing_pct * 100).toFixed(0)}%` },
+          { k: 'Sizing', v: 'tiered (city difficulty)' },
+          { k: 'Easy (3%)', v: `$${(cfg.paper_balance * 0.03).toFixed(0)}` },
+          { k: 'Medium (2%)', v: `$${(cfg.paper_balance * 0.02).toFixed(0)}` },
+          { k: 'Hard (1%)', v: `$${(cfg.paper_balance * 0.01).toFixed(0)}` },
           { k: 'Max trades/run', v: cfg.max_trades_per_run },
           { k: 'Order type', v: cfg.order_type },
           { k: 'Paper balance', v: `$${cfg.paper_balance.toLocaleString()}` },

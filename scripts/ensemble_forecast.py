@@ -286,9 +286,12 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
                     model_name,
                 )
             futures[future] = model_name
+        # METAR is fetched for every forecast when a station is mapped. The
+        # observation only drives signal / weighted_temp adjustments on D+0
+        # highs (see below), but recording it on D+1/D+2 gives dashboards and
+        # per-city bias analysis a real-time ground-truth anchor.
         metar_future = None
-        if is_today and metric == "high":
-            # METAR gives current temp — only relevant for high on D+0
+        if METAR_STATIONS.get(city):
             metar_future = executor.submit(get_metar_temp, city, unit)
 
         for future in as_completed(futures):

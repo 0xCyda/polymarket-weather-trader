@@ -2135,6 +2135,33 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                     sample_fields = {k: m.get(k) for k in ("outcome_name", "outcome", "name", "question") if m.get(k)}
                     log(f"    market sample: {sample_fields}")
             skip_reasons.append("no bucket match")
+
+            # Record the skip in skip_events.jsonl so the funnel is debuggable.
+            # Distinguish between "no parseable buckets" (no markets the ranker
+            # could score) and "best bucket below edge gate" (ranker found
+            # options but none cleared MIN_EDGE or were all at price extremes).
+            best_rb = ranked_buckets[0] if ranked_buckets else None
+            if best_rb is None:
+                _log_skip("no_bucket_parseable", location, date_str, metric,
+                          signal_strength=signal_strength, spread=spread)
+            else:
+                best_price = best_rb.get("price")
+                best_conf = best_rb.get("confidence")
+                best_edge = best_rb.get("edge")
+                best_mid = best_rb["market"].get("id")
+                # Classify: extreme price vs edge below MIN_EDGE
+                if best_price is not None and (best_price < MIN_TICK_SIZE or best_price > (1 - MIN_TICK_SIZE)):
+                    reason = "no_bucket_price_extreme"
+                    threshold, actual = None, best_price
+                else:
+                    reason = "no_bucket_low_edge"
+                    threshold, actual = MIN_EDGE, best_edge
+                _log_skip(reason, location, date_str, metric,
+                          market_id=best_mid, price=best_price,
+                          confidence=best_conf, edge=best_edge, spread=spread,
+                          signal_strength=signal_strength,
+                          threshold=threshold, actual=actual)
+
             # Log forecast even when no bucket match
             if newly_fetched and FORECAST_HISTORY_AVAILABLE and forecasts.get("weighted_temp") is not None:
                 try:
