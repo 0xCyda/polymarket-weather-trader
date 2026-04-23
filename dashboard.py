@@ -556,23 +556,23 @@ function toCelsius(f) {
 
 function fmtCelsius(f) {
   const c = toCelsius(f);
-  return c === '—' ? '—°C' : c.toFixed(1) + '°C';
+  return c === '—' ? '—°C' : Math.round(c) + '°C';
 }
 
 function fmtCelsiusDelta(f) {
   // Spread is a delta (°F difference), not an absolute temp — convert without offset
   const n = Number(f || 0);
-  return n === 0 ? '—°C' : (n * 5 / 9).toFixed(1) + '°C';
+  return n === 0 ? '—°C' : Math.round(n * 5 / 9) + '°C';
 }
 
 function fmtFahrenheit(f) {
   const n = Number(f || 0);
-  return n === 0 ? '—°F' : n.toFixed(1) + '°F';
+  return n === 0 ? '—°F' : Math.round(n) + '°F';
 }
 
 function fmtFahrenheitDelta(f) {
   const n = Number(f || 0);
-  return n === 0 ? '—°F' : n.toFixed(1) + '°F';
+  return n === 0 ? '—°F' : Math.round(n) + '°F';
 }
 
 // Display helpers that pick unit based on location
