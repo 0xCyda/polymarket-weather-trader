@@ -2126,7 +2126,13 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                     unparsed_count += 1
             nearest = min(all_buckets, key=lambda b: min(abs(b[0]-forecast_temp), abs(b[1]-forecast_temp))) if all_buckets else None
             if nearest:
-                log(f"  ⚠️  No bucket found for {display_temp} — nearest: {nearest[2]} ({nearest[0]:.0f}-{nearest[1]:.0f}{unit_label})")
+                # Display nearest bucket in native units (°C for international, °F for US)
+                if is_international:
+                    near_lo = round((nearest[0] - 32) * 5 / 9) if nearest[0] != -999 else nearest[0]
+                    near_hi = round((nearest[1] - 32) * 5 / 9) if nearest[1] != 999 else nearest[1]
+                else:
+                    near_lo, near_hi = round(nearest[0]), round(nearest[1])
+                log(f"  ⚠️  No bucket found for {display_temp} — nearest: {nearest[2]} ({near_lo}-{near_hi}{unit_label})")
             else:
                 log(f"  ⚠️  No bucket found for {display_temp} — {len(event_markets)} markets, {unparsed_count} unparseable")
                 # Diagnostic: show what fields the markets actually expose so we
