@@ -1,0 +1,348 @@
+Polymarket Weather Trader Analysis — 2026-04-24
+======================================================================
+Mode: WEATHER ONLY
+
+======================================================================
+TRADER: Hans323  (VERIFIED — 2805 weather trades, +$80k, 56% win. Famous for $1M London bet.)
+WALLET: 0x0f37cb80dee49d55b5f6d9e595d52591d6371410
+======================================================================
+Pulling Polymarket data for 0x0f37cb80dee49d55b5f6d9e595d52591d6371410...
+  Total markets traded: 2883
+  Closed positions:     3766
+  Active positions:     4
+  Redeemable positions: 0
+
+Weather breakdown:
+  Closed:      2811/3766
+  Active:      0/4
+  Redeemable:  0/0
+
+  Resolved total P&L:  $80,747.25
+  Active exposure:     $0.00
+
+  ALL RESOLVED (CLOSED + REDEEMABLE) (2811 positions)
+  Total P&L:      $80,747.25
+  Win rate:       1506/2684 (56.1%)
+  Avg winner:     $4,439.85  (n=1506)
+  Avg loser:      $19,158.66  (n=1178)
+  [!] Losers 4.3x larger than winners - sizing problem
+  Size range:     $0 – $1,113,601
+
+  By city (top 15 by volume):
+  City                   n    Win%           P&L    W.size    L.size
+  ------------------------------------------------------------------
+  London            1428   56.1%  $  35,376.12  $  5,632  $ 28,387
+  NYC               1248   53.8%  $  44,584.12  $  3,062  $  8,873
+  Seoul               30   86.7%  $      66.58  $  4,662  $  1,620
+  Seattle             25   64.0%  $      59.80  $  1,094  $    346
+  Toronto             19   44.4%  $      46.28  $ 17,624  $ 74,720
+  Atlanta             13   61.5%  $      60.68  $  2,691  $    782
+  Wellington          11  100.0%  $      35.13  $  2,282  $      0
+  Dallas               9   66.7%  $     117.90  $  1,659  $    132
+  Buenos Aires         7  100.0%  $     117.49  $  1,235  $      0
+  Paris                6  100.0%  $      53.87  $  2,725  $      0
+  Ankara               5  100.0%  $     161.14  $  8,268  $      0
+  Miami                4  100.0%  $      29.82  $    710  $      0
+  Denver               2  100.0%  $      22.94  $ 11,471  $      0
+  Phoenix              1  100.0%  $      14.60  $     20  $      0
+  Tokyo                1  100.0%  $       0.75  $    754  $      0
+
+  City difficulty (win rate, min 10 resolved):
+  City                   n    Win%           P&L  Tier
+  ----------------------------------------------------------
+  Toronto             19   44.4%  $      46.28  HARD
+  NYC               1248   53.8%  $  44,584.12  HARD
+  London            1428   56.1%  $  35,376.12  MEDIUM
+  Atlanta             13   61.5%  $      60.68  MEDIUM
+  Seattle             25   64.0%  $      59.80  MEDIUM
+  Seoul               30   86.7%  $      66.58  EASY
+  Wellington          11  100.0%  $      35.13  EASY
+
+  High temp:   2808 positions, P&L $   80,745.75
+  Low temp:       3 positions, P&L $        1.51
+
+  Bucket type preference (from title):
+    range         n= 2043  (72.7%)  P&L=$ 773,573.47
+    threshold     n=  620  (22.1%)  P&L=$-725,425.86
+    exact         n=  143  ( 5.1%)  P&L=$  32,515.50
+    unknown       n=    5  ( 0.2%)  P&L=$      84.15
+
+  By target month (top 5 by volume):
+  Month            n    Win%           P&L
+  ------------------------------------------
+  November       360   54.3%  $  16,950.70
+  October        354   60.3%  $  13,532.98
+  May            276   53.9%  $   6,756.19
+  December       268   45.6%  $  11,186.22
+  March          264   60.4%  $   8,101.18
+
+  Best trade:  $1,018,475.26
+    Will the highest temperature in London be between 55-56°F on November 28?
+    size: $1,111,589  outcome: Yes
+  Worst trade: $-552,835.95
+    Will the highest temperature in London be between 53-54°F on November 28?
+    size: $1,105,890  outcome: Yes
+
+  No Active (still running) weather positions.
+
+
+======================================================================
+TRADER: ColdMath  (VERIFIED — 6271 weather trades, -$173k despite 66% win (losers 2x winners).)
+WALLET: 0x594edb9112f526fa6a80b8f858a6379c8a2c1c11
+======================================================================
+Pulling Polymarket data for 0x594edb9112f526fa6a80b8f858a6379c8a2c1c11...
+  Total markets traded: 6732
+  Closed positions:     7165
+  Active positions:     11
+  Redeemable positions: 89
+
+Weather breakdown:
+  Closed:      6305/7165
+  Active:      6/11
+  Redeemable:  81/89
+
+  Resolved total P&L:  $-178,656.05
+  Active exposure:     $22,501.88
+
+  ALL RESOLVED (CLOSED + REDEEMABLE) (6386 positions)
+  Total P&L:      $-178,656.05
+  Win rate:       4216/6381 (66.1%)
+  Avg winner:     $654.73  (n=4216)
+  Avg loser:      $1,370.04  (n=2165)
+  [!] Losers 2.1x larger than winners - sizing problem
+  Size range:     $1 – $51,143
+
+  By city (top 15 by volume):
+  City                   n    Win%           P&L    W.size    L.size
+  ------------------------------------------------------------------
+  Atlanta            688   68.3%  $  -2,200.14  $    790  $  1,552
+  Dallas             601   66.3%  $ -14,306.08  $    733  $  1,480
+  Buenos Aires       553   65.8%  $  -3,759.38  $    502  $    903
+  NYC                462   65.6%  $  -8,888.60  $    550  $  1,082
+  Miami              397   60.2%  $ -12,536.89  $    570  $  1,183
+  Seattle            383   71.7%  $  -4,896.79  $    465  $    752
+  Wellington         358   56.7%  $ -33,896.76  $  1,379  $  2,525
+  Chicago            347   64.3%  $ -12,955.05  $    803  $  1,981
+  Toronto            288   70.7%  $  -5,044.36  $    375  $    946
+  London             281   66.1%  $  -7,049.22  $    547  $  1,096
+  Lucknow            252   60.3%  $  -4,225.50  $    903  $  1,583
+  Sao Paulo          217   59.4%  $  -1,083.30  $    502  $  1,172
+  Ankara             211   61.6%  $  -4,964.53  $    714  $  1,033
+  Seoul              196   62.8%  $ -14,197.68  $    620  $  1,423
+  Paris              168   62.5%  $  -4,153.20  $    625  $  1,198
+
+  City difficulty (win rate, min 10 resolved):
+  City                   n    Win%           P&L  Tier
+  ----------------------------------------------------------
+  Shanghai            50   52.0%  $  -3,201.46  HARD
+  Tokyo               96   54.2%  $ -18,496.38  HARD
+  Wellington         358   56.7%  $ -33,896.76  MEDIUM
+  Wuhan               35   57.1%  $  -1,557.45  MEDIUM
+  Sao Paulo          217   59.4%  $  -1,083.30  MEDIUM
+  Beijing             40   60.0%  $  -1,526.10  MEDIUM
+  Miami              397   60.2%  $ -12,536.89  MEDIUM
+  Lucknow            252   60.3%  $  -4,225.50  MEDIUM
+  Austin              57   61.4%  $  -2,413.12  MEDIUM
+  Ankara             211   61.6%  $  -4,964.53  MEDIUM
+  Paris              168   62.5%  $  -4,153.20  MEDIUM
+  Seoul              196   62.8%  $ -14,197.68  MEDIUM
+  Singapore           85   63.5%  $  -8,362.74  MEDIUM
+  Chicago            347   64.3%  $ -12,955.05  MEDIUM
+  NYC                462   65.6%  $  -8,888.60  MEDIUM
+  Buenos Aires       553   65.8%  $  -3,759.38  MEDIUM
+  London             281   66.1%  $  -7,049.22  MEDIUM
+  Dallas             601   66.3%  $ -14,306.08  MEDIUM
+  Shenzhen            31   67.7%  $  -2,420.59  MEDIUM
+  Atlanta            688   68.3%  $  -2,200.14  MEDIUM
+  Denver              55   69.1%  $     929.23  MEDIUM
+  Chongqing           33   69.7%  $  -1,467.04  MEDIUM
+  Toronto            288   70.7%  $  -5,044.36  MEDIUM
+  Seattle            383   71.7%  $  -4,896.79  MEDIUM
+  Houston             60   76.7%  $  -1,111.20  EASY
+  Munich              89   77.5%  $  -2,315.82  EASY
+  Chengdu             37   83.8%  $    -516.42  EASY
+  Milan               78   85.9%  $  -1,209.85  EASY
+  Los Angeles         66   86.4%  $    -604.84  EASY
+  San Francisco       53   86.8%  $    -288.77  EASY
+  Warsaw              70   90.0%  $      13.93  EASY
+  Tel Aviv            46   93.5%  $      41.84  EASY
+
+  High temp:   6349 positions, P&L $ -175,846.82
+  Low temp:      37 positions, P&L $   -2,809.23
+
+  Bucket type preference (from title):
+    exact         n= 2382  (37.3%)  P&L=$ -85,480.70
+    range         n= 2308  (36.1%)  P&L=$ -31,074.21
+    threshold     n= 1696  (26.6%)  P&L=$ -62,101.14
+
+  By target month (top 5 by volume):
+  Month            n    Win%           P&L
+  ------------------------------------------
+  March         2321   63.0%  $ -90,883.77
+  February      1834   58.2%  $ -50,707.95
+  January       1015   78.7%  $   1,293.52
+  April          795   69.4%  $ -52,299.48
+  December       421   80.4%  $  13,941.64
+
+  Best trade:  $12,427.10
+    Will the highest temperature in Tokyo be 16°C on March 20?
+    size: $25,408  outcome: Yes
+  Worst trade: $-13,578.03
+    Will the highest temperature in Wellington be 16°C on March 28?
+    size: $29,885  outcome: No
+
+  ACTIVE (STILL RUNNING) (6 positions)
+  Total P&L:      $-1,788.76
+  Win rate:       0/3 (0.0%)
+  Size range:     $1,284 – $6,690
+
+  By city (top 15 by volume):
+  City                   n    Win%           P&L    W.size    L.size
+  ------------------------------------------------------------------
+  Los Angeles          2    0.0%  $       0.00  $      0  $      0
+  Miami                1    0.0%  $    -960.96  $      0  $  6,690
+  Paris                1    0.0%  $    -654.79  $      0  $  5,915
+  Houston              1    0.0%  $       0.00  $      0  $      0
+  Austin               1    0.0%  $    -173.02  $      0  $  3,529
+
+  High temp:      4 positions, P&L $     -173.02
+  Low temp:       2 positions, P&L $   -1,615.75
+
+  Bucket type preference (from title):
+    range         n=    3  (50.0%)  P&L=$    -960.96
+    threshold     n=    2  (33.3%)  P&L=$    -173.02
+    exact         n=    1  (16.7%)  P&L=$    -654.79
+
+  By target month (top 5 by volume):
+  Month            n    Win%           P&L
+  ------------------------------------------
+  April            6    0.0%  $  -1,788.76
+
+  Best trade:  $0.00
+    Will the highest temperature in Houston be 76°F or higher on April 24?
+    size: $3,695  outcome: Yes
+  Worst trade: $-960.96
+    Will the lowest temperature in Miami be between 82-83°F on April 25?
+    size: $6,690  outcome: No
+
+
+======================================================================
+TRADER: gopfan2  (UNVERIFIED — 0/1695 weather. Real wallet unknown; check polymarket.com/@gopfan2)
+WALLET: 0xf2f6af4f27ec2dcf4072095ab804016e14cd5817
+======================================================================
+Pulling Polymarket data for 0xf2f6af4f27ec2dcf4072095ab804016e14cd5817...
+  Total markets traded: 1985
+  Closed positions:     1701
+  Active positions:     16
+  Redeemable positions: 84
+
+Weather breakdown:
+  Closed:      1/1701
+  Active:      0/16
+  Redeemable:  0/84
+
+  Resolved total P&L:  $117.04
+  Active exposure:     $0.00
+
+  ALL RESOLVED (CLOSED + REDEEMABLE) (1 positions)
+  Total P&L:      $117.04
+  Win rate:       1/1 (100.0%)
+  Size range:     $732 – $732
+
+  By city (top 15 by volume):
+  City                   n    Win%           P&L    W.size    L.size
+  ------------------------------------------------------------------
+  NYC                  1  100.0%  $     117.04  $    732  $      0
+
+  High temp:      1 positions, P&L $      117.04
+  Low temp:       0 positions, P&L $        0.00
+
+  Bucket type preference (from title):
+    unknown       n=    1  (100.0%)  P&L=$     117.04
+
+  Best trade:  $117.04
+    70°F in NYC in December?
+    size: $732  outcome: No
+  Worst trade: $117.04
+    70°F in NYC in December?
+    size: $732  outcome: No
+
+  No Active (still running) weather positions.
+
+
+======================================================================
+TRADER: aenews2  (CANDIDATE — from polymarket.com/@aenews2 profile. Untested.)
+WALLET: 0x44c1dfe43260c94ed4f1d00de2e1f80fb113ebc1
+======================================================================
+Pulling Polymarket data for 0x44c1dfe43260c94ed4f1d00de2e1f80fb113ebc1...
+  Total markets traded: 2516
+  Closed positions:     3537
+  Active positions:     30
+  Redeemable positions: 0
+
+Weather breakdown:
+  Closed:      14/3537
+  Active:      0/30
+  Redeemable:  0/0
+
+  Resolved total P&L:  $-127.35
+  Active exposure:     $0.00
+
+  ALL RESOLVED (CLOSED + REDEEMABLE) (14 positions)
+  Total P&L:      $-127.35
+  Win rate:       5/13 (38.5%)
+  Avg winner:     $323.04  (n=5)
+  Avg loser:      $22.46  (n=8)
+  [OK] Winners 14.4x larger than losers - good sizing
+  Size range:     $0 – $610
+
+  By city (top 15 by volume):
+  City                   n    Win%           P&L    W.size    L.size
+  ------------------------------------------------------------------
+  London               8   14.3%  $      -0.01  $      0  $      0
+  NYC                  4  100.0%  $       1.61  $    404  $      0
+  Chicago              2    0.0%  $    -128.96  $      0  $     89
+
+  High temp:     14 positions, P&L $     -127.35
+  Low temp:       0 positions, P&L $        0.00
+
+  Bucket type preference (from title):
+    range         n=    6  (42.9%)  P&L=$    -126.48
+    unknown       n=    4  (28.6%)  P&L=$       1.61
+    threshold     n=    4  (28.6%)  P&L=$      -2.48
+
+  By target month (top 5 by volume):
+  Month            n    Win%           P&L
+  ------------------------------------------
+  March           10   11.1%  $    -128.97
+
+  Best trade:  $0.61
+    Will NYC have between 3.5 and 4.5 inches of snowfall on Tuesday?
+    size: $610  outcome: No
+  Worst trade: $-126.60
+    Will the highest temperature in Chicago be between 46-47°F on March 11?
+    size: $154  outcome: No
+
+  No Active (still running) weather positions.
+
+
+======================================================================
+TRADER: aenews-r2  (CANDIDATE — from polymarketanalytics.com. Untested.)
+WALLET: 0xc5f87c6bbef505ae18b5bf6fed1378e2e6a19db2
+======================================================================
+Pulling Polymarket data for 0xc5f87c6bbef505ae18b5bf6fed1378e2e6a19db2...
+  Total markets traded: None
+  Closed positions:     12
+  Active positions:     0
+  Redeemable positions: 0
+
+Weather breakdown:
+  Closed:      0/12
+  Active:      0/0
+  Redeemable:  0/0
+
+  Resolved total P&L:  $0.00
+  Active exposure:     $0.00
+
+  No Active (still running) weather positions.
+

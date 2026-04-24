@@ -19,15 +19,9 @@ from dateutil import tz
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE = os.path.join(SKILL_DIR, ".env")
 
-# Single source of truth for cities scanned. Imported by dashboard.py.
-DEFAULT_LOCATIONS = (
-    "NYC,Chicago,Seattle,Atlanta,Dallas,Miami,Houston,San Francisco,"
-    "Phoenix,Los Angeles,Denver,Austin,Las Vegas,"
-    "Tel Aviv,Munich,London,Tokyo,Seoul,Ankara,Lucknow,"
-    "Wellington,Toronto,Paris,Milan,Sao Paulo,Warsaw,Singapore,"
-    "Shanghai,Beijing,Shenzhen,Chengdu,Chongqing,Wuhan,Hong Kong,"
-    "Buenos Aires"
-)
+# Canonical list lives in weather_trader.py. Re-exported here so existing
+# importers (dashboard.py) keep working without changes.
+from weather_trader import DEFAULT_LOCATIONS  # noqa: F401
 
 
 _CITY_DIFFICULTY = {

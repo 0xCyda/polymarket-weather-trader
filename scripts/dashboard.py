@@ -1352,14 +1352,15 @@ fetch('/api/scan/status', {cache: 'no-store'}).then(r => r.json()).then(s => {
 # ---------------------------------------------------------------------------
 
 def _load_env():
-    """Load .env from skill directory into os.environ."""
-    env_file = SKILL_DIR / ".env"
-    if env_file.exists():
-        for line in env_file.read_text().splitlines():
-            line = line.strip()
-            if "=" in line and not line.startswith("#"):
-                k, v = line.split("=", 1)
-                os.environ[k.strip()] = v.strip()
+    """Load .env from project root (preferred) or skill directory into os.environ."""
+    for env_file in (_PROJECT_ROOT / ".env", SKILL_DIR / ".env"):
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                line = line.strip()
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.split("=", 1)
+                    os.environ[k.strip()] = v.strip()
+            return
 
 _load_env()
 

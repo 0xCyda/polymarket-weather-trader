@@ -1,0 +1,134 @@
+Pulling Polymarket data for 0x594edb9112f526fa6a80b8f858a6379c8a2c1c11...
+  Total markets traded: 6732
+  Closed positions:     7165
+  Active positions:     11
+  Redeemable positions: 89
+
+Weather breakdown:
+  Closed:      6305/7165
+  Active:      6/11
+  Redeemable:  81/89
+
+  Resolved total P&L:  $-178,656.05
+  Active exposure:     $22,501.88
+
+  ALL RESOLVED (CLOSED + REDEEMABLE) (6386 positions)
+  Total P&L:      $-178,656.05
+  Win rate:       4216/6381 (66.1%)
+  Avg winner:     $654.73  (n=4216)
+  Avg loser:      $1,370.04  (n=2165)
+  [!] Losers 2.1x larger than winners - sizing problem
+  Size range:     $1 – $51,143
+
+  By city (top 15 by volume):
+  City                   n    Win%           P&L    W.size    L.size
+  ------------------------------------------------------------------
+  Atlanta            688   68.3%  $  -2,200.14  $    790  $  1,552
+  Dallas             601   66.3%  $ -14,306.08  $    733  $  1,480
+  Buenos Aires       553   65.8%  $  -3,759.38  $    502  $    903
+  NYC                462   65.6%  $  -8,888.60  $    550  $  1,082
+  Miami              397   60.2%  $ -12,536.89  $    570  $  1,183
+  Seattle            383   71.7%  $  -4,896.79  $    465  $    752
+  Wellington         358   56.7%  $ -33,896.76  $  1,379  $  2,525
+  Chicago            347   64.3%  $ -12,955.05  $    803  $  1,981
+  Toronto            288   70.7%  $  -5,044.36  $    375  $    946
+  London             281   66.1%  $  -7,049.22  $    547  $  1,096
+  Lucknow            252   60.3%  $  -4,225.50  $    903  $  1,583
+  Sao Paulo          217   59.4%  $  -1,083.30  $    502  $  1,172
+  Ankara             211   61.6%  $  -4,964.53  $    714  $  1,033
+  Seoul              196   62.8%  $ -14,197.68  $    620  $  1,423
+  Paris              168   62.5%  $  -4,153.20  $    625  $  1,198
+
+  City difficulty (win rate, min 10 resolved):
+  City                   n    Win%           P&L  Tier
+  ----------------------------------------------------------
+  Shanghai            50   52.0%  $  -3,201.46  HARD
+  Tokyo               96   54.2%  $ -18,496.38  HARD
+  Wellington         358   56.7%  $ -33,896.76  MEDIUM
+  Wuhan               35   57.1%  $  -1,557.45  MEDIUM
+  Sao Paulo          217   59.4%  $  -1,083.30  MEDIUM
+  Beijing             40   60.0%  $  -1,526.10  MEDIUM
+  Miami              397   60.2%  $ -12,536.89  MEDIUM
+  Lucknow            252   60.3%  $  -4,225.50  MEDIUM
+  Austin              57   61.4%  $  -2,413.12  MEDIUM
+  Ankara             211   61.6%  $  -4,964.53  MEDIUM
+  Paris              168   62.5%  $  -4,153.20  MEDIUM
+  Seoul              196   62.8%  $ -14,197.68  MEDIUM
+  Singapore           85   63.5%  $  -8,362.74  MEDIUM
+  Chicago            347   64.3%  $ -12,955.05  MEDIUM
+  NYC                462   65.6%  $  -8,888.60  MEDIUM
+  Buenos Aires       553   65.8%  $  -3,759.38  MEDIUM
+  London             281   66.1%  $  -7,049.22  MEDIUM
+  Dallas             601   66.3%  $ -14,306.08  MEDIUM
+  Shenzhen            31   67.7%  $  -2,420.59  MEDIUM
+  Atlanta            688   68.3%  $  -2,200.14  MEDIUM
+  Denver              55   69.1%  $     929.23  MEDIUM
+  Chongqing           33   69.7%  $  -1,467.04  MEDIUM
+  Toronto            288   70.7%  $  -5,044.36  MEDIUM
+  Seattle            383   71.7%  $  -4,896.79  MEDIUM
+  Houston             60   76.7%  $  -1,111.20  EASY
+  Munich              89   77.5%  $  -2,315.82  EASY
+  Chengdu             37   83.8%  $    -516.42  EASY
+  Milan               78   85.9%  $  -1,209.85  EASY
+  Los Angeles         66   86.4%  $    -604.84  EASY
+  San Francisco       53   86.8%  $    -288.77  EASY
+  Warsaw              70   90.0%  $      13.93  EASY
+  Tel Aviv            46   93.5%  $      41.84  EASY
+
+  High temp:   6349 positions, P&L $ -175,846.82
+  Low temp:      37 positions, P&L $   -2,809.23
+
+  Bucket type preference (from title):
+    exact         n= 2382  (37.3%)  P&L=$ -85,480.70
+    range         n= 2308  (36.1%)  P&L=$ -31,074.21
+    threshold     n= 1696  (26.6%)  P&L=$ -62,101.14
+
+  By target month (top 5 by volume):
+  Month            n    Win%           P&L
+  ------------------------------------------
+  March         2321   63.0%  $ -90,883.77
+  February      1834   58.2%  $ -50,707.95
+  January       1015   78.7%  $   1,293.52
+  April          795   69.4%  $ -52,299.48
+  December       421   80.4%  $  13,941.64
+
+  Best trade:  $12,427.10
+    Will the highest temperature in Tokyo be 16°C on March 20?
+    size: $25,408  outcome: Yes
+  Worst trade: $-13,578.03
+    Will the highest temperature in Wellington be 16°C on March 28?
+    size: $29,885  outcome: No
+
+  ACTIVE (STILL RUNNING) (6 positions)
+  Total P&L:      $-1,788.76
+  Win rate:       0/3 (0.0%)
+  Size range:     $1,284 – $6,690
+
+  By city (top 15 by volume):
+  City                   n    Win%           P&L    W.size    L.size
+  ------------------------------------------------------------------
+  Los Angeles          2    0.0%  $       0.00  $      0  $      0
+  Miami                1    0.0%  $    -960.96  $      0  $  6,690
+  Paris                1    0.0%  $    -654.79  $      0  $  5,915
+  Houston              1    0.0%  $       0.00  $      0  $      0
+  Austin               1    0.0%  $    -173.02  $      0  $  3,529
+
+  High temp:      4 positions, P&L $     -173.02
+  Low temp:       2 positions, P&L $   -1,615.75
+
+  Bucket type preference (from title):
+    range         n=    3  (50.0%)  P&L=$    -960.96
+    threshold     n=    2  (33.3%)  P&L=$    -173.02
+    exact         n=    1  (16.7%)  P&L=$    -654.79
+
+  By target month (top 5 by volume):
+  Month            n    Win%           P&L
+  ------------------------------------------
+  April            6    0.0%  $  -1,788.76
+
+  Best trade:  $0.00
+    Will the highest temperature in Houston be 76°F or higher on April 24?
+    size: $3,695  outcome: Yes
+  Worst trade: $-960.96
+    Will the lowest temperature in Miami be between 82-83°F on April 25?
+    size: $6,690  outcome: No

@@ -98,6 +98,18 @@ except ImportError:
 
 from simmer_sdk.skill import load_config, update_config, get_config_path
 
+# Canonical scan list — single source of truth. Kept here (early in module load)
+# so CONFIG_SCHEMA below can reference it as the default for `locations`.
+# Imported by format_scan.py and dashboard.py so every consumer stays in sync.
+DEFAULT_LOCATIONS = (
+    "NYC,Chicago,Seattle,Atlanta,Dallas,Miami,Houston,San Francisco,"
+    "Phoenix,Los Angeles,Denver,Austin,Las Vegas,"
+    "Tel Aviv,Munich,London,Tokyo,Seoul,Ankara,Lucknow,"
+    "Wellington,Toronto,Paris,Milan,Sao Paulo,Warsaw,Singapore,"
+    "Shanghai,Beijing,Shenzhen,Chengdu,Chongqing,Wuhan,Hong Kong,"
+    "Buenos Aires"
+)
+
 # Configuration schema
 # Note: env var names match autotune registry. Legacy aliases (SIMMER_WEATHER_ENTRY,
 # SIMMER_WEATHER_EXIT, SIMMER_WEATHER_MAX_POSITION, SIMMER_WEATHER_MAX_TRADES) are
@@ -112,7 +124,7 @@ CONFIG_SCHEMA = {
     "sizing_pct":        {"env": "SIMMER_WEATHER_SIZING_PCT",        "default": 0.05,  "type": float},
     "max_trades_per_run":{"env": "SIMMER_WEATHER_MAX_TRADES_PER_RUN","default": 10,    "type": int},
     "paper_balance":     {"env": "SIMMER_WEATHER_PAPER_BALANCE",     "default": 10000.0,"type": float},
-    "locations":         {"env": "SIMMER_WEATHER_LOCATIONS",         "default": "NYC", "type": str},
+    "locations":         {"env": "SIMMER_WEATHER_LOCATIONS",         "default": DEFAULT_LOCATIONS, "type": str},
     "binary_only":       {"env": "SIMMER_WEATHER_BINARY_ONLY",       "default": False, "type": bool},
     "slippage_max":      {"env": "SIMMER_WEATHER_SLIPPAGE_MAX",      "default": 0.15,  "type": float},
     "min_liquidity":     {"env": "SIMMER_WEATHER_MIN_LIQUIDITY",     "default": 0.0,   "type": float},
@@ -1414,11 +1426,17 @@ def discover_and_import_weather_markets(log=print):
 # =============================================================================
 
 def fetch_weather_markets():
-    """Fetch weather-tagged markets from Simmer API."""
+    """Fetch weather-tagged markets from Simmer API.
+
+    Simmer returns ~500-700 active weather markets across all tracked cities.
+    The 100-limit default silently dropped most of them and left whole cities
+    (e.g. Buenos Aires) invisible to the scan. Pull up to Simmer's hard cap
+    (1000 per request) so every ACTIVE_LOCATIONS city with live markets gets seen.
+    """
     try:
         result = simmer_call(
             get_client()._request, "GET", "/api/sdk/markets",
-            params={"tags": "weather", "status": "active", "limit": 100},
+            params={"tags": "weather", "status": "active", "limit": 1000},
             _label="markets",
         )
         return result.get("markets", [])

@@ -1,0 +1,38 @@
+Pulling Polymarket data for 0xf2f6af4f27ec2dcf4072095ab804016e14cd5817...
+  Total markets traded: 1985
+  Closed positions:     1701
+  Active positions:     16
+  Redeemable positions: 84
+
+Weather breakdown:
+  Closed:      1/1701
+  Active:      0/16
+  Redeemable:  0/84
+
+  Resolved total P&L:  $117.04
+  Active exposure:     $0.00
+
+  ALL RESOLVED (CLOSED + REDEEMABLE) (1 positions)
+  Total P&L:      $117.04
+  Win rate:       1/1 (100.0%)
+  Size range:     $732 – $732
+
+  By city (top 15 by volume):
+  City                   n    Win%           P&L    W.size    L.size
+  ------------------------------------------------------------------
+  NYC                  1  100.0%  $     117.04  $    732  $      0
+
+  High temp:      1 positions, P&L $      117.04
+  Low temp:       0 positions, P&L $        0.00
+
+  Bucket type preference (from title):
+    unknown       n=    1  (100.0%)  P&L=$     117.04
+
+  Best trade:  $117.04
+    70°F in NYC in December?
+    size: $732  outcome: No
+  Worst trade: $117.04
+    70°F in NYC in December?
+    size: $732  outcome: No
+
+  No Active (still running) weather positions.

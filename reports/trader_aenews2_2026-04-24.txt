@@ -1,0 +1,50 @@
+Pulling Polymarket data for 0x44c1dfe43260c94ed4f1d00de2e1f80fb113ebc1...
+  Total markets traded: 2516
+  Closed positions:     3537
+  Active positions:     30
+  Redeemable positions: 0
+
+Weather breakdown:
+  Closed:      14/3537
+  Active:      0/30
+  Redeemable:  0/0
+
+  Resolved total P&L:  $-127.35
+  Active exposure:     $0.00
+
+  ALL RESOLVED (CLOSED + REDEEMABLE) (14 positions)
+  Total P&L:      $-127.35
+  Win rate:       5/13 (38.5%)
+  Avg winner:     $323.04  (n=5)
+  Avg loser:      $22.46  (n=8)
+  [OK] Winners 14.4x larger than losers - good sizing
+  Size range:     $0 – $610
+
+  By city (top 15 by volume):
+  City                   n    Win%           P&L    W.size    L.size
+  ------------------------------------------------------------------
+  London               8   14.3%  $      -0.01  $      0  $      0
+  NYC                  4  100.0%  $       1.61  $    404  $      0
+  Chicago              2    0.0%  $    -128.96  $      0  $     89
+
+  High temp:     14 positions, P&L $     -127.35
+  Low temp:       0 positions, P&L $        0.00
+
+  Bucket type preference (from title):
+    range         n=    6  (42.9%)  P&L=$    -126.48
+    unknown       n=    4  (28.6%)  P&L=$       1.61
+    threshold     n=    4  (28.6%)  P&L=$      -2.48
+
+  By target month (top 5 by volume):
+  Month            n    Win%           P&L
+  ------------------------------------------
+  March           10   11.1%  $    -128.97
+
+  Best trade:  $0.61
+    Will NYC have between 3.5 and 4.5 inches of snowfall on Tuesday?
+    size: $610  outcome: No
+  Worst trade: $-126.60
+    Will the highest temperature in Chicago be between 46-47°F on March 11?
+    size: $154  outcome: No
+
+  No Active (still running) weather positions.

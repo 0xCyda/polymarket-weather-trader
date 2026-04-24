@@ -1,0 +1,78 @@
+Pulling Polymarket data for 0x0f37cb80dee49d55b5f6d9e595d52591d6371410...
+  Total markets traded: 2883
+  Closed positions:     3766
+  Active positions:     4
+  Redeemable positions: 0
+
+Weather breakdown:
+  Closed:      2811/3766
+  Active:      0/4
+  Redeemable:  0/0
+
+  Resolved total P&L:  $80,747.25
+  Active exposure:     $0.00
+
+  ALL RESOLVED (CLOSED + REDEEMABLE) (2811 positions)
+  Total P&L:      $80,747.25
+  Win rate:       1506/2684 (56.1%)
+  Avg winner:     $4,439.85  (n=1506)
+  Avg loser:      $19,158.66  (n=1178)
+  [!] Losers 4.3x larger than winners - sizing problem
+  Size range:     $0 – $1,113,601
+
+  By city (top 15 by volume):
+  City                   n    Win%           P&L    W.size    L.size
+  ------------------------------------------------------------------
+  London            1428   56.1%  $  35,376.12  $  5,632  $ 28,387
+  NYC               1248   53.8%  $  44,584.12  $  3,062  $  8,873
+  Seoul               30   86.7%  $      66.58  $  4,662  $  1,620
+  Seattle             25   64.0%  $      59.80  $  1,094  $    346
+  Toronto             19   44.4%  $      46.28  $ 17,624  $ 74,720
+  Atlanta             13   61.5%  $      60.68  $  2,691  $    782
+  Wellington          11  100.0%  $      35.13  $  2,282  $      0
+  Dallas               9   66.7%  $     117.90  $  1,659  $    132
+  Buenos Aires         7  100.0%  $     117.49  $  1,235  $      0
+  Paris                6  100.0%  $      53.87  $  2,725  $      0
+  Ankara               5  100.0%  $     161.14  $  8,268  $      0
+  Miami                4  100.0%  $      29.82  $    710  $      0
+  Denver               2  100.0%  $      22.94  $ 11,471  $      0
+  Phoenix              1  100.0%  $      14.60  $     20  $      0
+  Tokyo                1  100.0%  $       0.75  $    754  $      0
+
+  City difficulty (win rate, min 10 resolved):
+  City                   n    Win%           P&L  Tier
+  ----------------------------------------------------------
+  Toronto             19   44.4%  $      46.28  HARD
+  NYC               1248   53.8%  $  44,584.12  HARD
+  London            1428   56.1%  $  35,376.12  MEDIUM
+  Atlanta             13   61.5%  $      60.68  MEDIUM
+  Seattle             25   64.0%  $      59.80  MEDIUM
+  Seoul               30   86.7%  $      66.58  EASY
+  Wellington          11  100.0%  $      35.13  EASY
+
+  High temp:   2808 positions, P&L $   80,745.75
+  Low temp:       3 positions, P&L $        1.51
+
+  Bucket type preference (from title):
+    range         n= 2043  (72.7%)  P&L=$ 773,573.47
+    threshold     n=  620  (22.1%)  P&L=$-725,425.86
+    exact         n=  143  ( 5.1%)  P&L=$  32,515.50
+    unknown       n=    5  ( 0.2%)  P&L=$      84.15
+
+  By target month (top 5 by volume):
+  Month            n    Win%           P&L
+  ------------------------------------------
+  November       360   54.3%  $  16,950.70
+  October        354   60.3%  $  13,532.98
+  May            276   53.9%  $   6,756.19
+  December       268   45.6%  $  11,186.22
+  March          264   60.4%  $   8,101.18
+
+  Best trade:  $1,018,475.26
+    Will the highest temperature in London be between 55-56°F on November 28?
+    size: $1,111,589  outcome: Yes
+  Worst trade: $-552,835.95
+    Will the highest temperature in London be between 53-54°F on November 28?
+    size: $1,105,890  outcome: Yes
+
+  No Active (still running) weather positions.

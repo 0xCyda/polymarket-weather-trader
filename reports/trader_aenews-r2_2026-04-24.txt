@@ -1,0 +1,15 @@
+Pulling Polymarket data for 0xc5f87c6bbef505ae18b5bf6fed1378e2e6a19db2...
+  Total markets traded: None
+  Closed positions:     12
+  Active positions:     0
+  Redeemable positions: 0
+
+Weather breakdown:
+  Closed:      0/12
+  Active:      0/0
+  Redeemable:  0/0
+
+  Resolved total P&L:  $0.00
+  Active exposure:     $0.00
+
+  No Active (still running) weather positions.
