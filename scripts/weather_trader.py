@@ -2222,6 +2222,24 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 bucket_label = f"{_lo}-{_hi}°{_unit}"
         else:
             bucket_label = outcome_name
+
+        # Cross-check: if the ranker selected this market, its bucket info
+        # should match what parse_market_bucket returns. If they disagree
+        # (e.g. ranker saw different data than parser), prefer the ranker's
+        # bucket since that's what the probability was computed against.
+        if matched_rb and _matched_bucket:
+            rb_bucket = matched_rb.get("bucket")
+            if rb_bucket and rb_bucket != _matched_bucket:
+                _rlo, _rhi, _runit = rb_bucket
+                if _rlo == -999:
+                    bucket_label = f"{_rhi}°{_runit} or below"
+                elif _rhi == 999:
+                    bucket_label = f"{_rlo}°{_runit} or above"
+                elif _rlo == _rhi:
+                    bucket_label = f"{_rlo}°{_runit}"
+                else:
+                    bucket_label = f"{_rlo}-{_rhi}°{_runit}"
+                log(f"  ⚠️  Bucket mismatch: parser={_lo}-{_hi}°{_unit} vs ranker={_rlo}-{_rhi}°{_runit} — using ranker")
         price = matching_market.get("external_price_yes") or 0.5
         market_id = matching_market.get("id")
         log(f"  Matching bucket: {bucket_label} @ ${price:.2f}")

@@ -366,6 +366,12 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
         if is_today and metric == "high" and local_hour >= 15 and metar_temp > weighted_temp:
             weighted_temp = round(metar_temp, 1)
             metar_adjusted = True
+            # Record the override in model_temps so downstream consumers
+            # (paper journal, analytics) see consistent data. Without this,
+            # weighted_temp can be 87.8°F (from METAR) while model_temps
+            # all show 66-70°F — causing wrong bucket labels and misleading
+            # logs in the trade journal.
+            model_temps["metar_override"] = metar_temp
         metar_delta = round(abs(weighted_temp - metar_temp), 1)
 
     # Signal strength classification.
