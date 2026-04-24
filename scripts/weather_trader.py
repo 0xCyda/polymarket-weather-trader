@@ -883,7 +883,7 @@ def check_context_safeguards(context: dict, use_edge: bool = True) -> tuple:
         use_edge: If True, respect edge recommendation (TRADE/HOLD/SKIP)
     """
     if not context:
-        return True, []  # No context = proceed (fail open)
+        return False, ["No market context available"]
 
     reasons = []
     market = context.get("market", {})
@@ -1148,6 +1148,15 @@ def compute_dynamic_exit(entry_price: float) -> float:
         return EXIT_THRESHOLD
     dynamic = min(0.99, entry_price * EXIT_PROFIT_MULTIPLIER)
     return max(EXIT_THRESHOLD, dynamic)
+
+
+def is_past_target_date(date_str: str) -> bool:
+    """Return True when a market's target date is already behind today (UTC)."""
+    try:
+        target = datetime.fromisoformat(date_str).date()
+    except (TypeError, ValueError):
+        return False
+    return target < datetime.now(timezone.utc).date()
 
 
 def detect_price_trend(history: list) -> dict:
@@ -2038,6 +2047,14 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         if location.upper() not in ACTIVE_LOCATIONS:
             continue
 
+        if is_past_target_date(date_str):
+            log(f"  ⏭️  Skipping stale event: target date {date_str} already passed")
+            skip_reasons.append("stale event")
+            for _m in event_markets:
+                _log_skip("stale_event", location, date_str, metric,
+                          market_id=_m.get("id"), signal_strength="stale")
+            continue
+
         if BINARY_ONLY and len(event_markets) > 2:
             log(f"  ⏭️  Skipping range event ({len(event_markets)} outcomes) — binary_only=true")
             continue
@@ -2562,6 +2579,25 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             if not mid or mid in _seen_punt_ids:
                 continue
             _seen_punt_ids.add(mid)
+
+            if is_past_target_date(p.get("date_str")):
+                log(f"  ⏭️  Punt blocked: stale target date {p.get('date_str')}")
+                _log_skip("punt_stale_event", p["location"], p["date_str"], p["metric"],
+                          market_id=mid, price=p.get("price"), confidence=p.get("confidence"),
+                          edge=p.get("edge"), spread=p.get("spread"),
+                          signal_strength=p.get("signal_strength"))
+                continue
+
+            if use_safeguards:
+                punt_context = get_market_context(mid, p.get("confidence"))
+                punt_ok, punt_reasons = check_context_safeguards(punt_context)
+                if not punt_ok:
+                    log(f"  ⏭️  Punt blocked: {'; '.join(punt_reasons)}")
+                    _log_skip(f"punt_safeguard:{punt_reasons[0]}", p["location"], p["date_str"], p["metric"],
+                              market_id=mid, price=p.get("price"), confidence=p.get("confidence"),
+                              edge=p.get("edge"), spread=p.get("spread"),
+                              signal_strength=p.get("signal_strength"))
+                    continue
 
             size = PUNT_MAX_POSITION_USD
             tag = "[PAPER]" if dry_run else "[LIVE]"
