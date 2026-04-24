@@ -2112,29 +2112,26 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             punt_candidates.extend(_event_punts)
 
         if not matching_market:
-            all_buckets = []
-            unparsed_count = 0
-            for m in event_markets:
-                b, label = parse_market_bucket(m)
-                if b:
-                    lo, hi, unit = b
-                    if unit == 'C':
-                        lo = lo * 9 / 5 + 32 if lo != -999 else -999
-                        hi = hi * 9 / 5 + 32 if hi != 999 else 999
-                    all_buckets.append((lo, hi, label))
+            # Prefer the top-ranked bucket (matcher output) over a distance-based
+            # "nearest" re-scan — the ranker already considered every parseable
+            # bucket, so its #1 is the true best candidate. Surface the actual
+            # edge/confidence/price so it's obvious why the gate failed.
+            top_rb = ranked_buckets[0] if ranked_buckets else None
+            if top_rb is not None:
+                _outcome = top_rb.get("outcome_name") or "?"
+                _price = top_rb.get("price") or 0.0
+                _conf = top_rb.get("confidence") or 0.0
+                _edge = top_rb.get("edge") or 0.0
+                if _price < MIN_TICK_SIZE or _price > (1 - MIN_TICK_SIZE):
+                    _why = f"price extreme ({_price:.3f})"
                 else:
-                    unparsed_count += 1
-            nearest = min(all_buckets, key=lambda b: min(abs(b[0]-forecast_temp), abs(b[1]-forecast_temp))) if all_buckets else None
-            if nearest:
-                # Display nearest bucket in native units (°C for international, °F for US)
-                if is_international:
-                    near_lo = round((nearest[0] - 32) * 5 / 9) if nearest[0] != -999 else nearest[0]
-                    near_hi = round((nearest[1] - 32) * 5 / 9) if nearest[1] != 999 else nearest[1]
-                else:
-                    near_lo, near_hi = round(nearest[0]), round(nearest[1])
-                log(f"  ⚠️  No bucket found for {display_temp} — nearest: {nearest[2]} ({near_lo}-{near_hi}{unit_label})")
+                    _why = f"edge {_edge:+.2%} < {MIN_EDGE:.0%}"
+                log(f"  ⚠️  No entry for {display_temp} — best bucket: {_outcome} @ ${_price:.2f} "
+                    f"(conf {_conf:.0%}, {_why})")
             else:
-                log(f"  ⚠️  No bucket found for {display_temp} — {len(event_markets)} markets, {unparsed_count} unparseable")
+                unparsed_count = sum(1 for m in event_markets if not parse_market_bucket(m)[0])
+                log(f"  ⚠️  No parseable buckets for {display_temp} — "
+                    f"{len(event_markets)} markets, {unparsed_count} unparseable")
                 # Diagnostic: show what fields the markets actually expose so we
                 # can see whether bucket info is in outcome_name, question, or elsewhere.
                 for m in event_markets[:3]:
