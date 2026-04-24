@@ -1848,11 +1848,11 @@ def _get_config() -> dict:
     simmer_key = os.environ.get("SIMMER_API_KEY", "")
     has_simmer = bool(simmer_key)
 
-    # Locations — pull the real scan list from format_scan (single source of truth).
-    # Fall back to env / config only if the import fails.
+    # Locations — pull the canonical scan list from weather_trader (single
+    # source of truth). Fall back to env / config only if the import fails.
     try:
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts"))
-        from format_scan import DEFAULT_LOCATIONS as _default_locs
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from weather_trader import DEFAULT_LOCATIONS as _default_locs
     except Exception:
         _default_locs = "NYC"
     locations_raw = os.environ.get("SIMMER_WEATHER_LOCATIONS") or config.get("locations") or _default_locs

@@ -100,7 +100,7 @@ from simmer_sdk.skill import load_config, update_config, get_config_path
 
 # Canonical scan list — single source of truth. Kept here (early in module load)
 # so CONFIG_SCHEMA below can reference it as the default for `locations`.
-# Imported by format_scan.py and dashboard.py so every consumer stays in sync.
+# Imported by dashboard.py so every consumer stays in sync.
 DEFAULT_LOCATIONS = (
     "NYC,Chicago,Seattle,Atlanta,Dallas,Miami,Houston,San Francisco,"
     "Phoenix,Los Angeles,Denver,Austin,Las Vegas,"

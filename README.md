@@ -47,7 +47,6 @@ python dashboard.py
 - `scripts/forecast_validator.py` — cross-model validation
 - `scripts/paper_journal.py` — paper trade logging (JSONL)
 - `scripts/forecast_history.py` — forecast accuracy tracking
-- `scripts/format_scan.py` — scan output formatter
 - `config.json` — market locations and signal thresholds
 
 ## Config highlights
