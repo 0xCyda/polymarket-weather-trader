@@ -364,11 +364,13 @@ def format_output(scan_output):
             q_short = question[:50] + "..." if len(question) > 50 else question
             lines.append(f"| {q_short} | {side} | {shares:.1f} | {entry_price:.2f} | {current_price:.2f} | ${cost:.2f} | {upnl_str} |")
     lines.append("")
+    # Drop weak signals — the bot won't enter on them, so no point surfacing.
+    visible_signals = [s for s in signals if s.get("signal", "").lower() != "weak"]
     lines.append("AIFS ENS Signals:")
-    if not signals:
+    if not visible_signals:
         lines.append("  None found this scan")
     else:
-        for s in signals:
+        for s in visible_signals:
             lines.append(
                 f"{s['location']} {s['date']} ({s['metric']} temp): "
                 f"{s['temp']}°F | signal: {s['signal']} | "

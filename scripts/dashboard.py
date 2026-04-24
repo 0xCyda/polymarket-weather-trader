@@ -1554,7 +1554,9 @@ def _parse_signals_from_history() -> list[dict]:
         models = e.get("models_used", "")
         agree = e.get("agreement_pct", "")
         spread = e.get("spread", "")
-        if loc and e.get("signal_strength"):
+        # Filter: weak signals are never actionable (below the bot's entry gate),
+        # so don't clutter the dashboard with them.
+        if loc and e.get("signal_strength") and e.get("signal_strength") != "weak":
             signals.append({
                 "location": loc,
                 "date": date,
