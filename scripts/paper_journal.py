@@ -272,112 +272,197 @@ _HISTORICAL_LOCATIONS = {
 }
 
 
-# TWC (Wunderground) station codes: "{ICAO}:9:{ISO2}" — same source Polymarket uses
-_TWC_STATION_CODES = {
-    "NYC":           "KLGA:9:US",
-    "Chicago":       "KORD:9:US",
-    "Seattle":       "KSEA:9:US",
-    "Atlanta":       "KATL:9:US",
-    "Dallas":        "KDFW:9:US",
-    "Miami":         "KMIA:9:US",
-    "Houston":       "KIAH:9:US",
-    "San Francisco": "KSFO:9:US",
-    "Phoenix":       "KPHX:9:US",
-    "Los Angeles":   "KLAX:9:US",
-    "Denver":        "KDEN:9:US",
-    "Austin":        "KAUS:9:US",
-    "Las Vegas":     "KLAS:9:US",
-    "Tokyo":         "RJTT:9:JP",
-    "Seoul":         "RKSS:9:KR",
-    "Munich":        "EDDM:9:DE",
-    "Warsaw":        "EPWA:9:PL",
-    "London":        "EGLL:9:GB",
-    "Paris":         "LFPG:9:FR",
-    "Ankara":        "LTAC:9:TR",
-    "Toronto":       "CYYZ:9:CA",
-    "Wellington":    "NZWN:9:NZ",
-    "Sao Paulo":     "SBGR:9:BR",
-    "Shanghai":      "ZSPD:9:CN",
-    "Tel Aviv":      "LLBG:9:IL",
-    "Singapore":     "WSSS:9:SG",
-    "Hong Kong":     "VHHH:9:HK",
-    "Buenos Aires":  "SAEZ:9:AR",
-    "Beijing":       "ZBAA:9:CN",
-    "Chengdu":       "ZUUU:9:CN",
-    "Chongqing":     "ZUCK:9:CN",
-    "Lucknow":       "VILK:9:IN",
-    "Milan":         "LIMC:9:IT",
-    "Shenzhen":      "ZGSZ:9:CN",
-    "Wuhan":         "ZHHH:9:CN",
+# Polymarket/Gamma-only actual-temperature resolution.
+# The actual high/low for a trade is derived from which bucket resolved YES
+# in the corresponding Polymarket event. Local cache at
+# data/polymarket_events.jsonl is consulted first; live Gamma API is used as
+# fallback when the cache is stale or missing the event.
+import re as _re
+
+_GAMMA_EVENTS_ENDPOINT = "https://gamma-api.polymarket.com/events"
+_EVENTS_CACHE_FILE = pathlib.Path(__file__).resolve().parent.parent / "data" / "polymarket_events.jsonl"
+
+_POLYMARKET_CITY_ALIASES = {
+    # location-name (lowercased) -> slug-city used by Polymarket
+    "nyc": "nyc",
+    "new york": "nyc",
+    "new york city": "nyc",
+    "hong kong": "hong-kong",
+    "los angeles": "los-angeles",
+    "san francisco": "san-francisco",
+    "buenos aires": "buenos-aires",
+    "kuala lumpur": "kuala-lumpur",
+    "cape town": "cape-town",
+    "sao paulo": "sao-paulo",
+    "new delhi": "new-delhi",
+    "rio de janeiro": "rio-de-janeiro",
+    "tel aviv": "tel-aviv",
+    "mexico city": "mexico-city",
 }
-_TWC_API_KEY = "6532d6454b8aa370768e63d6ba5a832e"
+
+_MONTH_NAMES = [
+    "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+]
+
+_events_index_cache: dict | None = None
 
 
-def _fetch_twc_temp(location: str, date_str: str, metric: str) -> float | None:
-    """Fetch daily high/low in °C from TWC (Wunderground's data source)."""
-    station = _TWC_STATION_CODES.get(location)
-    if not station:
+def _location_to_slug_cities(location: str) -> list[str]:
+    """Return candidate slug-city strings for a given location name."""
+    lo = (location or "").strip().lower()
+    out: list[str] = []
+    if lo in _POLYMARKET_CITY_ALIASES:
+        out.append(_POLYMARKET_CITY_ALIASES[lo])
+    generic = _re.sub(r"[^\w]+", "-", lo).strip("-")
+    if generic and generic not in out:
+        out.append(generic)
+    return out
+
+
+def _load_events_index() -> dict:
+    """Build {(slug_city, YYYY-MM-DD, metric): markets[]} from local cache."""
+    global _events_index_cache
+    if _events_index_cache is not None:
+        return _events_index_cache
+    idx: dict = {}
+    if _EVENTS_CACHE_FILE.exists():
+        slug_re = _re.compile(
+            r"^(highest|lowest)-temperature-in-(.+?)-on-([a-z]+)-(\d+)(?:-(\d{4}))?$"
+        )
+        months = {n: i + 1 for i, n in enumerate(_MONTH_NAMES)}
+        months.update({n[:3]: i + 1 for i, n in enumerate(_MONTH_NAMES)})
+        for line in _EVENTS_CACHE_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            m = slug_re.match(ev.get("slug", ""))
+            if not m:
+                continue
+            mo = months.get(m.group(3))
+            if not mo:
+                continue
+            year = int(m.group(5)) if m.group(5) else 2026
+            date = f"{year:04d}-{mo:02d}-{int(m.group(4)):02d}"
+            metric = "high" if m.group(1) == "highest" else "low"
+            idx[(m.group(2), date, metric)] = ev.get("markets", [])
+    _events_index_cache = idx
+    return idx
+
+
+def _parse_outcome_prices(raw) -> list | None:
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+    return None
+
+
+def _find_yes_bucket_label(markets: list) -> str | None:
+    """Return the groupItemTitle of the bucket resolved YES (or proposed ≥0.99)."""
+    for m in markets or []:
+        prices = _parse_outcome_prices(m.get("outcomePrices"))
+        if not prices or len(prices) < 2:
+            continue
+        try:
+            yes_price = float(prices[0])
+        except (TypeError, ValueError):
+            continue
+        if yes_price >= 0.99:
+            return m.get("groupItemTitle")
+    return None
+
+
+def _bucket_label_to_temp_f(label: str) -> float | None:
+    """Parse a Polymarket bucket label (e.g. '28°C', '58-59°F', '21°C or below')
+    into a representative temperature in °F."""
+    if not label:
         return None
-    date_compact = date_str.replace("-", "")
-    url = (
-        f"https://api.weather.com/v1/location/{station}/observations/historical.json"
-        f"?apiKey={_TWC_API_KEY}&units=m&startDate={date_compact}&endDate={date_compact}"
+    s = label.strip()
+    unit = "C" if _re.search(r"°?\s*C\b", s, _re.IGNORECASE) else "F"
+
+    def to_f(v: float) -> float:
+        return v * 9 / 5 + 32 if unit == "C" else v
+
+    m = _re.match(
+        r"(-?\d+(?:\.\d+)?)\s*°?[FC]?\s*(?:-|–|to)\s*(-?\d+(?:\.\d+)?)",
+        s, _re.IGNORECASE,
     )
+    if m:
+        lo, hi = float(m.group(1)), float(m.group(2))
+        return round(to_f((lo + hi) / 2), 1)
+    m = _re.match(
+        r"(-?\d+(?:\.\d+)?)\s*°?[FC]?\s*(?:or\s+)?(?:below|less|lower)",
+        s, _re.IGNORECASE,
+    )
+    if m:
+        return round(to_f(float(m.group(1))), 1)
+    m = _re.match(
+        r"(-?\d+(?:\.\d+)?)\s*°?[FC]?\s*(?:or\s+)?(?:above|higher|more)",
+        s, _re.IGNORECASE,
+    )
+    if m:
+        return round(to_f(float(m.group(1))), 1)
+    m = _re.match(r"(-?\d+(?:\.\d+)?)", s)
+    if m:
+        return round(to_f(float(m.group(1))), 1)
+    return None
+
+
+def _fetch_polymarket_event_live(slug_city: str, date_str: str, metric: str) -> list | None:
+    """Fetch an event's bucket markets via live Gamma API by exact slug."""
     try:
-        resp = requests.get(url, timeout=15)
+        year, mo, day = date_str.split("-")
+        month_name = _MONTH_NAMES[int(mo) - 1]
+        prefix = "highest" if metric == "high" else "lowest"
+        slug = f"{prefix}-temperature-in-{slug_city}-on-{month_name}-{int(day)}-{year}"
+        resp = requests.get(_GAMMA_EVENTS_ENDPOINT, params={"slug": slug}, timeout=15)
         if resp.status_code != 200:
             return None
-        obs = resp.json().get("observations", [])
-        if not obs:
+        events = resp.json()
+        if not events:
             return None
-        temps = [o.get("temp") for o in obs if o.get("temp") is not None]
-        if not temps:
-            return None
-        val_c = max(temps) if metric == "high" else min(temps)
-        # Return in °F (our internal storage unit)
-        return round(val_c * 9 / 5 + 32, 1)
+        return events[0].get("markets", [])
     except Exception:
         return None
 
 
 def fetch_historical_temp(location: str, date_str: str, metric: str, unit: str = "F") -> float | None:
-    """
-    Fetch the actual observed high/low temperature for a past date.
-    Tries TWC (Wunderground — same source as Polymarket) first, falls back to Open-Meteo.
-    Returns the temp in requested unit (°F default) or None on failure.
-    """
-    # Primary: TWC / Wunderground (matches Polymarket resolution source)
-    val_f = _fetch_twc_temp(location, date_str, metric)
-    if val_f is not None:
-        return round(val_f, 1) if unit == "F" else round((val_f - 32) * 5 / 9, 1)
+    """Return the Polymarket-resolved actual temperature for a past date.
 
-    # Fallback: Open-Meteo archive
-    loc = _HISTORICAL_LOCATIONS.get(location)
-    if not loc:
-        return None
-    lat, lon, tz = loc
-    temp_unit = "fahrenheit" if unit == "F" else "celsius"
-    tz_enc = tz.replace("/", "%2F")
-    url = (
-        f"https://archive-api.open-meteo.com/v1/archive"
-        f"?latitude={lat}&longitude={lon}"
-        f"&start_date={date_str}&end_date={date_str}"
-        f"&daily=temperature_2m_max,temperature_2m_min"
-        f"&temperature_unit={temp_unit}&timezone={tz_enc}"
-    )
-    try:
-        resp = requests.get(url, timeout=20)
-        if resp.status_code != 200:
-            return None
-        data = resp.json().get("daily", {})
-        key = "temperature_2m_max" if metric == "high" else "temperature_2m_min"
-        temps = data.get(key, [])
-        if not temps:
-            return None
-        val = temps[0]
-        return round(float(val), 1) if val is not None else None
-    except Exception:
-        return None
+    Source of truth is the Polymarket event bucket that resolved YES. Reads
+    the local cache at data/polymarket_events.jsonl first; falls back to a
+    live Gamma API lookup if the cached event is missing or not yet resolved.
+    Returns None if no resolution is available from Polymarket.
+    """
+    candidates = _location_to_slug_cities(location)
+    idx = _load_events_index()
+
+    # 1) Local cache — only accept if a YES bucket is present (≥0.99).
+    for slug_city in candidates:
+        label = _find_yes_bucket_label(idx.get((slug_city, date_str, metric), []))
+        if label:
+            val_f = _bucket_label_to_temp_f(label)
+            if val_f is not None:
+                return round(val_f, 1) if unit == "F" else round((val_f - 32) * 5 / 9, 1)
+
+    # 2) Live Gamma fallback (cache stale or event missing).
+    for slug_city in candidates:
+        markets = _fetch_polymarket_event_live(slug_city, date_str, metric)
+        label = _find_yes_bucket_label(markets) if markets else None
+        if label:
+            val_f = _bucket_label_to_temp_f(label)
+            if val_f is not None:
+                return round(val_f, 1) if unit == "F" else round((val_f - 32) * 5 / 9, 1)
+
+    return None
 
 
 def _parse_bucket_range(bucket_str: str) -> tuple | None:

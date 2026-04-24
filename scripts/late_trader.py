@@ -48,9 +48,49 @@ from weather_trader import (
 )
 from paper_journal import (
     _HISTORICAL_LOCATIONS as LOCATIONS,
-    _TWC_STATION_CODES as STATIONS,
     log_paper_trade,
 )
+
+# TWC (Wunderground) station codes for intraday observations. Used for late-entry
+# signal generation (current temp within the day) — distinct from the resolved
+# actual_temp, which is sourced from Polymarket via paper_journal.
+STATIONS = {
+    "NYC":           "KLGA:9:US",
+    "Chicago":       "KORD:9:US",
+    "Seattle":       "KSEA:9:US",
+    "Atlanta":       "KATL:9:US",
+    "Dallas":        "KDFW:9:US",
+    "Miami":         "KMIA:9:US",
+    "Houston":       "KIAH:9:US",
+    "San Francisco": "KSFO:9:US",
+    "Phoenix":       "KPHX:9:US",
+    "Los Angeles":   "KLAX:9:US",
+    "Denver":        "KDEN:9:US",
+    "Austin":        "KAUS:9:US",
+    "Las Vegas":     "KLAS:9:US",
+    "Tokyo":         "RJTT:9:JP",
+    "Seoul":         "RKSS:9:KR",
+    "Munich":        "EDDM:9:DE",
+    "Warsaw":        "EPWA:9:PL",
+    "London":        "EGLL:9:GB",
+    "Paris":         "LFPG:9:FR",
+    "Ankara":        "LTAC:9:TR",
+    "Toronto":       "CYYZ:9:CA",
+    "Wellington":    "NZWN:9:NZ",
+    "Sao Paulo":     "SBGR:9:BR",
+    "Shanghai":      "ZSPD:9:CN",
+    "Tel Aviv":      "LLBG:9:IL",
+    "Singapore":     "WSSS:9:SG",
+    "Hong Kong":     "VHHH:9:HK",
+    "Buenos Aires":  "SAEZ:9:AR",
+    "Beijing":       "ZBAA:9:CN",
+    "Chengdu":       "ZUUU:9:CN",
+    "Chongqing":     "ZUCK:9:CN",
+    "Lucknow":       "VILK:9:IN",
+    "Milan":         "LIMC:9:IT",
+    "Shenzhen":      "ZGSZ:9:CN",
+    "Wuhan":         "ZHHH:9:CN",
+}
 
 # Use the same config loading path as weather_trader so config.json, env, and
 # CLI overrides all resolve identically to the CORE/PUNT pipeline.
