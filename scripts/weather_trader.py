@@ -399,30 +399,32 @@ LOCATIONS = {
 _locations_str = _config["locations"]
 ACTIVE_LOCATIONS = [loc.strip().upper() for loc in _locations_str.split(",") if loc.strip()]
 
-# Empirical city difficulty tiers derived from 9,165 resolved weather trades
-# across Hans323 (+$80k) and ColdMath (-$173k). EASY cities have ≥75% pro win
-# rate; HARD cities ≤55%. These drive risk-based position sizing:
+# Empirical city difficulty tiers derived from resolved weather trades across
+# Hans323 (+$80k, n=2,684) and ColdMath (-$173k, n=6,386). EASY cities have
+# ≥75% pro win rate; HARD cities ≤55%. These drive risk-based position sizing:
 #   EASY   → 3% of paper balance per trade
 #   MEDIUM → 2%
 #   HARD   → 1%
 # Keys are uppercase to match ACTIVE_LOCATIONS. Unknown cities default to MEDIUM.
+# Last refresh: 2026-04-24 (see reports/top_traders_2026-04-24.txt).
 CITY_DIFFICULTY = {
     # EASY — ≥75% pro win rate (stable climates, predictable)
-    "TEL AVIV":      "easy",
-    "WARSAW":        "easy",
-    "SAN FRANCISCO": "easy",
-    "LOS ANGELES":   "easy",
-    "MILAN":         "easy",
-    "CHENGDU":       "easy",
-    "HOUSTON":       "easy",
-    "MUNICH":        "easy",
-    "SEOUL":         "easy",
+    "TEL AVIV":      "easy",   # n=46,  93.5%
+    "WARSAW":        "easy",   # n=70,  90.0%
+    "SAN FRANCISCO": "easy",   # n=53,  86.8%
+    "LOS ANGELES":   "easy",   # n=66,  86.4%
+    "MILAN":         "easy",   # n=78,  85.9%
+    "CHENGDU":       "easy",   # n=37,  83.8%
+    "HOUSTON":       "easy",   # n=60,  76.7%
+    "MUNICH":        "easy",   # n=89,  77.5%
     # HARD — ≤55% pro win rate (volatile, hard to forecast accurately)
-    "TOKYO":         "hard",
-    "SHANGHAI":      "hard",
-    "WELLINGTON":    "hard",
-    "BEIJING":       "hard",
-    "WUHAN":         "hard",
+    "TOKYO":         "hard",   # n=96,  54.2%
+    "SHANGHAI":      "hard",   # n=50,  52.0%
+    "BEIJING":       "hard",   # n=40,  60.0% — borderline; held HARD pending more data (same Asian basin as Tokyo/Shanghai)
+    "WUHAN":         "hard",   # n=35,  57.1% — borderline; held HARD pending more data
+    # Demoted from EASY/HARD on 2026-04-24 after expanded sample:
+    #   SEOUL:      Hans n=30@86.7% diluted by ColdMath n=196@62.8% → combined 226@65.9% (MEDIUM)
+    #   WELLINGTON: Hans n=11@100% noise; ColdMath n=358@56.7% drives combined 369@58.0% (MEDIUM, just above HARD threshold)
     # Everything else defaults to "medium" (55-75% win rate)
 }
 RISK_PCT_BY_TIER = {"easy": 0.03, "medium": 0.02, "hard": 0.01}
