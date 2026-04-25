@@ -118,7 +118,7 @@ On by default. Finds deeply-mispriced buckets (e.g. "London 59°F or below" pric
 |---------|---------------------|---------|-------------|
 | Punt mode | `SIMMER_WEATHER_PUNT_MODE` | true | Enable punt side strategy |
 | Punt size | `SIMMER_WEATHER_PUNT_POSITION_USD` | 15.00 | Fixed USD per punt trade |
-| Punt price ceiling | `SIMMER_WEATHER_PUNT_PRICE_CEILING` | 0.15 | Max price for a punt candidate (15¢). Doubles as CORE's price floor — CORE skips entries ≤ this. |
+| Punt price ceiling | `SIMMER_WEATHER_PUNT_PRICE_CEILING` | 0.149 | Max price for a punt candidate (14.9¢). One tick below CORE's price floor — PUNT handles ≤14.9¢, CORE handles ≥15¢, no overlap. |
 | Punt min edge | `SIMMER_WEATHER_PUNT_MIN_EDGE` | 0.50 | Min edge for a punt |
 | Punt min confidence | `SIMMER_WEATHER_PUNT_MIN_CONFIDENCE` | 0.70 | Min model probability for a punt |
 | Punt daily budget | `SIMMER_WEATHER_PUNT_DAILY_BUDGET` | 100.00 | Max USD spent on punts per day |
@@ -185,7 +185,7 @@ Each cycle:
 5. **Safeguards** — Checks flip-flop warnings, slippage, time decay, market status, liquidity
 6. **Trend detection** — Looks for recent price drops (stronger buy signal)
 7. **Core entry** — If `edge = confidence - price ≥ MIN_EDGE (0.25)` AND `price < ENTRY_THRESHOLD (0.50)` AND spread ≤ `MAX_SPREAD (5.8°)`, safeguards pass → BUY. Candidates are ranked by edge; top `MAX_TRADES_PER_RUN (10)` execute.
-8. **Punt scan** — After core trades, scans every bucket in each event for deep tail mispricings. A bucket qualifies if `price ≤ 15¢` AND Gaussian model probability ≥ 70% AND edge ≥ 50% AND not already held/core-matched. Executes at fixed $15 per punt up to $100/day, tagged `strategy="punt"` in the paper journal. CORE refuses any entry ≤ 15¢ — those are PUNT territory.
+8. **Punt scan** — After core trades, scans every bucket in each event for deep tail mispricings. A bucket qualifies if `price ≤ 14.9¢` AND Gaussian model probability ≥ 70% AND edge ≥ 50% AND not already held/core-matched. Executes at fixed $15 per punt up to $100/day, tagged `strategy="punt"` in the paper journal. CORE refuses any entry below 15¢ — those are PUNT territory.
 9. **Exit** — For each open position, dynamic exit at `max(EXIT_THRESHOLD 0.45, entry_price × EXIT_PROFIT_MULTIPLIER 4.0)`. Optional laddered partial exits.
 10. **Signal metadata** — Logged with trade: `weighted_temp`, `signal_strength`, `models_count`, `agreement_pct`, `max_delta`, `edge`, `strategy` (core|punt)
 
