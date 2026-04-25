@@ -180,7 +180,12 @@ def log_paper_trade(
         "resolved_at": None,
         "entered_at": datetime.now(timezone.utc).isoformat(),
     }
+    # Hard dedup: prevent same market_id from being logged twice (race condition guard)
     trades = _load_trades()
+    for existing in trades:
+        if existing.get("market_id") == market_id and existing.get("status") == "open":
+            print(f"Warning: open position already exists for market {market_id[:16]} — skipping duplicate log")
+            return existing.get("trade_id", "")
     trades.append(trade)
     _save_trades(trades)
     return trade_id
