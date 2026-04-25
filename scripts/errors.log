@@ -1,4 +1,10 @@
 {"ts": "2026-04-23T10:52:28.124040+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
 {"ts": "2026-04-24T03:07:46.952939+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
 {"ts": "2026-04-24T11:28:56.950902+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
-{"ts": "2026-04-25T02:15:57.022473+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
+{"ts": "2026-04-24T14:26:40.942106+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-02-13", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-24T18:37:46.244892+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-02-13", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-24T22:37:35.158076+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-02-13", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-24T22:37:36.213412+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Chicago", "date": "2027-03-25", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-24T22:37:54.175294+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-04-06", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T01:18:19.076951+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
+{"ts": "2026-04-25T01:55:26.949261+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
