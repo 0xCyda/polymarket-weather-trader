@@ -8,3 +8,15 @@
 {"ts": "2026-04-24T22:37:54.175294+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-04-06", "metric": "high", "signal": "no_data"}
 {"ts": "2026-04-25T01:18:19.076951+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
 {"ts": "2026-04-25T01:55:26.949261+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
+{"ts": "2026-04-25T02:32:26.418756+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-02-13", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T02:32:27.584302+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Chicago", "date": "2027-03-25", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T02:32:28.615090+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T02:32:29.634104+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-04-06", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T02:33:07.536726+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-02-13", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T02:33:08.575748+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Chicago", "date": "2027-03-25", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T02:33:22.919844+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T02:33:24.571701+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-04-06", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T02:37:27.830377+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-02-13", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T02:37:27.831029+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Chicago", "date": "2027-03-25", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T02:37:27.831196+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-25T02:37:27.831309+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-04-06", "metric": "high", "signal": "no_data"}
