@@ -1187,6 +1187,21 @@ def compute_dynamic_exit(entry_price: float) -> float:
     return max(EXIT_THRESHOLD, dynamic)
 
 
+def _today_in_city(location: str | None) -> str:
+    """Return today's date (YYYY-MM-DD) in the city's local timezone.
+    Falls back to UTC if location is unknown or tz lookup fails."""
+    if location:
+        try:
+            loc_data = INTERNATIONAL_LOCATIONS.get(location) or LOCATIONS.get(location)
+            tz_name = loc_data.get("tz") if isinstance(loc_data, dict) else None
+            if tz_name:
+                from zoneinfo import ZoneInfo
+                return datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d")
+        except Exception:
+            pass
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
 def is_past_target_date(date_str: str, location: str | None = None) -> bool:
     """Return True when a market's target date is already behind today.
 
@@ -2165,16 +2180,31 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             display_temp = f"{forecast_temp}°F"
         log(f"  AIFS ENS: {display_temp} | signal: {signal_strength} | {models_used} models | agree: {agreement_pct}% | spread: {spread}°")
 
-        # Rank every bucket in this event by edge (Gaussian bucket probability
-        # × signal-strength discount − market price). Picks the BEST bucket
-        # per event, not just the one containing the forecast. Ranges and
-        # thresholds with fat probability mass naturally beat narrow exacts
-        # when the market prices them inefficiently — matching pro strategy
-        # (Hans323: 72% range, 22% threshold, 5% exact).
-        ranked_buckets = rank_event_buckets_by_edge(
-            event_markets, forecast_temp, spread, signal_strength,
-            is_international=is_international,
-        )
+        # CORE skips D+0 markets entirely. Day-of trades need real observations,
+        # not 24h-old forecasts — that's LATE mode's job. CORE's edge comes from
+        # forecasts being more predictive than market prices on D+1/D+2/D+3+
+        # events; on D+0 by mid-day the market has already absorbed most of the
+        # actual temperature signal, and our forecasts can be stale by hours.
+        # PUNT still runs below since it targets deep tail mispricings where
+        # the math is independent of forecast freshness.
+        is_d0_event = (date_str == _today_in_city(location))
+        if is_d0_event:
+            log(f"  ⏭️  D+0 event — CORE skip (LATE mode handles day-of trades)")
+            skip_reasons.append("D+0 (CORE skipped — LATE-eligible)")
+            _log_skip("d0_core_skip", location, date_str, metric,
+                      signal_strength=signal_strength, spread=spread)
+            ranked_buckets = []  # don't rank, but allow PUNT pass below
+        else:
+            # Rank every bucket in this event by edge (Gaussian bucket probability
+            # × signal-strength discount − market price). Picks the BEST bucket
+            # per event, not just the one containing the forecast. Ranges and
+            # thresholds with fat probability mass naturally beat narrow exacts
+            # when the market prices them inefficiently — matching pro strategy
+            # (Hans323: 72% range, 22% threshold, 5% exact).
+            ranked_buckets = rank_event_buckets_by_edge(
+                event_markets, forecast_temp, spread, signal_strength,
+                is_international=is_international,
+            )
         matching_market = None
         matched_rb = None
         for rb in ranked_buckets:
