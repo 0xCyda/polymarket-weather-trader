@@ -21,3 +21,4 @@
 {"ts": "2026-04-25T02:37:27.831196+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
 {"ts": "2026-04-25T02:37:27.831309+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-04-06", "metric": "high", "signal": "no_data"}
 {"ts": "2026-04-25T07:06:58.985699+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
+{"ts": "2026-04-25T07:11:23.710435+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
