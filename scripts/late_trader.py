@@ -229,6 +229,38 @@ def _bucket_label(bucket: tuple) -> str:
 
 # ----- Budget tracking -----
 
+_BUDGET_LOCK_FILE = _HERE / "data" / "late_daily_budget.lock"
+
+
+def _budget_lock():
+    """Cross-platform advisory file lock for budget read-modify-write."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def _ctx():
+        _BUDGET_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        fd = None
+        try:
+            fd = open(_BUDGET_LOCK_FILE, "w")
+            try:
+                import fcntl
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            except (ImportError, OSError):
+                try:
+                    import msvcrt
+                    msvcrt.locking(fd.fileno(), msvcrt.LK_LOCK, 1)
+                except (ImportError, OSError):
+                    pass
+            yield
+        finally:
+            if fd:
+                try:
+                    fd.close()
+                except Exception:
+                    pass
+    return _ctx()
+
+
 def _load_budget() -> dict:
     today = datetime.now(timezone.utc).date().isoformat()
     try:
@@ -243,6 +275,16 @@ def _load_budget() -> dict:
 def _save_budget(b: dict) -> None:
     _BUDGET_FILE.parent.mkdir(parents=True, exist_ok=True)
     _BUDGET_FILE.write_text(json.dumps(b))
+
+
+def _spend_budget(amount: float) -> dict:
+    """Atomic read-modify-write of the daily budget under a file lock.
+    Prevents overlapping cron + manual runs from double-spending."""
+    with _budget_lock():
+        b = _load_budget()
+        b["spent"] = b.get("spent", 0.0) + amount
+        _save_budget(b)
+        return b
 
 
 # ----- Core scan -----
@@ -421,9 +463,9 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
     log(f"  [BUY] {city}: {shares:.0f} @ ${price:.3f} bucket={result['bucket']} "
         f"({'paper' if trade.get('simulated') else 'live'})")
 
-    # Update budget
-    budget["spent"] += size
-    _save_budget(budget)
+    # Update budget atomically under a file lock so overlapping cron + manual
+    # runs don't double-spend the same remaining budget.
+    _spend_budget(size)
 
     # Paper journal entry (mirrors CORE/PUNT pattern)
     if trade.get("simulated"):

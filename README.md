@@ -39,15 +39,17 @@ python dashboard.py
 
 ## Key Files
 
-- `weather_trader.py` — main entry point, core + punt strategies
+- `scripts/weather_trader.py` — main entry point, core + punt strategies
 - `scripts/late_trader.py` — late-mode hourly intraday trader
-- `dashboard.py` — local HTML dashboard for paper journal
+- `scripts/dashboard.py` — local HTML dashboard for paper journal
 - `scripts/aifs_forecast.py` — AIFS ENS fetch and parsing
 - `scripts/ensemble_forecast.py` — 4-model global ensemble
 - `scripts/forecast_validator.py` — cross-model validation
 - `scripts/paper_journal.py` — paper trade logging (JSONL)
 - `scripts/forecast_history.py` — forecast accuracy tracking
-- `config.json` — market locations and signal thresholds
+- `scripts/backfill_forecast_actuals.py` — populate actual_temp from Open-Meteo archive
+- `scripts/analytics.py` — per-model accuracy / calibration / city reports
+- `scripts/config.json` — runtime config (paper_balance, entry_threshold, etc.)
 
 ## Config highlights
 

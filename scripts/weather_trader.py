@@ -26,9 +26,13 @@ from datetime import datetime, timezone, timedelta
 # urllib imports removed — legacy NOAA/Open-Meteo direct fetchers were deleted.
 # Forecast data comes from ensemble_forecast.py which uses requests.
 
-# Add scripts/ to path for ensemble modules
+# Add scripts/ to path for ensemble modules. weather_trader lives in scripts/
+# itself, so the sibling-module path IS Path(__file__).parent — not parent/scripts.
+# Earlier code had it as parent/"scripts" which only worked when invoked from
+# the project root on Linux/WSL. Windows PowerShell + UNC paths failed with
+# ModuleNotFoundError.
 import pathlib as _p
-_sys_path = _p.Path(__file__).parent / "scripts"
+_sys_path = _p.Path(__file__).resolve().parent
 if str(_sys_path) not in sys.path:
     sys.path.insert(0, str(_sys_path))
 from ensemble_forecast import get_ensemble_forecast
@@ -578,7 +582,14 @@ def get_realized_daily_pnl() -> float:
 
 
 def daily_loss_limit_breached() -> bool:
-    """Return True if max_daily_loss_usd is configured and today's loss exceeds it."""
+    """
+    Return True if max_daily_loss_usd is set and today's REALIZED P&L breaches it.
+
+    Note: this checks ONLY realized P&L (resolved trades). Open positions that
+    are deeply underwater do NOT count toward the limit — by design, since
+    open positions can recover before resolution. If you need a circuit
+    breaker that includes mark-to-market drawdown, that's a separate feature.
+    """
     if MAX_DAILY_LOSS_USD <= 0:
         return False
     realized = get_realized_daily_pnl()
@@ -1112,6 +1123,31 @@ def find_punt_candidates(event_markets: list, forecast_temp: float, spread: floa
     return candidates
 
 
+def get_live_open_events() -> dict:
+    """
+    Return map of (location, target_date, metric) → market_id for every live
+    Simmer position. Used to guard against same-event duplicate entries that
+    the paper-journal lookup misses when running in live mode.
+    """
+    out = {}
+    try:
+        positions = get_positions()
+    except Exception:
+        return out
+    for pos in positions:
+        shares = (pos.get("shares_yes") or 0) + (pos.get("shares_no") or 0)
+        if shares <= 0:
+            continue
+        question = pos.get("question") or pos.get("event_name") or ""
+        info = parse_weather_event(question)
+        if not info:
+            continue
+        key = (info["location"], info["date"], info["metric"])
+        if key not in out:
+            out[key] = pos.get("market_id")
+    return out
+
+
 def get_open_market_ids() -> set:
     """Return set of market_ids we already hold >0 shares in (weather source).
 
@@ -1150,13 +1186,30 @@ def compute_dynamic_exit(entry_price: float) -> float:
     return max(EXIT_THRESHOLD, dynamic)
 
 
-def is_past_target_date(date_str: str) -> bool:
-    """Return True when a market's target date is already behind today (UTC)."""
+def is_past_target_date(date_str: str, location: str | None = None) -> bool:
+    """Return True when a market's target date is already behind today.
+
+    Uses the city's local timezone when `location` is provided, since
+    Polymarket weather markets resolve on the local-day basis. Without this,
+    Asia/Pacific markets get prematurely flagged stale around UTC midnight
+    (Tokyo 11am JST = next UTC date but the local weather day isn't done).
+    Falls back to UTC if location is unknown or tz lookup fails.
+    """
     try:
         target = datetime.fromisoformat(date_str).date()
     except (TypeError, ValueError):
         return False
-    return target < datetime.now(timezone.utc).date()
+    today = datetime.now(timezone.utc).date()
+    if location:
+        try:
+            loc_data = INTERNATIONAL_LOCATIONS.get(location) or LOCATIONS.get(location)
+            tz_name = loc_data.get("tz") if isinstance(loc_data, dict) else None
+            if tz_name:
+                from zoneinfo import ZoneInfo
+                today = datetime.now(ZoneInfo(tz_name)).date()
+        except Exception:
+            pass
+    return target < today
 
 
 def detect_price_trend(history: list) -> dict:
@@ -1556,8 +1609,12 @@ def calculate_position_size(default_size: float, smart_sizing: bool,
             balance = _config.get("paper_balance", 10000.0)
         city_size = balance * risk_pct
         city_size = max(city_size, 1.0)
+        # Cap by MAX_POSITION_USD — city tier scales DOWN, never up past the
+        # global per-trade ceiling. Without this cap, a 3% tier on a $20k
+        # balance would yield $600 even if MAX_POSITION_USD=$200.
+        city_size = min(city_size, default_size)
         print(f"  💡 City sizing: ${city_size:.2f} "
-              f"({risk_pct:.0%} of ${balance:.2f}, tier={tier.upper()})")
+              f"({risk_pct:.0%} of ${balance:.2f}, tier={tier.upper()}, capped at ${default_size:.2f})")
         return city_size
 
     # Path 2: legacy smart_sizing (portfolio % without city tier)
@@ -2022,6 +2079,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
     # Load persisted forecast cache from disk + fresh set for this run
     forecast_cache = _load_forecast_disk_cache()
     already_held_markets = get_open_market_ids()
+    # Map of (location, date, metric) → live market_id, for same-event guard
+    live_open_events = get_live_open_events()
     trades_executed = 0
     total_usd_spent = 0.0
     opportunities_found = 0
@@ -2047,8 +2106,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         if location.upper() not in ACTIVE_LOCATIONS:
             continue
 
-        if is_past_target_date(date_str):
-            log(f"  ⏭️  Skipping stale event: target date {date_str} already passed")
+        if is_past_target_date(date_str, location=location):
+            log(f"  ⏭️  Skipping stale event: target date {date_str} already passed (city-local)")
             skip_reasons.append("stale event")
             for _m in event_markets:
                 _log_skip("stale_event", location, date_str, metric,
@@ -2319,21 +2378,29 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
         # Same-event check: if we already have an open position on this
         # (location, date, metric) — regardless of bucket — skip to avoid
-        # redundant same-side exposure across multiple buckets on one event
+        # redundant same-side exposure across multiple buckets on one event.
+        # Checks BOTH paper journal AND live Simmer positions (pre-fetched
+        # via live_open_events at scan start) so a live position in one
+        # bucket blocks core entry in a different bucket of the same event.
+        event_key = (location, date_str, metric)
+        live_event_market_id = live_open_events.get(event_key)
+        existing = None
         if PAPER_JOURNAL_AVAILABLE:
             try:
                 open_by_event = get_open_positions_by_event()
-                event_key = (location, date_str, metric)
                 existing = open_by_event.get(event_key)
-                if existing:
-                    log(f"  ⏭️  Already holding {existing['side'].upper()} on {location} {date_str} {metric} — skipping (bucket '{existing['bucket']}' already open)")
-                    skip_reasons.append("same-event position already open")
-                    _log_skip("same_event_open", location, date_str, metric, market_id=market_id,
-                              price=price, confidence=confidence, spread=spread,
-                              signal_strength=signal_strength)
-                    continue
             except Exception:
                 pass
+        if not existing and live_event_market_id:
+            existing = {"side": "yes", "market_id": live_event_market_id,
+                        "bucket": "(live)"}
+        if existing:
+            log(f"  ⏭️  Already holding {existing.get('side','?').upper()} on {location} {date_str} {metric} — skipping (bucket '{existing.get('bucket','?')}' already open)")
+            skip_reasons.append("same-event position already open")
+            _log_skip("same_event_open", location, date_str, metric, market_id=market_id,
+                      price=price, confidence=confidence, spread=spread,
+                      signal_strength=signal_strength)
+            continue
 
         # Primary entry gate: edge (confidence - price). Price ceiling is a
         # loose sanity cap only — avoids buckets priced near resolution.
@@ -2367,6 +2434,12 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             "forecast_temp": forecast_temp, "unit_label": unit_label,
             "display_temp": display_temp,
             "is_international": is_international,
+            # Per-candidate snapshot of forecast metadata. Pass 2 must NOT read
+            # the loop-variable `forecasts` because it holds the LAST event's
+            # data — caused Singapore-style data corruption in trade journal.
+            "model_temps": forecasts.get("model_temps") if forecasts else None,
+            "bucket_label": bucket_label,
+            "matched_rb": matched_rb,
         })
         opportunities_found += 1
 
@@ -2426,6 +2499,10 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         spread = c["spread"]
         matching_market = c["market"]
         is_international = c["is_international"]
+        # Per-candidate snapshots — must NOT read loop-variable `forecasts`
+        # which holds the LAST event's data (Singapore-style contamination).
+        candidate_model_temps = c.get("model_temps")
+        bucket_label = c.get("bucket_label", outcome_name)
 
         log(f"\n📍 {location} {date_str} ({metric} temp) | edge {c['edge']:.1%}")
 
@@ -2473,7 +2550,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                       edge=c["edge"], spread=c["spread"], signal_strength=signal_strength)
             continue
 
-        _mt = forecasts.get("model_temps", {})
+        _mt = candidate_model_temps or {}
         _mt_str = ", ".join(f"{k}:{v:.1f}°" for k, v in sorted(_mt.items())) if _mt else "?"
         log(f"  ✅ BUY opportunity!{trend_bonus} | {_mt_str} → {display_temp}")
         tag = "SIMULATED" if dry_run else "LIVE"
@@ -2491,7 +2568,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             "agreement_pct": agreement_pct,
             "spread": spread,
             "signal_strength": signal_strength,
-            "model_temps": forecasts.get("model_temps"),
+            "model_temps": candidate_model_temps,
         }
         if vol_meta:
             signal["vol_targeting"] = vol_meta
@@ -2503,11 +2580,21 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         )
 
         if result.get("success"):
-            trades_executed += 1
-            total_usd_spent += position_size
             shares = result.get("shares_bought") or result.get("shares") or 0
             trade_id = result.get("trade_id")
-            log(f"  ✅ {'[PAPER] ' if result.get('simulated') else ''}Bought {shares:.1f} shares @ ${price:.2f}", force=True)
+            order_status = result.get("order_status")
+            is_pending = order_status == "live" and not result.get("simulated")
+
+            if is_pending:
+                # GTC order placed but not filled. Don't count as executed
+                # (would over-state exposure and let next cycle double-fire).
+                # Track the market_id so same-event guard catches it.
+                already_held_markets.add(market_id)
+                log(f"  ⏳ {'[PAPER] ' if result.get('simulated') else ''}GTC pending {shares:.1f} shares @ ${price:.2f} — not counted until filled", force=True)
+            else:
+                trades_executed += 1
+                total_usd_spent += position_size
+                log(f"  ✅ {'[PAPER] ' if result.get('simulated') else ''}Bought {shares:.1f} shares @ ${price:.2f}", force=True)
 
             if trade_id and JOURNAL_AVAILABLE and not result.get("simulated"):
                 # Journal confidence ~ the model confidence shifted by realized edge.
@@ -2531,7 +2618,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                         forecast_temp=forecast_temp, signal_strength=signal_strength,
                         location=location, date_str=date_str, metric=metric,
                         models_used=models_used, agreement_pct=agreement_pct, spread=spread,
-                        model_temps=forecasts.get("model_temps"),
+                        model_temps=candidate_model_temps,
                         confidence=confidence,
                     )
                 except Exception:
@@ -2580,8 +2667,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 continue
             _seen_punt_ids.add(mid)
 
-            if is_past_target_date(p.get("date_str")):
-                log(f"  ⏭️  Punt blocked: stale target date {p.get('date_str')}")
+            if is_past_target_date(p.get("date_str"), location=p.get("location")):
+                log(f"  ⏭️  Punt blocked: stale target date {p.get('date_str')} (city-local)")
                 _log_skip("punt_stale_event", p["location"], p["date_str"], p["metric"],
                           market_id=mid, price=p.get("price"), confidence=p.get("confidence"),
                           edge=p.get("edge"), spread=p.get("spread"),

@@ -22,8 +22,9 @@ _LOSSES_LOG: Path | None = None
 def _losses_log_path() -> Path:
     global _LOSSES_LOG
     if _LOSSES_LOG is None:
-        # Resolve relative to this file's directory (scripts/)
-        _LOSSES_LOG = Path(__file__).parent.parent / "losses.log"
+        # Co-located with paper_trades.jsonl under data/ for ops consistency
+        _LOSSES_LOG = Path(__file__).parent.parent / "data" / "losses.log"
+        _LOSSES_LOG.parent.mkdir(exist_ok=True)
     return _LOSSES_LOG
 
 
