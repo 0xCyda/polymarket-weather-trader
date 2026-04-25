@@ -25,16 +25,16 @@ pip install -r requirements.txt
 export SIMMER_API_KEY=your_key_here
 
 # Dry run (paper mode — default)
-python weather_trader.py
+python scripts/weather_trader.py
 
 # Live trading (requires WALLET_PRIVATE_KEY)
-python weather_trader.py --live
+python scripts/weather_trader.py --live
 
 # Check positions
-python weather_trader.py --positions
+python scripts/weather_trader.py --positions
 
 # Dashboard
-python dashboard.py
+python scripts/dashboard.py
 ```
 
 ## Key Files
