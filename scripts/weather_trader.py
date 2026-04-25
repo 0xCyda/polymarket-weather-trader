@@ -168,8 +168,8 @@ CONFIG_SCHEMA = {
                           "help": "Enable punt mode: buy deeply-mispriced tail buckets with small stakes."},
     "punt_max_position_usd": {"env": "SIMMER_WEATHER_PUNT_POSITION_USD", "default": 15.0, "type": float,
                           "help": "Fixed USD per punt trade (small — these are lottery tickets)."},
-    "punt_price_ceiling":{"env": "SIMMER_WEATHER_PUNT_PRICE_CEILING","default": 0.06,  "type": float,
-                          "help": "Max price for a punt candidate (6¢ default — above this it's not a tail mispricing)."},
+    "punt_price_ceiling":{"env": "SIMMER_WEATHER_PUNT_PRICE_CEILING","default": 0.15,  "type": float,
+                          "help": "Max price for a punt candidate (15¢ default — above this CORE handles it). Closes the CORE/PUNT gap: CORE skips entries below 15¢, PUNT picks up everything 0–15¢."},
     "punt_min_edge":     {"env": "SIMMER_WEATHER_PUNT_MIN_EDGE",     "default": 0.50,  "type": float,
                           "help": "Min edge (model_prob - price) for a punt candidate. Higher than core min_edge."},
     "punt_min_confidence":{"env": "SIMMER_WEATHER_PUNT_MIN_CONFIDENCE","default": 0.70,"type": float,
@@ -2205,12 +2205,21 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 event_markets, forecast_temp, spread, signal_strength,
                 is_international=is_international,
             )
+        # CORE price floor: refuse entries below PUNT_PRICE_CEILING. Cheap
+        # tail-priced buckets (≤15¢) are PUNT territory — they need stricter
+        # gates (≥70% model confidence, ≥0.50 edge). CORE's looser MIN_EDGE
+        # was over-firing on 6¢ buckets where the market signaled strong
+        # skepticism (e.g. Chongqing 29°C @ 6¢ when actual was 31°C).
+        CORE_PRICE_FLOOR = PUNT_PRICE_CEILING
         matching_market = None
         matched_rb = None
         for rb in ranked_buckets:
             p = rb["price"]
             # Skip extreme / off-book prices, but keep walking the ranked list
             if p < MIN_TICK_SIZE or p > (1 - MIN_TICK_SIZE):
+                continue
+            # CORE doesn't trade below the punt ceiling — let PUNT take those
+            if p <= CORE_PRICE_FLOOR:
                 continue
             # List is sorted by edge desc — once below MIN_EDGE, nothing better remains
             if rb["edge"] < MIN_EDGE:

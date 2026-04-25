@@ -12,7 +12,7 @@ Inspired by gopfan2's $2M+ weather trading strategy.
 - **Simmer API** — market discovery and execution
 - **Three strategies**:
   - **Core** — edge-based entry (min_edge 0.25) on well-matched buckets, $200 per trade, dynamic profit-take exits. Runs every 4h.
-  - **Punt** — hunts tail mispricings (buckets priced ≤6¢ where model says ≥70%), fixed $15 stake, $100/day budget cap. Runs alongside Core.
+  - **Punt** — hunts tail mispricings (buckets priced ≤15¢ where model says ≥70%), fixed $15 stake, $100/day budget cap. Runs alongside Core. CORE refuses entries ≤15¢ — that's PUNT territory.
   - **Late** — day-of intraday entry at 3pm local per city. Uses TWC observed running daily max rather than forecasts; per-city ceilings derived from backtest hit rates. Runs hourly.
 
 ## Setup
