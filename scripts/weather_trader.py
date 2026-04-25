@@ -35,6 +35,7 @@ import pathlib as _p
 _sys_path = _p.Path(__file__).resolve().parent
 if str(_sys_path) not in sys.path:
     sys.path.insert(0, str(_sys_path))
+import gc
 from ensemble_forecast import get_ensemble_forecast
 from aifs_forecast import prewarm_grib_cache
 
@@ -2092,6 +2093,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
     # =========================================================================
     candidates = []  # list of dicts with all fields needed to execute a trade
     punt_candidates = []  # separate list — never competes with core candidates
+    _city_count = 0
 
     for event_id, event_markets in events.items():
         event_name = event_markets[0].get("event_name") or event_markets[0].get("question", "")
@@ -2443,6 +2445,12 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         })
         opportunities_found += 1
 
+        # Memory hygiene: call gc every 20 cities to prevent cfgrib/xarray from
+        # accumulating GRIB dataset objects in thread-local storage (SIGKILL guard)
+        _city_count += 1
+        if _city_count % 20 == 0:
+            gc.collect()
+
     # =========================================================================
     # PASS 2: Rank by edge and (optionally) concurrent context fetch, then execute
     # =========================================================================
@@ -2630,6 +2638,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
     # Persist forecast cache to disk for next run
     _save_forecast_disk_cache(forecast_cache)
+    gc.collect()  # free cfgrib/xarray memory after main city pass
 
     # =========================================================================
     # PUNT EXECUTION PASS (side strategy — isolated from core budget/rules)
