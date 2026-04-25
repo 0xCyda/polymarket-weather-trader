@@ -222,28 +222,48 @@ def _fetch_live_price(market_id: str) -> float | None:
 
 
 def get_positions() -> list[dict[str, Any]]:
+    """
+    Return all open positions merged from journal + Simmer.
+    paper_trades.jsonl is the source of truth for what we've traded.
+    Simmer is used to supplement with live prices for uPNL.
+    """
     load_env()
     simmer_positions = get_simmer_positions()
-    if simmer_positions:
-        out: list[dict[str, Any]] = []
+
+    # Build journal positions (source of truth)
+    try:
+        journal_positions = [dict(p) for p in get_open_positions()]
+    except Exception:
+        journal_positions = []
+
+    # Build market_id → simmer_pos map for live price enrichment
+    simmer_by_mid = {str(p.get("market_id", "")): p for p in simmer_positions}
+
+    # Use journal as the authoritative list; enrich with Simmer live prices
+    out: list[dict[str, Any]] = []
+    for pos in journal_positions:
+        p = dict(pos)
+        market_id = str(p.get("market_id", ""))
+        # Try Simmer first for live price, fall back to HTTP fetch
+        if market_id in simmer_by_mid:
+            sp = simmer_by_mid[market_id]
+            p["current_price"] = sp.get("current_price") or sp.get("price")
+        else:
+            p["current_price"] = _fetch_live_price(market_id) if market_id else None
+        p["upnl"] = compute_upnl(p)
+        p["tier"] = city_tier(p.get("location", ""))
+        out.append(p)
+
+    # If journal is empty but Simmer has positions (edge case: journal corrupt/missing),
+    # fall back to Simmer as a last resort
+    if not out and simmer_positions:
         for pos in simmer_positions:
             p = dict(pos)
             p["tier"] = city_tier(p.get("location", ""))
             p["upnl"] = compute_upnl(p)
             out.append(p)
-        return out
 
-    try:
-        positions = [dict(p) for p in get_open_positions()]
-        for pos in positions:
-            market_id = pos.get("market_id", "")
-            current_price = _fetch_live_price(str(market_id)) if market_id else None
-            pos["current_price"] = current_price
-            pos["upnl"] = compute_upnl(pos)
-            pos["tier"] = city_tier(pos.get("location", ""))
-        return positions
-    except Exception:
-        return []
+    return out
 
 
 def get_portfolio_stats() -> dict[str, Any]:
