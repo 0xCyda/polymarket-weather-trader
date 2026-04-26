@@ -15,6 +15,7 @@
 - **Simmer API key can go stale.** When it returns 401, `get_simmer_positions()` returns `[]` silently. The paper journal always has the correct position state for paper mode.
 - **Paper journal is the source of truth for paper-mode positions.** Never rely solely on Simmer API for position counts in paper mode.
 - **pip install fails silently on WSL Python 3.12.** Modules like `uvicorn` and `simmer_sdk` fail with PEP 668 error (`--break-system-packages` required). Always use `pip install <pkg> --break-system-packages` on this WSL install.
+- **Canonical repo path is `/home/brandon/projects/polymarket-weather-trader`.** If you see `~/.openclaw/workspace/skills/polymarket-weather-trader`, treat it as a compatibility path only. Launch dashboards, scripts, and manual debugging from the projects repo.
 
 ---
 
@@ -190,7 +191,7 @@ import subprocess, time
 subprocess.run(["pkill", "-f", "dashboard.py"], capture_output=True)
 time.sleep(1)
 proc = subprocess.Popen(
-    ["python3.12", "/home/brandon/.hermes/skills/solebrace-skills/polymarket-weather-trader/dashboard.py"],
+    ["python3.12", "/home/brandon/projects/polymarket-weather-trader/scripts/dashboard.py"],
     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
 )
 time.sleep(3)  # wait for uvicorn to bind

@@ -340,8 +340,8 @@ _save_trades(trades)
 - The skill's health check looks for `~/.polymarket-paper-bot/bot.lock`, but **the bot does not run as a persistent daemon**
 - The cron job runs `python3.12 weather_trader.py --dry-run` as a **one-shot** command — no lock file is created
 - To verify the cron actually fired, check instead:
-  - `ls -la ~/.hermes/skills/polymarket-weather-trader/data/discovery_cache.json` — timestamps show last run
-  - `ls -la ~/.hermes/skills/polymarket-weather-trader/data/paper_trades.jsonl` — same
+  - `ls -la /home/brandon/projects/polymarket-weather-trader/data/discovery_cache.json` — timestamps show last run
+  - `ls -la /home/brandon/projects/polymarket-weather-trader/data/paper_trades.jsonl` — same
   - Paper trades journal: `python3.12 scripts/paper_journal.py --backfill` to force-settle any ready trades
 - `paper_trades.jsonl` is the authoritative source for open positions and P&L
 
