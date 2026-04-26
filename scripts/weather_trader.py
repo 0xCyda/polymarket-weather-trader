@@ -474,6 +474,36 @@ if not logger.handlers:
 
 
 _SKIP_LOG = _p.Path(__file__).parent / "data" / "skip_events.jsonl"
+_LATEST_CANDIDATES_FILE = _p.Path(__file__).parent / "data" / "latest_candidates.json"
+
+
+def _save_latest_candidates(candidates: list[dict]) -> None:
+    """Persist exact latest actionable candidate list for the dashboard."""
+    try:
+        _LATEST_CANDIDATES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "scanned_at": datetime.now(timezone.utc).isoformat(),
+            "count": len(candidates),
+            "signals": [
+                {
+                    "location": c.get("location"),
+                    "date": c.get("date_str"),
+                    "metric": c.get("metric"),
+                    "temp": c.get("forecast_temp"),
+                    "signal": c.get("signal_strength"),
+                    "models": c.get("models_used"),
+                    "agree": c.get("agreement_pct"),
+                    "spread": c.get("spread"),
+                    "market_id": c.get("market_id"),
+                    "price": c.get("price"),
+                    "edge": c.get("edge"),
+                }
+                for c in candidates
+            ],
+        }
+        _LATEST_CANDIDATES_FILE.write_text(json.dumps(payload, default=str))
+    except Exception:
+        pass
 
 
 def _log_skip(reason: str, location: str, date_str: str, metric: str,
@@ -2509,6 +2539,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
     candidates.sort(key=lambda c: c["edge"], reverse=True)
     if candidates:
         log(f"\n🏆 Ranked {len(candidates)} candidate(s) by edge (highest first)")
+    _save_latest_candidates(candidates)
 
     # Batch-fetch market context + price history concurrently for top candidates
     top_n = candidates[:MAX_TRADES_PER_RUN] if not daily_loss_limit_breached() else []

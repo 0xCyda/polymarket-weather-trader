@@ -30,6 +30,7 @@ _PROJECT_ROOT = _BASE.parent
 DATA_DIR = _PROJECT_ROOT / "data"
 SCAN_LOG = DATA_DIR / "forecast_history.jsonl"
 PAPER_TRADES = DATA_DIR / "paper_trades.jsonl"
+LATEST_CANDIDATES_FILE = SKILL_DIR / "data" / "latest_candidates.json"
 CONFIG_FILE = SKILL_DIR / "config.json"
 
 _MONTH_NAMES = {
@@ -1616,48 +1617,44 @@ def _enrich_positions(positions: list[dict]) -> list[dict]:
 
 
 def _parse_signals_from_history() -> list[dict]:
-    """
-    Read the latest contiguous scan batch from forecast_history.jsonl.
+    """Return latest actionable candidates when available, else fall back."""
+    if LATEST_CANDIDATES_FILE.exists():
+        try:
+            payload = json.loads(LATEST_CANDIDATES_FILE.read_text())
+            signals = []
+            for e in payload.get("signals", []):
+                loc = e.get("location", "")
+                date = e.get("date", "")
+                metric = e.get("metric", "")
+                if not loc:
+                    continue
+                signals.append({
+                    "location": loc,
+                    "date": date,
+                    "metric": metric,
+                    "temp": str(e.get("temp")) if e.get("temp") not in ("", None) else "—",
+                    "signal": e.get("signal") or "—",
+                    "models": str(e.get("models")) if e.get("models") not in ("", None) else "—",
+                    "agree": str(round(float(e.get("agree")), 1)) + "%" if e.get("agree") not in ("", None, "") else "N/A",
+                    "spread": str(e.get("spread")) if e.get("spread") not in ("", None) else "—",
+                    "polymarket_url": polymarket_event_url(loc, date, metric),
+                })
+            signals.sort(key=lambda s: (
+                {"strong": 0, "moderate": 1, "weak": 2}.get(s["signal"], 3),
+                s.get("location", ""),
+            ))
+            return signals
+        except Exception:
+            pass
 
-    The log is append-only and a single scan writes many per-city rows in quick
-    succession. Taking the last N lines can miss valid signals from the same run
-    when weak/noisy rows happen to be appended later, so instead we:
-      1. sort rows by logged_at
-      2. find the most recent contiguous batch (gap-based boundary)
-      3. render all non-weak signals from that batch
-    """
     history = _load_trades_jsonl(SCAN_LOG)
     if not history:
         return []
-
-    stamped: list[tuple[datetime, dict]] = []
-    for e in history:
-        if not isinstance(e, dict) or not e.get("logged_at"):
-            continue
-        try:
-            ts = datetime.fromisoformat(e["logged_at"])
-        except (TypeError, ValueError):
-            continue
-        stamped.append((ts, e))
-
-    if not stamped:
-        return []
-
-    stamped.sort(key=lambda x: x[0])
-
-    batch: list[dict] = []
-    prev_ts: datetime | None = None
-    BATCH_GAP_SECONDS = 300
-    for ts, entry in reversed(stamped):
-        if prev_ts is not None and (prev_ts - ts).total_seconds() > BATCH_GAP_SECONDS:
-            break
-        batch.append(entry)
-        prev_ts = ts
-
-    batch.reverse()
-
+    entries = history[-15:] if len(history) >= 15 else history
     signals = []
-    for e in batch:
+    for e in reversed(entries):
+        if not isinstance(e, dict):
+            continue
         loc = e.get("location", "")
         date = e.get("target_date", "")
         metric = e.get("metric", "")
@@ -1678,7 +1675,6 @@ def _parse_signals_from_history() -> list[dict]:
                 "spread": str(spread) if spread not in ("", None) else "—",
                 "polymarket_url": polymarket_event_url(loc, date, metric),
             })
-
     signals.sort(key=lambda s: (
         {"strong": 0, "moderate": 1, "weak": 2}.get(s["signal"], 3),
         s.get("location", ""),
