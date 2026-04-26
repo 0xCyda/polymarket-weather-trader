@@ -154,11 +154,7 @@ DASHBOARD_HTML = """
       flex-wrap: wrap;
     }
     .header-scan {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 8px;
-      flex-wrap: wrap;
+      display: contents;
     }
     .status-line {
       display: flex;
@@ -378,13 +374,9 @@ DASHBOARD_HTML = """
         grid-template-columns: repeat(2, 1fr);
       }
       .header-right,
-      .header-scan,
       .status-line {
         grid-column: 1;
         justify-self: start;
-      }
-      .header-scan {
-        justify-content: flex-start;
       }
       .action-btn {
         min-width: 0;
@@ -571,11 +563,10 @@ DASHBOARD_HTML = """
   <div class="header-right">
     <button class="tab-btn" id="btn-overview" onclick="showTab('overview')">Overview</button>
     <button class="tab-btn" id="btn-config" onclick="showTab('config')">Config</button>
-  </div>
-  <div class="header-scan">
     <button class="tab-btn action-btn scan-btn" id="btn-scan" onclick="triggerScan()">Scan Now</button>
     <button class="tab-btn action-btn refresh-btn" id="btn-refresh" onclick="manualRefresh()">Refresh</button>
   </div>
+  <div class="header-scan"></div>
 </div>
 
 <div id="scan-toast" style="
