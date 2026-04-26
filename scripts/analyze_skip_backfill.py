@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from paper_journal import fetch_historical_temp, _parse_bucket_range
 
 TARGET_DATE = sys.argv[1]
+ALLOW_ALL_SIGNALS = "--all-signals" in sys.argv
 SKIP_LOG = "/home/brandon/projects/polymarket-weather-trader/scripts/data/skip_events.jsonl"
 PAPER_BALANCE = 10532.23  # current paper balance
 
@@ -100,7 +101,7 @@ with open(SKIP_LOG) as f:
         except Exception:
             continue
         if e.get("date") == TARGET_DATE:
-            if e.get("signal_strength") != "strong":
+            if not ALLOW_ALL_SIGNALS and e.get("signal_strength") != "strong":
                 continue
             skips.append(e)
 

@@ -37,3 +37,6 @@
 {"ts": "2026-04-26T02:31:18.177553+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-04-06", "metric": "high", "signal": "no_data"}
 {"ts": "2026-04-26T04:19:20.542929+00:00", "kind": "twc_http", "msg": "status=400", "station": "KLGA:9:US", "date": "2026-04-26"}
 {"ts": "2026-04-26T04:39:22.011735+00:00", "kind": "twc_http", "msg": "status=400", "station": "KMIA:9:US", "date": "2026-04-26"}
+{"ts": "2026-04-26T12:19:27.790674+00:00", "kind": "api_error", "msg": "HTTPSConnectionPool(host='api.simmer.markets', port=443): Read timed out. (read timeout=30)", "label": "portfolio", "fn": "get_portfolio"}
+{"ts": "2026-04-26T12:21:09.325117+00:00", "kind": "api_error", "msg": "HTTPSConnectionPool(host='api.simmer.markets', port=443): Read timed out. (read timeout=30)", "label": "positions", "fn": "get_positions"}
+{"ts": "2026-04-26T12:22:23.281436+00:00", "kind": "api_error", "msg": "HTTPSConnectionPool(host='api.simmer.markets', port=443): Read timed out. (read timeout=30)", "label": "positions", "fn": "get_positions"}

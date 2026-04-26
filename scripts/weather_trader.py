@@ -195,9 +195,9 @@ CONFIG_SCHEMA = {
     "late_edge_buffer_c":{"env": "SIMMER_WEATHER_LATE_EDGE_BUFFER_C","default": 0.3,   "type": float,
                           "help": "Min distance (°C) from running temp to bucket edges to count as locked in."},
     "late_cities":       {"env": "SIMMER_WEATHER_LATE_CITIES",
-                          "default": "London,Toronto,Singapore,Sao Paulo,Shanghai,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas",
+                          "default": "NYC,Chicago,Seattle,Atlanta,Dallas,Miami,Houston,San Francisco,Phoenix,Los Angeles,Denver,Austin,Las Vegas,Tel Aviv,Munich,London,Tokyo,Seoul,Ankara,Lucknow,Wellington,Toronto,Paris,Milan,Sao Paulo,Warsaw,Singapore,Shanghai,Beijing,Shenzhen,Chengdu,Chongqing,Wuhan,Hong Kong,Buenos Aires",
                           "type": str,
-                          "help": "Comma-separated whitelist of cities eligible for LATE mode (>=70% hit rate in DST-corrected Jan-Apr 2026 backtest)."},
+                          "help": "Comma-separated whitelist of cities eligible for LATE mode. Defaults to full CORE city list. The original backtest-derived 12-city subset was: London,Toronto,Singapore,Sao Paulo,Shanghai,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas (>=70% hit rate). Cities outside that subset use the global LATE_PRICE_CEILING (0.90); per-city ceilings live in late_trader.py LATE_CITY_CEILINGS."},
     # Position manager: hourly day-of management of open positions. Reads TWC
     # intraday and either exits losers (running max projects EOD into a
     # different bucket) or adds to winners (running max locked in held bucket

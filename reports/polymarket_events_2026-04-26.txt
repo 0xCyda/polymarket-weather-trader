@@ -1,0 +1,49 @@
+Polymarket Weather Events Pull - 2026-04-26 20:24 UTC
+============================================================
+Mode: RESOLVED | tag=weather
+Limit: 800
+
+  page offset=    0 → +100 events (total 100)
+  page offset=  100 → +100 events (total 200)
+  page offset=  200 → +100 events (total 300)
+  page offset=  300 → +100 events (total 400)
+  page offset=  400 → +100 events (total 500)
+  page offset=  500 → +100 events (total 600)
+  page offset=  600 → +100 events (total 700)
+  page offset=  700 → +100 events (total 800)
+
+  Total events:       800
+  Resolved/closed:    800
+  Still open:         0
+  Total sub-markets:  5061
+
+  Top 15 cities:
+    Nyc                 321 events
+    London              320 events
+    Dallas                6 events
+    Atlanta               5 events
+    Seattle               5 events
+    Seoul                 4 events
+    Toronto               4 events
+    Buenos Aires          4 events
+    Los Angeles           3 events
+    Miami                 3 events
+    Chicago               2 events
+    Phoenix               2 events
+    Denver                2 events
+
+  Target months covered:
+    August         77 events
+    September      72 events
+    May            71 events
+    October        70 events
+    June           66 events
+    November       66 events
+    July           66 events
+    December       65 events
+    March          65 events
+    April          63 events
+    February       35 events
+    January         4 events
+
+  Saved 800 events -> /home/brandon/projects/polymarket-weather-trader/data/polymarket_events.jsonl

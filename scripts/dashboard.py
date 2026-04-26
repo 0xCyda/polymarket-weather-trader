@@ -31,6 +31,7 @@ DATA_DIR = _PROJECT_ROOT / "data"
 SCAN_LOG = DATA_DIR / "forecast_history.jsonl"
 PAPER_TRADES = DATA_DIR / "paper_trades.jsonl"
 LATEST_CANDIDATES_FILE = SKILL_DIR / "data" / "latest_candidates.json"
+SKIP_LOG = SKILL_DIR / "data" / "skip_events.jsonl"
 CONFIG_FILE = SKILL_DIR / "config.json"
 
 _MONTH_NAMES = {
@@ -615,7 +616,7 @@ DASHBOARD_HTML = """
     <table id="positions-table"></table>
   </div>
   <div class="card">
-    <h2>AIFS ENS Signals <span id="signals-scan-time" class="faint" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:4px"></span></h2>
+    <h2>AIFS ENS Signals <span id="signals-count" class="faint" style="font-size:13px;font-weight:500;text-transform:none;letter-spacing:0;margin-left:4px"></span><span id="signals-scan-time" class="faint" style="font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:4px"></span></h2>
     <div id="signals-list"></div>
   </div>
 </div>
@@ -923,20 +924,43 @@ function renderSignals(d) {
     scanTimeEl.textContent = `· scan ${agoStr}`;
   }
 
+  // Update count next to the section title
+  const countEl = document.getElementById('signals-count');
+  if (countEl) countEl.textContent = signals.length ? `(${signals.length})` : '';
+
   if (!signals.length) {
     container.innerHTML = emptyState('📡', 'No signals in latest scan');
     return;
   }
 
+  // Sort by spread ascending (tighter ensembles first); fall back to signal strength
   const SIGNAL_ORDER = { strong: 0, moderate: 1, weak: 2 };
-  const sorted = [...signals].sort((a, b) =>
-    (SIGNAL_ORDER[a.signal] ?? 3) - (SIGNAL_ORDER[b.signal] ?? 3)
-  );
+  function spreadVal(s) {
+    const n = parseFloat(s.spread);
+    return Number.isFinite(n) ? n : Infinity;
+  }
+  const sorted = [...signals].sort((a, b) => {
+    const da = spreadVal(a) - spreadVal(b);
+    if (da !== 0) return da;
+    return (SIGNAL_ORDER[a.signal] ?? 3) - (SIGNAL_ORDER[b.signal] ?? 3);
+  });
 
   const INITIAL = 5;
   if (window._signalExpanded === undefined) window._signalExpanded = false;
 
   const visible = window._signalExpanded ? sorted : sorted.slice(0, INITIAL);
+  const STATUS_COLORS = {
+    positive: { bg: 'rgba(74,222,128,0.15)', fg: '#86efac', border: 'rgba(74,222,128,0.35)' },
+    negative: { bg: 'rgba(248,113,113,0.15)', fg: '#fca5a5', border: 'rgba(248,113,113,0.35)' },
+    info:     { bg: 'rgba(96,165,250,0.15)', fg: '#93c5fd', border: 'rgba(96,165,250,0.35)' },
+    warning:  { bg: 'rgba(251,191,36,0.15)', fg: '#fcd34d', border: 'rgba(251,191,36,0.35)' },
+    neutral:  { bg: 'rgba(148,163,184,0.10)', fg: 'var(--text-secondary)', border: 'rgba(148,163,184,0.30)' },
+  };
+  function statusBadge(label, color) {
+    if (!label) return '';
+    const c = STATUS_COLORS[color] || STATUS_COLORS.neutral;
+    return `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:${c.bg};color:${c.fg};border:1px solid ${c.border};font-size:10px;font-weight:600;letter-spacing:0.3px">${label}</span>`;
+  }
   container.innerHTML = visible.map(s => `
     <div class="signal-row">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -951,8 +975,9 @@ function renderSignals(d) {
         <span style="color:var(--text-secondary);font-size:13px"><span class="mono">${fmtTempForLoc(s.location, s.temp)}</span> · ${s.metric}</span>
         ${signalBadge(s.signal)}
       </div>
-      <div class="faint" style="margin-top:4px">
-        ${s.models} models · spread <span class="mono">${fmtSpreadForLoc(s.location, s.spread)}</span>${s.agree !== 'N/A' ? ' · ' + s.agree + ' agree' : ''}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;gap:8px">
+        <span class="faint">${s.models} models · spread <span class="mono">${fmtSpreadForLoc(s.location, s.spread)}</span>${s.agree !== 'N/A' ? ' · ' + s.agree + ' agree' : ''}</span>
+        ${statusBadge(s.status_badge, s.status_color)}
       </div>
     </div>
   `).join('');
@@ -1617,64 +1642,178 @@ def _enrich_positions(positions: list[dict]) -> list[dict]:
 
 
 def _parse_signals_from_history() -> list[dict]:
-    """Return latest actionable candidates when available, else fall back."""
-    if LATEST_CANDIDATES_FILE.exists():
-        try:
-            payload = json.loads(LATEST_CANDIDATES_FILE.read_text())
-            signals = []
-            for e in payload.get("signals", []):
-                loc = e.get("location", "")
-                date = e.get("date", "")
-                metric = e.get("metric", "")
-                if not loc:
-                    continue
-                signals.append({
-                    "location": loc,
-                    "date": date,
-                    "metric": metric,
-                    "temp": str(e.get("temp")) if e.get("temp") not in ("", None) else "—",
-                    "signal": e.get("signal") or "—",
-                    "models": str(e.get("models")) if e.get("models") not in ("", None) else "—",
-                    "agree": str(round(float(e.get("agree")), 1)) + "%" if e.get("agree") not in ("", None, "") else "N/A",
-                    "spread": str(e.get("spread")) if e.get("spread") not in ("", None) else "—",
-                    "polymarket_url": polymarket_event_url(loc, date, metric),
-                })
-            signals.sort(key=lambda s: (
-                {"strong": 0, "moderate": 1, "weak": 2}.get(s["signal"], 3),
-                s.get("location", ""),
-            ))
-            return signals
-        except Exception:
-            pass
+    """Return all strong/moderate signals from the latest scan window.
 
+    Reads forecast_history.jsonl (every signal the bot evaluated, not just gate-passing
+    ones), filters to entries within the latest scan window, dedupes by event, and
+    keeps strong + moderate. Single source of truth for the dashboard panel.
+    """
     history = _load_trades_jsonl(SCAN_LOG)
     if not history:
         return []
-    entries = history[-15:] if len(history) >= 15 else history
-    signals = []
-    for e in reversed(entries):
+
+    # Find the latest scan timestamp; window = anything within 15 minutes of it.
+    # A single scan emits all its forecasts within a few minutes, so 15min is loose
+    # enough to catch a slow scan without bleeding into the previous one (cron is
+    # 4h apart for the main scan, so no risk of overlap).
+    latest_ts: datetime | None = None
+    for e in reversed(history):
+        if isinstance(e, dict) and e.get("logged_at"):
+            try:
+                latest_ts = datetime.fromisoformat(e["logged_at"])
+                break
+            except ValueError:
+                continue
+    if latest_ts is None:
+        return []
+    window_start = latest_ts - timedelta(minutes=15)
+
+    # Collect strong/moderate within window, dedup by (loc, date, metric) → keep latest
+    by_key: dict[tuple, dict] = {}
+    for e in history:
         if not isinstance(e, dict):
+            continue
+        ts_str = e.get("logged_at")
+        if not ts_str:
+            continue
+        try:
+            ts = datetime.fromisoformat(ts_str)
+        except ValueError:
+            continue
+        if ts < window_start:
+            continue
+        signal = e.get("signal_strength", "")
+        if signal not in ("strong", "moderate"):
             continue
         loc = e.get("location", "")
         date = e.get("target_date", "")
         metric = e.get("metric", "")
-        temp = e.get("forecast_temp", "")
-        signal = e.get("signal_strength", "")
-        models = e.get("models_used", "")
-        agree = e.get("agreement_pct", "")
-        spread = e.get("spread", "")
-        if loc and signal and signal != "weak":
-            signals.append({
-                "location": loc,
-                "date": date,
-                "metric": metric,
-                "temp": str(temp) if temp else "—",
-                "signal": signal,
-                "models": str(models) if models else "—",
-                "agree": str(round(float(agree), 1)) + "%" if agree not in ("", None) else "N/A",
-                "spread": str(spread) if spread not in ("", None) else "—",
-                "polymarket_url": polymarket_event_url(loc, date, metric),
-            })
+        if not loc:
+            continue
+        key = (loc, date, metric)
+        prev = by_key.get(key)
+        if prev is None or ts > datetime.fromisoformat(prev["_ts"]):
+            by_key[key] = {**e, "_ts": ts_str}
+
+    # Build trade index keyed by (location, target_date, metric) → most informative trade
+    trade_index: dict[tuple, dict] = {}
+    try:
+        for t in _load_trades_jsonl(PAPER_TRADES):
+            if not isinstance(t, dict):
+                continue
+            tk = (t.get("location", ""), t.get("target_date", ""), t.get("metric", ""))
+            if not all(tk):
+                continue
+            prev = trade_index.get(tk)
+            # Prefer open over resolved; otherwise newest
+            if prev is None:
+                trade_index[tk] = t
+                continue
+            if prev.get("status") != "open" and t.get("status") == "open":
+                trade_index[tk] = t
+            elif prev.get("status") == t.get("status"):
+                if (t.get("entered_at") or "") > (prev.get("entered_at") or ""):
+                    trade_index[tk] = t
+    except Exception:
+        pass
+
+    # Build skip-reason index keyed by (location, date, metric) → set of reasons in window
+    skip_index: dict[tuple, set] = {}
+    try:
+        if SKIP_LOG.exists():
+            with SKIP_LOG.open() as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        s = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    sk_ts = s.get("ts")
+                    if not sk_ts:
+                        continue
+                    try:
+                        ts = datetime.fromisoformat(sk_ts)
+                    except ValueError:
+                        continue
+                    if ts < window_start:
+                        continue
+                    sk = (s.get("location", ""), s.get("date", ""), s.get("metric", ""))
+                    reason = (s.get("reason") or "").split(":")[0]
+                    if not reason or not all(sk):
+                        continue
+                    skip_index.setdefault(sk, set()).add(reason)
+    except Exception:
+        pass
+
+    def _badge_for(loc: str, date: str, metric: str) -> tuple[str, str]:
+        """Return (label, color_class) for a signal's status badge.
+        Color classes mirror existing dashboard CSS conventions: positive (green),
+        negative (red), neutral (gray), info (blue), warning (amber)."""
+        tk = (loc, date, metric)
+        trade = trade_index.get(tk)
+        if trade:
+            status = trade.get("status")
+            strategy = (trade.get("strategy") or "core").upper()
+            if status == "open":
+                return (f"OPEN · {strategy}", "info")
+            if status == "resolved":
+                pnl = float(trade.get("pnl") or 0)
+                if pnl > 0:
+                    return (f"WIN · {strategy} +${pnl:.0f}", "positive")
+                return (f"LOSS · {strategy} ${pnl:.0f}", "negative")
+            return (f"{status or 'TRADED'} · {strategy}", "info")
+
+        reasons = skip_index.get(tk, set())
+        if not reasons:
+            return ("EVAL", "neutral")
+        # Precedence: D+0 (handed to LATE) > safeguards > price gates > bucket-math > stale
+        if "d0_core_skip" in reasons:
+            return ("D+0 → LATE", "info")
+        if "safeguard" in reasons:
+            return ("SAFEGUARD", "warning")
+        if "high_spread" in reasons:
+            return ("HIGH SPREAD", "warning")
+        if "already_held" in reasons or "same_event_open" in reasons:
+            return ("ALREADY HELD", "neutral")
+        if "price_ceiling" in reasons or "no_bucket_price_extreme" in reasons:
+            return ("PRICE EXTREME", "neutral")
+        if "no_bucket_low_edge" in reasons:
+            return ("LOW EDGE", "neutral")
+        if "no_bucket_parseable" in reasons:
+            return ("NO BUCKET", "neutral")
+        if "stale_event" in reasons:
+            return ("STALE", "neutral")
+        if "punt_safeguard" in reasons:
+            return ("PUNT SAFEGUARD", "warning")
+        # Fallback: surface the first reason verbatim
+        return (next(iter(reasons)).upper().replace("_", " "), "neutral")
+
+    signals = []
+    for entry in by_key.values():
+        loc = entry.get("location", "")
+        date = entry.get("target_date", "")
+        metric = entry.get("metric", "")
+        temp = entry.get("forecast_temp", "")
+        signal = entry.get("signal_strength", "")
+        models = entry.get("models_used", "")
+        agree = entry.get("agreement_pct", "")
+        spread = entry.get("spread", "")
+        badge_label, badge_color = _badge_for(loc, date, metric)
+        signals.append({
+            "location": loc,
+            "date": date,
+            "metric": metric,
+            "temp": str(temp) if temp not in ("", None) else "—",
+            "signal": signal,
+            "models": str(models) if models not in ("", None) else "—",
+            "agree": str(round(float(agree), 1)) + "%" if agree not in ("", None) else "N/A",
+            "spread": str(spread) if spread not in ("", None) else "—",
+            "polymarket_url": polymarket_event_url(loc, date, metric),
+            "status_badge": badge_label,
+            "status_color": badge_color,
+        })
     signals.sort(key=lambda s: (
         {"strong": 0, "moderate": 1, "weak": 2}.get(s["signal"], 3),
         s.get("location", ""),
