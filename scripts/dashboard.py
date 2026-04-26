@@ -456,6 +456,7 @@ DASHBOARD_HTML = """
     .badge-neutral   { background: rgba(120, 130, 160, 0.15); color: var(--text-secondary); }
     .badge-strategy-core { background: rgba(96, 165, 250, 0.14); color: var(--accent-blue); border-color: rgba(96, 165, 250, 0.25); }
     .badge-strategy-punt { background: rgba(167, 139, 250, 0.14); color: var(--accent-violet); border-color: rgba(167, 139, 250, 0.25); }
+    .badge-strategy-late { background: rgba(251, 191, 36, 0.14); color: #fcd34d; border-color: rgba(251, 191, 36, 0.30); }
     .badge-source-simmer    { background: rgba(96, 165, 250, 0.12); color: var(--accent-blue); }
     .badge-source-historical{ background: rgba(251, 191, 36, 0.14); color: var(--accent-amber); }
     .badge-source-manual    { background: rgba(167, 139, 250, 0.14); color: var(--accent-violet); }
@@ -731,8 +732,10 @@ function positionBadge(side) {
 
 function strategyBadge(strat) {
   const s = (strat || 'core').toLowerCase();
-  const cls = s === 'punt' ? 'badge-strategy-punt' : 'badge-strategy-core';
-  const label = s === 'punt' ? '🎯 PUNT' : 'CORE';
+  let cls, label;
+  if (s === 'punt')      { cls = 'badge-strategy-punt'; label = '🎯 PUNT'; }
+  else if (s === 'late') { cls = 'badge-strategy-late'; label = 'LATE'; }
+  else                   { cls = 'badge-strategy-core'; label = 'CORE'; }
   return `<span class="badge ${cls}">${label}</span>`;
 }
 
