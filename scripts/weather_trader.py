@@ -673,8 +673,25 @@ INTERNATIONAL_LOCATIONS = {
 # diverge from official weather station readings (Polymarket's resolution source).
 # Values derived from resolved trade analysis; update as more data accumulates.
 LOCATION_BIAS_C = {
-    "Hong Kong": 0.8,   # HKO station consistently reads ~+0.8°C above gridded model output
-    "Shenzhen":  1.0,   # Models ran cold by ~1°C across all resolved Shenzhen trades
+    # Recalibrated 2026-04-26 from 214 resolved-date forecasts vs Polymarket
+    # YES bucket centers. Each value is the °C correction added to the raw
+    # ensemble forecast (positive = forecast was too cold, add warmth).
+    # Cities listed have n>=5 samples and |delta|>=1.5°C unless noted.
+    "Atlanta":       3.9,   # n=5, std 4.6 — wide but consistent direction
+    "Chongqing":     3.7,   # n=7, std 3.4
+    "Tel Aviv":      3.4,   # n=7, std 1.1 — tight
+    "Seoul":        -3.3,   # n=5, std 2.3 — only city with WARM forecast bias
+    "Singapore":     2.9,   # n=5, std 1.0
+    "San Francisco": 2.3,   # n=6, std 1.9
+    "Chengdu":       2.2,   # n=5, std 1.6
+    "Munich":        2.2,   # n=6, std 1.5
+    "Toronto":       1.9,   # n=5, std 1.8
+    "Warsaw":        1.9,   # n=6, std 1.2
+    "Miami":         1.8,   # n=5, std 0.5 — very tight
+    "Chicago":       1.5,   # n=5, std 2.2
+    # Tightenings of pre-existing biases:
+    "Hong Kong":     1.0,   # was 0.8; n=9, std 0.9
+    "Shenzhen":      1.3,   # was 1.0; n=4, std 1.2
 }
 
 # Forecasts are fetched exclusively via ensemble_forecast.get_ensemble_forecast.
