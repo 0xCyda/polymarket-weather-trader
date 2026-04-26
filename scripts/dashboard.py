@@ -151,12 +151,14 @@ DASHBOARD_HTML = """
       display: flex;
       align-items: center;
       gap: 6px;
+      flex-wrap: wrap;
     }
     .header-scan {
       display: flex;
       align-items: center;
       justify-content: flex-end;
       gap: 8px;
+      flex-wrap: wrap;
     }
     .status-line {
       display: flex;
@@ -169,6 +171,26 @@ DASHBOARD_HTML = """
       min-width: 112px;
       text-align: center;
       font-weight: 500;
+    }
+    .action-btn.scan-btn {
+      border-color: rgba(52, 211, 153, 0.55);
+      color: var(--accent-green);
+      background: rgba(52, 211, 153, 0.06);
+    }
+    .action-btn.scan-btn:hover:not(:disabled) {
+      border-color: var(--accent-green);
+      color: var(--accent-green);
+      background: rgba(52, 211, 153, 0.1);
+    }
+    .action-btn.refresh-btn {
+      border-color: rgba(251, 191, 36, 0.55);
+      color: var(--accent-amber);
+      background: rgba(251, 191, 36, 0.06);
+    }
+    .action-btn.refresh-btn:hover:not(:disabled) {
+      border-color: var(--accent-amber);
+      color: var(--accent-amber);
+      background: rgba(251, 191, 36, 0.1);
     }
     .action-btn:active { transform: translateY(1px); }
     .action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -348,12 +370,24 @@ DASHBOARD_HTML = """
     }
     @media (max-width: 600px) {
       .header {
-        grid-template-columns: 1fr auto;
+        grid-template-columns: 1fr;
       }
       h1 { font-size: 22px; }
       body { padding: 16px 12px 40px; }
       .grid {
         grid-template-columns: repeat(2, 1fr);
+      }
+      .header-right,
+      .header-scan,
+      .status-line {
+        grid-column: 1;
+        justify-self: start;
+      }
+      .header-scan {
+        justify-content: flex-start;
+      }
+      .action-btn {
+        min-width: 0;
       }
     }
 
@@ -539,8 +573,8 @@ DASHBOARD_HTML = """
     <button class="tab-btn" id="btn-config" onclick="showTab('config')">Config</button>
   </div>
   <div class="header-scan">
-    <button class="tab-btn action-btn" id="btn-scan" onclick="triggerScan()">Scan Now</button>
-    <button class="tab-btn action-btn" id="btn-refresh" onclick="manualRefresh()">Refresh Now</button>
+    <button class="tab-btn action-btn scan-btn" id="btn-scan" onclick="triggerScan()">Scan Now</button>
+    <button class="tab-btn action-btn refresh-btn" id="btn-refresh" onclick="manualRefresh()">Refresh</button>
   </div>
 </div>
 
@@ -1248,7 +1282,7 @@ function setRefreshBtn(state) {
     btn.textContent = 'Refreshing…';
   } else {
     btn.disabled = false;
-    btn.textContent = 'Refresh Now';
+    btn.textContent = 'Refresh';
   }
 }
 
