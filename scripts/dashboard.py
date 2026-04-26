@@ -378,8 +378,18 @@ DASHBOARD_HTML = """
         grid-column: 1;
         justify-self: start;
       }
+      .header-right {
+        width: 100%;
+        flex-wrap: nowrap;
+        gap: 4px;
+      }
+      .tab-btn,
       .action-btn {
         min-width: 0;
+        padding: 7px 12px;
+        font-size: 0.78rem;
+        white-space: nowrap;
+        flex: 0 1 auto;
       }
     }
 
@@ -1270,7 +1280,7 @@ function setRefreshBtn(state) {
   if (!btn) return;
   if (state === 'running') {
     btn.disabled = true;
-    btn.textContent = 'Refreshing…';
+    btn.textContent = 'Refresh…';
   } else {
     btn.disabled = false;
     btn.textContent = 'Refresh';
