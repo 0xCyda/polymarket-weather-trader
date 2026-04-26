@@ -48,7 +48,7 @@ from weather_trader import (
 from paper_journal import (
     _HISTORICAL_LOCATIONS as LOCATIONS,
     JOURNAL_FILE, _load_trades, _save_trades, _compute_pnl, log_loss,
-    log_paper_trade,
+    log_paper_trade, update_trade_atomically,
 )
 from late_trader import (
     STATIONS, _fetch_twc_intraday, _running_extreme,
@@ -169,12 +169,24 @@ def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
         return out
     out["bucket"] = _bucket_label(bucket)
 
-    # Re-derived bucket disagrees with stored bucket → flag for audit. Don't
-    # silently overwrite history; use the re-derived one going forward.
+    # Re-derived bucket disagrees with stored bucket → repair the journal entry
+    # so subsequent reads (dashboard, analytics, manual close) see the correct
+    # label. The mismatch was caused by upstream parsing bugs at trade-log time
+    # (e.g. NYC trade c5d1b4d4 stored "31°C" for a "49°F or below" market).
+    # We use the re-derived bucket going forward either way; persisting it keeps
+    # the journal consistent rather than permanently noisy.
     stored_label = trade.get("bucket") or ""
     rederived_label = _bucket_label(bucket)
     if stored_label and stored_label.replace(" ", "") != rederived_label.replace(" ", ""):
         out["bucket_mismatch"] = {"stored": stored_label, "rederived": rederived_label}
+        try:
+            update_trade_atomically(
+                trade.get("trade_id") or "",
+                lambda t: (t.update({"bucket": rederived_label, "bucket_repaired_at": datetime.now(timezone.utc).isoformat(), "bucket_original": stored_label}) or t)
+                          if t.get("status") == "open" else None,
+            )
+        except Exception as e:
+            log_error("bucket_repair", str(e), trade_id=trade.get("trade_id"))
 
     cur_hour = local_now.hour
     out["local_hour"] = cur_hour
@@ -250,40 +262,37 @@ def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
 def _execute_exit(trade_id: str, current_price: float, reason: str) -> dict | None:
     """Mark the trade resolved early at the current Simmer mid-price.
 
+    Atomic load-check-modify-save under the journal lock so two concurrent
+    runs (cron + manual --execute) can't both succeed. The status check is
+    re-done INSIDE the lock — the prior implementation checked then saved
+    in two separate operations, which let Singapore get exited twice in a
+    19-minute window on 2026-04-26.
+
     Mirrors manual_resolve's bookkeeping but uses a continuous exit price
     rather than 1.0/0.0 settlement. resolution_source distinguishes early
     exits from natural settlement so analytics can split them.
     """
-    trades = _load_trades()
-    target = None
-    for t in trades:
-        if t.get("trade_id") == trade_id:
-            target = t
-            break
-    if target is None:
-        return None
-    if target.get("status") != "open":
-        return None
+    def _mutate(target: dict) -> dict | None:
+        if target.get("status") != "open":
+            return None  # another process already closed it
+        side = target.get("side", "yes")
+        entry = float(target.get("entry_price") or 0)
+        shares = float(target.get("shares") or 0)
+        pnl = round(_compute_pnl(side, entry, current_price, shares), 4)
+        target["status"] = "resolved"
+        # Outcome proxy for early exits: "yes" if the side was winning at exit time.
+        target["outcome"] = "yes" if (side == "yes" and current_price > entry) or (side == "no" and current_price < entry) else "no"
+        target["exit_price"] = round(float(current_price), 4)
+        target["pnl"] = pnl
+        target["resolved_at"] = datetime.now(timezone.utc).isoformat()
+        target["resolution_source"] = "early_exit_position_manager"
+        target["exit_reason"] = reason
+        return target
 
-    side = target.get("side", "yes")
-    entry = float(target.get("entry_price") or 0)
-    shares = float(target.get("shares") or 0)
-    pnl = round(_compute_pnl(side, entry, current_price, shares), 4)
-
-    target["status"] = "resolved"
-    # Outcome is "yes" or "no" depending on whether the side won — for early exits,
-    # neither has won yet, so use exit_price > entry_price as a proxy for "this
-    # side was winning at exit time". Keeps loss log + win-rate stats sensible.
-    target["outcome"] = "yes" if (side == "yes" and current_price > entry) or (side == "no" and current_price < entry) else "no"
-    target["exit_price"] = round(float(current_price), 4)
-    target["pnl"] = pnl
-    target["resolved_at"] = datetime.now(timezone.utc).isoformat()
-    target["resolution_source"] = "early_exit_position_manager"
-    target["exit_reason"] = reason
-    if pnl < 0:
-        log_loss(target)
-    _save_trades(trades)
-    return target
+    resolved = update_trade_atomically(trade_id, _mutate)
+    if resolved and float(resolved.get("pnl") or 0) < 0:
+        log_loss(resolved)
+    return resolved
 
 
 def _execute_add(trade: dict, market: dict, size_usd: float, reason: str) -> str | None:

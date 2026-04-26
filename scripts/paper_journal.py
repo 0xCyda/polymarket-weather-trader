@@ -92,6 +92,69 @@ def _load_trades() -> list:
 _LOCK_FILE = JOURNAL_FILE.with_suffix(".lock")
 
 
+import contextlib as _contextlib
+
+
+@_contextlib.contextmanager
+def _journal_lock():
+    """Module-level fcntl lock around the JSONL journal. Use this anywhere a
+    load-modify-save sequence needs to be atomic across processes (e.g. exit
+    + manual close + position_manager all running concurrently)."""
+    lock_fd = None
+    try:
+        lock_fd = open(_LOCK_FILE, "w")
+        try:
+            import fcntl
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            try:
+                import msvcrt
+                msvcrt.locking(lock_fd.fileno(), msvcrt.LK_LOCK, 1)
+            except (ImportError, OSError):
+                pass
+        yield
+    finally:
+        if lock_fd:
+            try:
+                lock_fd.close()
+            except Exception:
+                pass
+
+
+def update_trade_atomically(trade_id: str, mutator) -> dict | None:
+    """Load journal under lock, find the trade, run mutator(trade), save.
+
+    The mutator can:
+      - return None to abort (e.g. status check failed) — no save happens
+      - mutate the trade dict in place and return the mutated trade — save happens
+
+    Returns the mutated trade or None. Use this anywhere two processes might
+    both try to flip an open trade to resolved (the prior race let Singapore
+    get exited twice in a 19-min window).
+    """
+    with _journal_lock():
+        trades = _load_trades()
+        target = None
+        for t in trades:
+            if t.get("trade_id") == trade_id:
+                target = t
+                break
+        if target is None:
+            return None
+        result = mutator(target)
+        if result is None:
+            return None
+        # Atomic write under the same lock — bypass _save_trades' inner lock
+        # since we already hold it. (Re-entrant fcntl on the same fd is a no-op
+        # on POSIX, but writing the JSONL twice in the same critical section is
+        # wasteful.)
+        tmp = JOURNAL_FILE.with_suffix(JOURNAL_FILE.suffix + ".tmp")
+        payload = "\n".join(json.dumps(t, default=str) for t in trades) + "\n"
+        tmp.write_text(payload)
+        os.replace(tmp, JOURNAL_FILE)
+        return result
+
+
 def _save_trades(trades: list) -> None:
     """
     Atomically rewrite JSONL with all trades.
@@ -186,11 +249,15 @@ def log_paper_trade(
         "resolved_at": None,
         "entered_at": datetime.now(timezone.utc).isoformat(),
     }
-    # Hard dedup: prevent same market_id from being logged twice (race condition guard)
+    # Hard dedup: prevent same (market_id, strategy) from being logged twice while
+    # still open. Different strategies (e.g. late + late_add) may coexist on the
+    # same market — that's the whole point of late_add scaling into a held bucket.
     trades = _load_trades()
     for existing in trades:
-        if existing.get("market_id") == market_id and existing.get("status") == "open":
-            print(f"Warning: open position already exists for market {market_id[:16]} — skipping duplicate log")
+        if (existing.get("market_id") == market_id
+                and existing.get("strategy") == strategy
+                and existing.get("status") == "open"):
+            print(f"Warning: open {strategy} position already exists for market {market_id[:16]} — skipping duplicate log")
             return existing.get("trade_id", "")
     trades.append(trade)
     _save_trades(trades)
