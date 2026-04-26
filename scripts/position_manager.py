@@ -225,7 +225,7 @@ def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
     # ----- ADD rules -----
     # Need to be inside peak window with running max sitting solidly in held bucket
     # AND market price below add ceiling AND we have at least 2 hours of obs to trust.
-    if cur_hour >= ADD_AFTER_HOUR and in_bucket_now and edge_c_now >= EDGE_BUFFER_C:
+    if cur_hour >= ADD_AFTER_HOUR and in_bucket_now and edge_c_now >= EDGE_BUFFER_C and proj["confidence"] >= 0.7:
         cur_price = (market or {}).get("external_price_yes")
         if cur_price is None:
             out["reason"] = "add_blocked_no_price"
@@ -287,10 +287,17 @@ def _execute_exit(trade_id: str, current_price: float, reason: str) -> dict | No
 
 
 def _execute_add(trade: dict, market: dict, size_usd: float, reason: str) -> str | None:
-    """Open a new paper trade for an averaging-in add. Tagged strategy='late_add'."""
+    """Open a new paper trade for an averaging-in add. Tagged strategy='late_add'.
+
+    Uses re-derived bucket from market question (not stored trade["bucket"]
+    which has known historical mismatches).
+    """
     cur_price = float(market.get("external_price_yes") or 0)
     if cur_price <= 0:
         return None
+    # Re-derive bucket from live market question — don't trust trade["bucket"]
+    bucket = _resolve_bucket(trade, market)
+    bucket_str = _bucket_label(bucket) if bucket else (trade.get("bucket") or "")
     shares = size_usd / cur_price
     return log_paper_trade(
         market_id=trade.get("market_id"),
@@ -299,7 +306,7 @@ def _execute_add(trade: dict, market: dict, size_usd: float, reason: str) -> str
         entry_price=cur_price,
         shares=shares,
         cost=size_usd,
-        bucket=trade.get("bucket") or "",
+        bucket=bucket_str,
         forecast_temp=trade.get("forecast_temp") or 0.0,
         signal_strength="late_add",
         location=trade.get("location") or "",
@@ -369,6 +376,13 @@ def main() -> int:
 
         if decision["action"] == "exit":
             cur_price = float((market or {}).get("external_price_yes") or 0.0)
+            if cur_price <= 0:
+                decision["action"] = "hold"
+                decision["reason"] = "exit_blocked_no_live_price"
+                n_hold += 1
+                print(f"  HOLD {trade.get('location')} {trade.get('target_date')}: exit blocked — no live price available")
+                _log_action(decision)
+                continue
             decision["exit_price"] = round(cur_price, 4)
             print(f"  EXIT {trade.get('location')} {trade.get('target_date')} @ ${cur_price:.3f}: {decision.get('reason')}")
             if args.execute:
@@ -389,6 +403,22 @@ def main() -> int:
                 _log_action(decision)
                 continue
             size = ADD_MAX_POSITION
+            # Cap by paper balance — don't over-leverage
+            try:
+                from paper_journal import get_stats, get_open_positions
+                stats = get_stats()
+                paper_balance = float(_cfg.get("paper_balance", 10000.0))
+                open_exposure = sum(float(p.get("cost", 0)) for p in get_open_positions())
+                available = paper_balance + stats.get("total_pnl", 0) - open_exposure
+                size = min(size, max(0, available * 0.5))
+            except Exception:
+                pass
+            if size < 5:
+                decision["reason"] = (decision.get("reason") or "") + " | skipped: insufficient_balance"
+                n_hold += 1
+                print(f"  HOLD {trade.get('location')} {trade.get('target_date')}: insufficient balance for add")
+                _log_action(decision)
+                continue
             print(f"  ADD  {trade.get('location')} {trade.get('target_date')} ${size:.0f}: {decision.get('reason')}")
             if args.execute:
                 new_id = _execute_add(trade, market, size, decision.get("reason") or "")

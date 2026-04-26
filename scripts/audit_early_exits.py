@@ -53,12 +53,31 @@ def _audit_one(trade: dict) -> dict | None:
     """
     if trade.get("resolution_source") != EARLY_EXIT_SOURCE:
         return None
-    question = trade.get("question") or ""
 
-    # Pass question as bucket so _parse_bucket_range parses the source-of-truth
-    # threshold rather than the (possibly wrong) stored bucket label.
+    # Re-derive bucket from question (source-of-truth) rather than trusting
+    # the stored bucket label which has known historical mismatches.
+    # Build a clean "28°C" style label that _parse_bucket_range can handle
+    # reliably, instead of passing the full question string.
+    question = trade.get("question") or ""
     audit_trade = dict(trade)
-    audit_trade["bucket"] = question
+    try:
+        sys.path.insert(0, str(_HERE))
+        from weather_trader import parse_temperature_bucket
+        parsed = parse_temperature_bucket(question)
+        if parsed:
+            lo, hi, unit = parsed
+            if lo == -999:
+                audit_trade["bucket"] = f"{hi}°{unit} or below"
+            elif hi == 999:
+                audit_trade["bucket"] = f"{lo}°{unit} or above"
+            elif lo == hi:
+                audit_trade["bucket"] = f"{lo}°{unit}"
+            else:
+                audit_trade["bucket"] = f"{lo}-{hi}°{unit}"
+        else:
+            audit_trade["bucket"] = question
+    except Exception:
+        audit_trade["bucket"] = question
 
     fb = _historical_fallback_settlement(audit_trade, force=True)
     if fb is None:
