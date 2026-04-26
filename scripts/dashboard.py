@@ -1617,18 +1617,47 @@ def _enrich_positions(positions: list[dict]) -> list[dict]:
 
 def _parse_signals_from_history() -> list[dict]:
     """
-    Read the most recent entries from forecast_history.jsonl — each line is a
-    per-city AIFS ENS forecast, effectively a detected signal. Return the latest 15.
+    Read the latest contiguous scan batch from forecast_history.jsonl.
+
+    The log is append-only and a single scan writes many per-city rows in quick
+    succession. Taking the last N lines can miss valid signals from the same run
+    when weak/noisy rows happen to be appended later, so instead we:
+      1. sort rows by logged_at
+      2. find the most recent contiguous batch (gap-based boundary)
+      3. render all non-weak signals from that batch
     """
     history = _load_trades_jsonl(SCAN_LOG)
     if not history:
         return []
-    # Take the last 15 entries, reverse so most recent is first
-    entries = history[-15:] if len(history) >= 15 else history
-    signals = []
-    for e in reversed(entries):
-        if not isinstance(e, dict):
+
+    stamped: list[tuple[datetime, dict]] = []
+    for e in history:
+        if not isinstance(e, dict) or not e.get("logged_at"):
             continue
+        try:
+            ts = datetime.fromisoformat(e["logged_at"])
+        except (TypeError, ValueError):
+            continue
+        stamped.append((ts, e))
+
+    if not stamped:
+        return []
+
+    stamped.sort(key=lambda x: x[0])
+
+    batch: list[dict] = []
+    prev_ts: datetime | None = None
+    BATCH_GAP_SECONDS = 300
+    for ts, entry in reversed(stamped):
+        if prev_ts is not None and (prev_ts - ts).total_seconds() > BATCH_GAP_SECONDS:
+            break
+        batch.append(entry)
+        prev_ts = ts
+
+    batch.reverse()
+
+    signals = []
+    for e in batch:
         loc = e.get("location", "")
         date = e.get("target_date", "")
         metric = e.get("metric", "")
@@ -1637,9 +1666,7 @@ def _parse_signals_from_history() -> list[dict]:
         models = e.get("models_used", "")
         agree = e.get("agreement_pct", "")
         spread = e.get("spread", "")
-        # Filter: weak signals are never actionable (below the bot's entry gate),
-        # so don't clutter the dashboard with them.
-        if loc and e.get("signal_strength") and e.get("signal_strength") != "weak":
+        if loc and signal and signal != "weak":
             signals.append({
                 "location": loc,
                 "date": date,
@@ -1651,6 +1678,7 @@ def _parse_signals_from_history() -> list[dict]:
                 "spread": str(spread) if spread not in ("", None) else "—",
                 "polymarket_url": polymarket_event_url(loc, date, metric),
             })
+
     signals.sort(key=lambda s: (
         {"strong": 0, "moderate": 1, "weak": 2}.get(s["signal"], 3),
         s.get("location", ""),
