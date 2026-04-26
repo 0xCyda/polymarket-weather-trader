@@ -99,6 +99,7 @@ _cfg = load_config(CONFIG_SCHEMA, str(_HERE / "weather_trader.py"), slug="polyma
 
 LATE_MODE            = bool(_cfg.get("late_mode", True))
 LATE_PRICE_CEILING   = float(_cfg.get("late_price_ceiling", 0.90))
+LATE_PRICE_FLOOR     = float(_cfg.get("late_price_floor", 0.55))
 LATE_MAX_POSITION    = float(_cfg.get("late_max_position_usd", 100.0))
 LATE_DAILY_BUDGET    = float(_cfg.get("late_daily_budget_usd", 500.0))
 LATE_ENTRY_HOUR      = int(_cfg.get("late_entry_hour", 15))
@@ -401,6 +402,14 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
     if price > ceiling:
         result["reason"] = f"price_too_high_{price:.3f}_vs_{ceiling:.2f}"
         return result
+    # LATE thesis requires the market to already agree the bucket is locked in
+    # (running max sits inside it post-peak). If the market is pricing the
+    # bucket below LATE_PRICE_FLOOR, it expects the day to climb past our
+    # running max into a different bucket — usually correct, since most of these
+    # signals fire pre-peak when running max is just an early-day reading.
+    if price < LATE_PRICE_FLOOR:
+        result["reason"] = f"price_too_low_{price:.3f}_vs_{LATE_PRICE_FLOOR:.2f}"
+        return result
 
     # Budget check (daily cap + paper balance)
     budget = _load_budget()
@@ -525,7 +534,7 @@ def main():
         return 0
 
     print(f"LATE mode ({'DRY' if dry else 'LIVE'}): scanning {len(cities)} cities at entry window")
-    print(f"  global_ceiling=${LATE_PRICE_CEILING:.2f}  max_size=${LATE_MAX_POSITION:.0f}  "
+    print(f"  price=${LATE_PRICE_FLOOR:.2f}-${LATE_PRICE_CEILING:.2f}  max_size=${LATE_MAX_POSITION:.0f}  "
           f"edge>=${LATE_EDGE_BUFFER_C:.2f}°C  hour={LATE_ENTRY_HOUR}")
 
     # Fetch Simmer market list once per scan and reuse across cities.

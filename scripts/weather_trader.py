@@ -184,6 +184,8 @@ CONFIG_SCHEMA = {
                           "help": "Enable LATE mode: day-of intraday entry based on TWC observations."},
     "late_price_ceiling":{"env": "SIMMER_WEATHER_LATE_PRICE_CEILING","default": 0.90,  "type": float,
                           "help": "Max entry price for a LATE candidate. Breakeven on good cities is ~0.91 after Simmer fee."},
+    "late_price_floor":  {"env": "SIMMER_WEATHER_LATE_PRICE_FLOOR",  "default": 0.55,  "type": float,
+                          "help": "Min entry price for a LATE candidate. The strategy thesis is 'running max already locked in this bucket' — if the market is pricing the bucket below this floor, the market disagrees with us (usually because the day's peak is still expected to climb past our running max). Treat that as a no-go signal."},
     "late_max_position_usd":{"env": "SIMMER_WEATHER_LATE_POSITION_USD","default": 100.0,"type": float,
                           "help": "Max USD per LATE trade."},
     "late_daily_budget_usd":{"env": "SIMMER_WEATHER_LATE_DAILY_BUDGET","default": 500.0,"type": float,
