@@ -785,10 +785,62 @@ def manual_resolve(trade_id: str, outcome: str) -> dict | None:
     ), 4)
     target["resolved_at"] = datetime.now(timezone.utc).isoformat()
     target["resolution_source"] = "manual"
+    # Populate actual_temp at resolution time so the dashboard / loss log
+    # never show blanks. Best-effort — failure here doesn't block resolution.
+    if target.get("actual_temp") is None:
+        try:
+            actual = fetch_historical_temp(
+                target.get("location", ""), target.get("target_date", ""),
+                target.get("metric", "high"), unit="F",
+            )
+            if actual is not None:
+                target["actual_temp"] = actual
+        except Exception:
+            pass
     if target.get("pnl", 0) < 0:
         log_loss(target)
     _save_trades(trades)
     return target
+
+
+def backfill_actual_temps() -> list:
+    """Walk the journal, fill in actual_temp on resolved rows that lack it.
+
+    Useful when:
+      * manual_resolve was called before this function existed
+      * Simmer-path resolution succeeded but fetch_historical_temp failed at
+        the time (Polymarket / Gamma not yet indexed, transient errors)
+
+    Returns the list of trades that got patched.
+    """
+    trades = _load_trades()
+    patched = []
+    for t in trades:
+        if t.get("status") != "resolved":
+            continue
+        if t.get("actual_temp") is not None:
+            continue
+        loc = t.get("location") or ""
+        date = t.get("target_date") or ""
+        metric = t.get("metric", "high")
+        actual = None
+        try:
+            actual = fetch_historical_temp(loc, date, metric, unit="F")
+        except Exception:
+            actual = None
+        if actual is None:
+            try:
+                fb = _historical_fallback_settlement(t, force=True)
+                if fb:
+                    actual = fb.get("actual_temp")
+            except Exception:
+                pass
+        if actual is not None:
+            t["actual_temp"] = actual
+            patched.append(t)
+    if patched:
+        _save_trades(trades)
+    return patched
 
 
 def get_open_positions() -> list:
