@@ -1422,9 +1422,42 @@ def _get_simmer_positions() -> list[dict]:
         return []
 
 
-def _fetch_live_price(market_id: str) -> float | None:
-    """Fetch current price for a market — tries Gamma→CLOB for integer IDs,
-    falls back to Simmer for UUID-format IDs."""
+def _fetch_price_via_clob(token_id: str) -> float | None:
+    """Hit Polymarket CLOB directly when we already know the YES token id.
+    Avoids the Gamma resolve and the Simmer fallback entirely."""
+    if not token_id:
+        return None
+    try:
+        import requests
+        resp = requests.get(
+            "https://clob.polymarket.com/price",
+            params={"token_id": token_id, "side": "buy"},
+            timeout=5,
+        )
+        if resp.status_code != 200:
+            return None
+        return float(resp.json().get("price", 0) or 0)
+    except Exception:
+        return None
+
+
+def _fetch_live_price(market_id: str, polymarket_token_id: str | None = None) -> float | None:
+    """Fetch current price for a market.
+
+    Priority:
+      1. Stored polymarket_token_id (CLOB direct — no Simmer, no Gamma).
+      2. Integer Gamma market id → Gamma → CLOB.
+      3. UUID Simmer market id → Simmer fallback (legacy rows without token_id).
+
+    Goal is to avoid Simmer for live-price refresh whenever possible. Once the
+    backfill (scripts/backfill_token_ids.py) populates token_ids on legacy
+    rows, branch (3) effectively goes dark.
+    """
+    if polymarket_token_id:
+        price = _fetch_price_via_clob(polymarket_token_id)
+        if price is not None:
+            return price
+
     if not market_id:
         return None
 
@@ -1508,8 +1541,12 @@ def _enrich_positions(positions: list[dict]) -> list[dict]:
     def enrich_one(p: dict) -> dict:
         p = dict(p)
         market_id = p.get("market_id", "")
-        if market_id and api_key:
-            cp = _fetch_live_price(market_id)
+        token_id = p.get("polymarket_token_id")
+        # Stored token_id lets us hit CLOB directly without Simmer or Gamma.
+        # Legacy rows without token_id fall back to the existing chain (which
+        # may still need SIMMER_API_KEY for UUID-format ids).
+        if (token_id or market_id) and (token_id or api_key):
+            cp = _fetch_live_price(market_id, polymarket_token_id=token_id)
             if cp is not None:
                 p["current_price"] = cp
                 p["upnl"] = _compute_upnl(p)

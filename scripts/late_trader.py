@@ -494,6 +494,8 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
                 model_temps={"twc_running": round(running_c, 2)},
                 strategy="late",
                 confidence=None,
+                polymarket_token_id=pick_market.get("polymarket_token_id"),
+                polymarket_no_token_id=pick_market.get("polymarket_no_token_id"),
             )
         except Exception as e:
             log_error("journal_late", str(e), city=city)

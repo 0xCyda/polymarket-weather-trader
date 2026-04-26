@@ -150,6 +150,8 @@ def log_paper_trade(
     strategy: str = "core",   # "core" (default) or "punt"
     model_temps: dict | None = None,  # {model_name: temp} for all models in ensemble
     confidence: float | None = None,  # numeric confidence at entry (for calibration)
+    polymarket_token_id: str | None = None,   # CLOB YES token; lets dashboard skip Simmer for live prices
+    polymarket_no_token_id: str | None = None,
 ) -> str:
     """
     Log a new paper trade. Returns the trade_id.
@@ -175,6 +177,8 @@ def log_paper_trade(
         "spread": spread,
         "model_temps": model_temps,
         "confidence": confidence,
+        "polymarket_token_id": polymarket_token_id,
+        "polymarket_no_token_id": polymarket_no_token_id,
         "status": "open",
         "outcome": None,
         "exit_price": None,

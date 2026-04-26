@@ -318,6 +318,8 @@ def _execute_add(trade: dict, market: dict, size_usd: float, reason: str) -> str
         strategy="late_add",
         model_temps={"add_reason": reason},
         confidence=None,
+        polymarket_token_id=market.get("polymarket_token_id") or trade.get("polymarket_token_id"),
+        polymarket_no_token_id=market.get("polymarket_no_token_id") or trade.get("polymarket_no_token_id"),
     )
 
 

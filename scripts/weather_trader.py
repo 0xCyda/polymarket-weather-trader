@@ -2684,6 +2684,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                         models_used=models_used, agreement_pct=agreement_pct, spread=spread,
                         model_temps=candidate_model_temps,
                         confidence=confidence,
+                        polymarket_token_id=matching_market.get("polymarket_token_id"),
+                        polymarket_no_token_id=matching_market.get("polymarket_no_token_id"),
                     )
                 except Exception:
                     pass
@@ -2811,6 +2813,8 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                             model_temps=p.get("model_temps"),
                             strategy="punt",
                             confidence=p.get("confidence"),
+                            polymarket_token_id=p["market"].get("polymarket_token_id"),
+                            polymarket_no_token_id=p["market"].get("polymarket_no_token_id"),
                         )
                     except Exception:
                         pass
