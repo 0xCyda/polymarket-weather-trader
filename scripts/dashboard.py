@@ -733,9 +733,10 @@ function positionBadge(side) {
 function strategyBadge(strat) {
   const s = (strat || 'core').toLowerCase();
   let cls, label;
-  if (s === 'punt')      { cls = 'badge-strategy-punt'; label = '🎯 PUNT'; }
-  else if (s === 'late') { cls = 'badge-strategy-late'; label = 'LATE'; }
-  else                   { cls = 'badge-strategy-core'; label = 'CORE'; }
+  if (s === 'punt')              { cls = 'badge-strategy-punt'; label = '🎯 PUNT'; }
+  else if (s === 'late_add')     { cls = 'badge-strategy-late'; label = 'LATE+'; }
+  else if (s.startsWith('late')) { cls = 'badge-strategy-late'; label = 'LATE'; }
+  else                           { cls = 'badge-strategy-core'; label = 'CORE'; }
   return `<span class="badge ${cls}">${label}</span>`;
 }
 
