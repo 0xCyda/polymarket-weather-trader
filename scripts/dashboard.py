@@ -156,6 +156,7 @@ DASHBOARD_HTML = """
       display: flex;
       align-items: center;
       justify-content: flex-end;
+      gap: 8px;
     }
     .status-line {
       display: flex;
@@ -163,22 +164,14 @@ DASHBOARD_HTML = """
       gap: 12px;
       flex-wrap: wrap;
     }
-    .scan-pill {
-      background: var(--accent-green);
-      border: 1px solid var(--accent-green);
-      color: #ffffff;
-      padding: 7px 18px;
-      border-radius: 999px;
-      cursor: pointer;
-      font-size: 0.82rem;
-      font-weight: 600;
-      font-family: inherit;
-      letter-spacing: 0.01em;
-      transition: filter 0.15s ease, transform 0.15s ease;
+    .action-btn {
+      padding: 7px 16px;
+      min-width: 112px;
+      text-align: center;
+      font-weight: 500;
     }
-    .scan-pill:hover { filter: brightness(1.1); }
-    .scan-pill:active { transform: translateY(1px); }
-    .scan-pill:disabled { opacity: 0.6; cursor: not-allowed; }
+    .action-btn:active { transform: translateY(1px); }
+    .action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
     .header-left .subtitle {
       color: var(--text-secondary);
       font-size: 13px;
@@ -546,7 +539,8 @@ DASHBOARD_HTML = """
     <button class="tab-btn" id="btn-config" onclick="showTab('config')">Config</button>
   </div>
   <div class="header-scan">
-    <button class="scan-pill" id="btn-scan" onclick="triggerScan()">Scan Now</button>
+    <button class="tab-btn action-btn" id="btn-scan" onclick="triggerScan()">Scan Now</button>
+    <button class="tab-btn action-btn" id="btn-refresh" onclick="manualRefresh()">Refresh Now</button>
   </div>
 </div>
 
@@ -1246,6 +1240,18 @@ function toggleMode(id) {
   btn.textContent = on ? 'Enable' : 'Disable';
 }
 
+function setRefreshBtn(state) {
+  const btn = document.getElementById('btn-refresh');
+  if (!btn) return;
+  if (state === 'running') {
+    btn.disabled = true;
+    btn.textContent = 'Refreshing…';
+  } else {
+    btn.disabled = false;
+    btn.textContent = 'Refresh Now';
+  }
+}
+
 async function refresh() {
   try {
     setStatus('warning', 'Refreshing…');
@@ -1263,7 +1269,14 @@ async function refresh() {
   } catch (e) {
     setStatus('error', 'Connection lost');
     console.error(e);
+  } finally {
+    setRefreshBtn('idle');
   }
+}
+
+async function manualRefresh() {
+  setRefreshBtn('running');
+  await refresh();
 }
 
 refresh();
@@ -1284,11 +1297,9 @@ function setScanBtn(state) {
   if (state === 'running') {
     btn.disabled = true;
     btn.textContent = 'Scanning…';
-    btn.style.opacity = '0.55';
   } else {
     btn.disabled = false;
     btn.textContent = 'Scan Now';
-    btn.style.opacity = '1';
   }
 }
 
