@@ -35,3 +35,5 @@
 {"ts": "2026-04-26T02:31:16.045214+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Chicago", "date": "2027-03-25", "metric": "high", "signal": "no_data"}
 {"ts": "2026-04-26T02:31:17.164943+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
 {"ts": "2026-04-26T02:31:18.177553+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-04-06", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-26T04:19:20.542929+00:00", "kind": "twc_http", "msg": "status=400", "station": "KLGA:9:US", "date": "2026-04-26"}
+{"ts": "2026-04-26T04:39:22.011735+00:00", "kind": "twc_http", "msg": "status=400", "station": "KMIA:9:US", "date": "2026-04-26"}

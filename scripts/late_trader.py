@@ -44,7 +44,7 @@ if str(_HERE) not in sys.path:
 from weather_trader import (
     CONFIG_SCHEMA, fetch_weather_markets, parse_market_bucket,
     parse_weather_event, execute_trade, log_error,
-    validate_live_trading_prereqs,
+    validate_live_trading_prereqs, get_client,
 )
 from paper_journal import (
     _HISTORICAL_LOCATIONS as LOCATIONS,
@@ -426,12 +426,15 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
     result["question"] = pick_market.get("question") or pick_market.get("event_name")
     result["metric"] = metric
 
-    if dry_run:
-        log(f"  [DRY] {city}: running={running_c:.2f}°C locked in {result['bucket']} "
-            f"@ ${price:.3f} (edge {edge_c:.2f}°C) size=${size:.0f}")
-        return result
+    # Default (no --live) is paper mode: execute_trade still runs via the Simmer
+    # SDK, which simulates when WALLET_PRIVATE_KEY is unset — same pattern as
+    # CORE/PUNT in weather_trader.py. The journal entry below is gated on
+    # trade.simulated, not on dry_run, so paper trades land in paper_trades.jsonl
+    # while real wallet trades go through --live (validated in main()).
+    mode_tag = "PAPER" if dry_run else "LIVE"
+    log(f"  [{mode_tag}] {city}: running={running_c:.2f}°C locked in {result['bucket']} "
+        f"@ ${price:.3f} (edge {edge_c:.2f}°C) size=${size:.0f}")
 
-    # Live entry
     reasoning = (
         f"LATE: {city} running {metric} at {local_now.strftime('%H:%M %Z')} = "
         f"{running_c:.1f}°C, locked into {result['bucket']} (edge {edge_c:.2f}°C). "
@@ -508,6 +511,13 @@ def main():
     dry = not args.live
     if not dry:
         validate_live_trading_prereqs()
+
+    # Prime the SimmerClient singleton in paper or live mode BEFORE any
+    # execute_trade call. Default is live=True; without this, _scan_city's
+    # first execute_trade hits the live wallet path and fails with
+    # "No Polymarket wallet found" — same fix weather_trader applies at
+    # line ~2022 of run_weather_strategy.
+    get_client(live=not dry)
 
     cities = _cities_in_window(force=args.force or bool(args.city), specific=args.city)
     if not cities:
