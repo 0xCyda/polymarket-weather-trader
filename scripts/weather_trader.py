@@ -1642,12 +1642,8 @@ def calculate_position_size(default_size: float, smart_sizing: bool,
             balance = _config.get("paper_balance", 10000.0)
         city_size = balance * risk_pct
         city_size = max(city_size, 1.0)
-        # Cap by MAX_POSITION_USD — city tier scales DOWN, never up past the
-        # global per-trade ceiling. Without this cap, a 3% tier on a $20k
-        # balance would yield $600 even if MAX_POSITION_USD=$200.
-        city_size = min(city_size, default_size)
         print(f"  💡 City sizing: ${city_size:.2f} "
-              f"({risk_pct:.0%} of ${balance:.2f}, tier={tier.upper()}, capped at ${default_size:.2f})")
+              f"({risk_pct:.0%} of ${balance:.2f}, tier={tier.upper()})")
         return city_size
 
     # Path 2: legacy smart_sizing (portfolio % without city tier)
