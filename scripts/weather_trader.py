@@ -196,6 +196,21 @@ CONFIG_SCHEMA = {
                           "default": "London,Toronto,Singapore,Sao Paulo,Shanghai,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas",
                           "type": str,
                           "help": "Comma-separated whitelist of cities eligible for LATE mode (>=70% hit rate in DST-corrected Jan-Apr 2026 backtest)."},
+    # Position manager: hourly day-of management of open positions. Reads TWC
+    # intraday and either exits losers (running max projects EOD into a
+    # different bucket) or adds to winners (running max locked in held bucket
+    # AND market price is still cheap). Runs separately via
+    # scripts/position_manager.py.
+    "late_add_max_position_usd": {"env": "SIMMER_WEATHER_LATE_ADD_POSITION_USD", "default": 100.0, "type": float,
+                          "help": "Max USD per averaging-in add."},
+    "late_add_price_ceiling": {"env": "SIMMER_WEATHER_LATE_ADD_PRICE_CEILING", "default": 0.85, "type": float,
+                          "help": "Don't add above this price — already too close to settlement."},
+    "position_exit_after_hour": {"env": "SIMMER_WEATHER_POSITION_EXIT_AFTER_HOUR", "default": 16, "type": int,
+                          "help": "Local hour after which post-peak exit logic is allowed (16 = 4pm)."},
+    "position_add_after_hour": {"env": "SIMMER_WEATHER_POSITION_ADD_AFTER_HOUR", "default": 14, "type": int,
+                          "help": "Local hour after which averaging-in is allowed (14 = 2pm, start of typical peak window)."},
+    "position_pre_peak_breakout_c": {"env": "SIMMER_WEATHER_POSITION_PRE_PEAK_BREAKOUT_C", "default": 0.5, "type": float,
+                          "help": "Pre-peak: exit when running max already exceeds bucket upper edge by this many °C."},
 }
 
 # Backwards-compatible env var aliases (old name -> new name)

@@ -62,6 +62,7 @@ def log_loss(trade: dict) -> None:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass  # Never let logging break trade resolution
+import subprocess
 import requests
 from datetime import datetime, timezone
 
@@ -520,16 +521,95 @@ def _parse_bucket_range(bucket_str: str) -> tuple | None:
 _FALLBACK_DAYS_PAST = 1
 
 
+def _fetch_actual_temp_via_polymarket_cli(location: str, date_str: str, metric: str) -> float | None:
+    """
+    Use `polymarket markets search` to find all bucket markets for a city/date,
+    identify the winning bucket (highest lastTradePrice), and extract the actual
+    temperature in Fahrenheit. This is the authoritative resolution source —
+    Polymarket itself — before falling back to Open-Meteo which may differ.
+
+    Returns temperature in F, or None if the CLI is unavailable or fails.
+    """
+    city_part = location.lower().replace(" ", "")
+    try:
+        year, mo, day = date_str.split("-")
+    except ValueError:
+        return None
+    month_name = ["january","february","march","april","may","june",
+                  "july","august","september","october","november","december"][int(mo)-1]
+    search_query = f"{city_part} {month_name} {int(day)}"
+
+    try:
+        r = subprocess.run(
+            ["polymarket", "markets", "search", search_query, "--output", "json"],
+            capture_output=True, text=True, timeout=30
+        )
+        if r.returncode != 0:
+            return None
+        raw = r.stdout.strip()
+        if not raw:
+            return None
+        results = json.loads(raw)
+        if isinstance(results, dict):
+            results = results.get("results", [])
+    except Exception:
+        return None
+
+    if not results:
+        return None
+
+    # Find the bucket with the highest lastTradePrice — that's the winning bucket
+    best_price = -1.0
+    best_market = None
+    for m in results:
+        try:
+            price = float(m.get("lastTradePrice") or 0)
+        except (TypeError, ValueError):
+            continue
+        if price > best_price:
+            best_price = price
+            best_market = m
+
+    if not best_market or best_price < 0.1:
+        return None
+
+    # Parse temperature from the winning bucket's question
+    question = best_market.get("question", "")
+    m = _re.search(r"be\s+(-?\d+(?:\.\d+)?)\s*°?\s*([CF])", question, _re.IGNORECASE)
+    if m:
+        temp = float(m.group(1))
+        unit = m.group(2).upper()
+        if unit == "C":
+            return round(temp * 9.0 / 5.0 + 32.0, 1)
+        return round(temp, 1)
+
+    # Fallback: parse groupItemTitle (e.g. "14°C")
+    label = best_market.get("groupItemTitle", "")
+    m = _re.search(r"(-?\d+(?:\.\d+)?)\s*°\s*([CF])", label, _re.IGNORECASE)
+    if m:
+        temp = float(m.group(1))
+        unit = m.group(2).upper()
+        if unit == "C":
+            return round(temp * 9.0 / 5.0 + 32.0, 1)
+        return round(temp, 1)
+
+    return None
+
+
 def _historical_fallback_settlement(trade: dict, force: bool = False) -> dict | None:
     """
-    Settle a stuck-open trade by checking the actual observed temperature
-    against the bucket range via Open-Meteo archive.
+    Settle a stuck-open trade by checking the actual observed temperature.
+    Resolution chain:
+      1. Simmer API (caller does this first)
+      2. Local events cache
+      3. Live Gamma API
+      4. Polymarket CLI search (authoritative — this is Polymarket's own data)
+      5. Open-Meteo archive (last resort)
 
     Returns {"outcome": "yes"/"no", "exit_price": 0.0|1.0, "actual_temp": float,
-    "source": "historical_fallback"} or None if we can't determine.
+    "source": "..."} or None if we can't determine.
 
-    force=True bypasses the _FALLBACK_DAYS_PAST guard (used when Simmer already
-    confirms resolved=True but outcome is ambiguous — no point waiting an extra day).
+    force=True bypasses the _FALLBACK_DAYS_PAST guard.
     """
     target_date = trade.get("target_date")
     location = trade.get("location")
@@ -546,7 +626,16 @@ def _historical_fallback_settlement(trade: dict, force: bool = False) -> dict | 
     if not force and (datetime.now(timezone.utc) - target).days < _FALLBACK_DAYS_PAST:
         return None
 
+    # Step 1-3: local cache + Gamma API
     actual = fetch_historical_temp(location, target_date, metric, unit="F")
+    source = "polymarket_cache"
+
+    # Step 4: Polymarket CLI (authoritative — before Open-Meteo)
+    if actual is None:
+        actual = _fetch_actual_temp_via_polymarket_cli(location, target_date, metric)
+        source = "polymarket_cli"
+
+    # Step 5: Open-Meteo archive (last resort)
     if actual is None:
         return None
 
@@ -560,7 +649,7 @@ def _historical_fallback_settlement(trade: dict, force: bool = False) -> dict | 
         "outcome": "yes" if yes_won else "no",
         "exit_price": 1.0 if yes_won else 0.0,
         "actual_temp": actual,
-        "source": "historical_fallback",
+        "source": source,
     }
 
 
