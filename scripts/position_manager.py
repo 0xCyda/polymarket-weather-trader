@@ -296,10 +296,17 @@ def _execute_exit(trade_id: str, current_price: float, reason: str) -> dict | No
 
 
 def _execute_add(trade: dict, market: dict, size_usd: float, reason: str) -> str | None:
-    """Open a new paper trade for an averaging-in add. Tagged strategy='late_add'.
+    """Scale into the existing parent trade — DOES NOT create a new row.
 
-    Uses re-derived bucket from market question (not stored trade["bucket"]
-    which has known historical mismatches).
+    Adds shares + cost to the parent at the current market price, recomputes
+    a weighted-average entry_price, and appends to an `adds` audit array on
+    the parent. This keeps win-rate accounting at the (market_id) level: one
+    underlying bet = one row, regardless of how many times we scaled in.
+    Otherwise a successful add doubles a single correct decision into 2 wins
+    and inflates the win rate.
+
+    Returns the parent trade_id on success, None if the add couldn't be
+    applied (status changed, no live price, etc.).
     """
     cur_price = float(market.get("external_price_yes") or 0)
     if cur_price <= 0:
@@ -307,39 +314,55 @@ def _execute_add(trade: dict, market: dict, size_usd: float, reason: str) -> str
     # Re-derive bucket from live market question — don't trust trade["bucket"]
     bucket = _resolve_bucket(trade, market)
     bucket_str = _bucket_label(bucket) if bucket else (trade.get("bucket") or "")
-    shares = size_usd / cur_price
-    return log_paper_trade(
-        market_id=trade.get("market_id"),
-        question=market.get("question") or trade.get("question") or "",
-        side="yes",
-        entry_price=cur_price,
-        shares=shares,
-        cost=size_usd,
-        bucket=bucket_str,
-        forecast_temp=trade.get("forecast_temp") or 0.0,
-        signal_strength="late_add",
-        location=trade.get("location") or "",
-        date_str=trade.get("target_date") or "",
-        metric=trade.get("metric") or "high",
-        models_used=0,
-        agreement_pct=100.0,
-        spread=0.0,
-        strategy="late_add",
-        model_temps={"add_reason": reason},
-        confidence=None,
-        polymarket_token_id=market.get("polymarket_token_id") or trade.get("polymarket_token_id"),
-        polymarket_no_token_id=market.get("polymarket_no_token_id") or trade.get("polymarket_no_token_id"),
-    )
+    add_shares = size_usd / cur_price
+
+    def _mutate(parent: dict) -> dict | None:
+        if parent.get("status") != "open":
+            return None  # parent already resolved/exited — abort
+        prev_shares = float(parent.get("shares") or 0)
+        prev_cost = float(parent.get("cost") or 0)
+        prev_entry = float(parent.get("entry_price") or 0)
+        new_shares = prev_shares + add_shares
+        new_cost = prev_cost + size_usd
+        # Weighted-average entry. Falls back to current price if prev_shares==0
+        # which shouldn't happen on a real parent but keeps the math safe.
+        new_entry = (prev_shares * prev_entry + add_shares * cur_price) / new_shares if new_shares > 0 else cur_price
+        parent["shares"] = round(new_shares, 6)
+        parent["cost"] = round(new_cost, 4)
+        parent["entry_price"] = round(new_entry, 6)
+        if bucket_str and not parent.get("bucket"):
+            parent["bucket"] = bucket_str
+        adds = parent.setdefault("adds", [])
+        adds.append({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "price": round(cur_price, 4),
+            "shares": round(add_shares, 6),
+            "cost": round(size_usd, 4),
+            "reason": reason,
+        })
+        return parent
+
+    updated = update_trade_atomically(trade.get("trade_id") or "", _mutate)
+    if updated is None:
+        return None
+    return updated.get("trade_id")
 
 
-def _has_added_today(trade: dict, all_trades: list) -> bool:
-    """True if there's already a late_add for the same (market_id, target_date) in the journal."""
-    mid = trade.get("market_id")
-    td = trade.get("target_date")
-    for t in all_trades:
-        if t.get("strategy") != "late_add":
-            continue
-        if t.get("market_id") == mid and t.get("target_date") == td:
+def _has_added_today(trade: dict, all_trades: list = None) -> bool:
+    """True if this parent trade already received an add today (in city-local
+    time). Reads the `adds` audit array on the trade itself — no longer
+    cross-references separate late_add rows since adds merge into the parent.
+    The all_trades arg is kept for backward compat but unused."""
+    adds = trade.get("adds") or []
+    if not adds:
+        return False
+    # Define "today" using the parent trade's target_date (the only meaningful
+    # day-of-add window). If any add timestamp falls on the parent's
+    # target_date date, we've already added today.
+    target_date = trade.get("target_date") or ""
+    for a in adds:
+        ts = a.get("ts") or ""
+        if ts[:10] == target_date:
             return True
     return False
 
@@ -432,11 +455,11 @@ def main() -> int:
                 continue
             print(f"  ADD  {trade.get('location')} {trade.get('target_date')} ${size:.0f}: {decision.get('reason')}")
             if args.execute:
-                new_id = _execute_add(trade, market, size, decision.get("reason") or "")
-                decision["applied"] = bool(new_id)
-                decision["new_trade_id"] = new_id
-                if new_id:
-                    print(f"    → new trade_id={new_id}")
+                parent_id = _execute_add(trade, market, size, decision.get("reason") or "")
+                decision["applied"] = bool(parent_id)
+                decision["scaled_into_trade_id"] = parent_id
+                if parent_id:
+                    print(f"    → scaled into parent trade_id={parent_id}")
             n_add += 1
             _log_action(decision)
 
