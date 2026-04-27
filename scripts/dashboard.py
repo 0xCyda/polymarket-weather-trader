@@ -1012,12 +1012,26 @@ function renderSignals(d) {
 
 const RESOLVED_PAGE_SIZE = 20;
 
+function fmtAwstTimestamp(iso) {
+  if (!iso) return '—';
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return iso.substring(0, 16).replace('T', ' ');
+  return dt.toLocaleString('en-AU', {
+    timeZone: 'Australia/Perth',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).replace(',', '') + ' AWST';
+}
+
 function renderResolved(d) {
   const container = document.getElementById('resolved-table');
   // Accept state object or bare array (for re-render on page change)
   const all = Array.isArray(d) ? d : (d && d.resolved) || [];
   if (!all.length) {
-    container.innerHTML = `<tr><td colspan="9">${emptyState('✅', 'No resolved trades yet')}</td></tr>`;
+    container.innerHTML = `<tr><td colspan="10">${emptyState('✅', 'No resolved trades yet')}</td></tr>`;
     return;
   }
 
@@ -1031,14 +1045,15 @@ function renderResolved(d) {
   const start = page * RESOLVED_PAGE_SIZE;
   const slice = sorted.slice(start, start + RESOLVED_PAGE_SIZE);
 
-  const headers = ['Location', 'Strategy', 'Outcome', 'Forecast', 'Actual', 'Entry', 'Exit', 'P&L', 'Resolved'];
+  const headers = ['Location', 'Strategy', 'Outcome', 'Forecast', 'Actual', 'Entry Px', 'Exit Px', 'P&L', 'Entered', 'Resolved'];
   const rows = slice.map(t => {
     const exit = Number(t.exit_price || 0);
     const entry = Number(t.entry_price || 0);
     const shares = Number(t.shares || 0);
     const pnl = Number(t.pnl || 0);
     const outcome = t.outcome ? t.outcome.toUpperCase() : (exit > 0.5 ? 'YES' : 'NO');
-    const resolvedDate = t.resolved_at ? t.resolved_at.substring(0, 10) : (t.resolution_date || '—');
+    const enteredDate = fmtAwstTimestamp(t.entered_at);
+    const resolvedDate = t.resolved_at ? fmtAwstTimestamp(t.resolved_at) : (t.resolution_date || '—');
     const locName = (t.location || '—').substring(0, 28);
     const locCell = t.polymarket_url
       ? `<a class="pm-link" href="${t.polymarket_url}" target="_blank" rel="noopener" title="Open on Polymarket">${locName}</a>`
@@ -1072,7 +1087,8 @@ function renderResolved(d) {
       `<span class="mono">$${entry.toFixed(3)}</span>`,
       `<span class="mono">$${exit.toFixed(3)}</span>`,
       winBadge(pnl),
-      `<span class="mono">${resolvedDate.substring(0, 10)}</span>${srcBadge}`,
+      `<span class="mono">${enteredDate}</span>`,
+      `<span class="mono">${resolvedDate}</span>${srcBadge}`,
     ];
   });
   container.innerHTML =
@@ -2095,6 +2111,7 @@ def api_state():
                 "shares": float(t.get("shares") or 0),
                 "pnl": float(t.get("pnl") or 0),
                 "outcome": t.get("outcome", ""),
+                "entered_at": t.get("entered_at", ""),
                 "resolved_at": t.get("resolved_at", ""),
                 "resolution_date": t.get("resolution_date", ""),
                 "resolution_source": t.get("resolution_source", ""),
