@@ -234,10 +234,23 @@ def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
         )
         return out
 
+    # Forecast/obs drift: once the day is mature enough to trust the projection,
+    # exit if the projected EOD max sits in a different bucket than the one held.
+    # This was the Warsaw failure mode: running was still barely in 13°C, but the
+    # projected max had moved toward 14°C, so adding was backwards.
+    if proj["confidence"] >= 0.7 and not in_bucket_proj:
+        out["action"] = "exit"
+        out["reason"] = (
+            f"projected_outside_bucket "
+            f"(running={running_c:.2f}°C, projected={proj['projected_c']:.2f}°C, "
+            f"bucket={out['bucket']}, confidence={proj['confidence']:.2f})"
+        )
+        return out
+
     # ----- ADD rules -----
-    # Need to be inside peak window with running max sitting solidly in held bucket
-    # AND market price below add ceiling AND we have at least 2 hours of obs to trust.
-    if cur_hour >= ADD_AFTER_HOUR and in_bucket_now and edge_c_now >= EDGE_BUFFER_C and proj["confidence"] >= 0.7:
+    # Need to be inside peak window with running and projected max both sitting
+    # solidly in held bucket AND market price below add ceiling.
+    if cur_hour >= ADD_AFTER_HOUR and in_bucket_now and in_bucket_proj and edge_c_now >= EDGE_BUFFER_C and proj["confidence"] >= 0.7:
         cur_price = (market or {}).get("external_price_yes")
         if cur_price is None:
             out["reason"] = "add_blocked_no_price"
