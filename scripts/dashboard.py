@@ -1010,7 +1010,7 @@ function renderSignals(d) {
   window._lastSignals = signals;
 }
 
-const RESOLVED_PAGE_SIZE = 20;
+const RESOLVED_PAGE_SIZE = 10;
 
 function fmtAwstTimestamp(iso) {
   if (!iso) return '—';
