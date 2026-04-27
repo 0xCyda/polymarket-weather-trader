@@ -1202,7 +1202,7 @@ function renderConfig() {
           { k: 'Price ceiling', v: `$${cfg.late_price_ceiling}` },
           { k: 'Edge buffer', v: `${cfg.late_edge_buffer_c}°C` },
           { k: 'Max position', v: `$${cfg.late_max_position_usd}` },
-          { k: 'Daily budget', v: `$${cfg.late_daily_budget_usd}` },
+          { k: 'Sizing', v: 'edge-banded' },
           { k: 'Cities', v: (cfg.late_cities || '').split(',').filter(Boolean).length || '—' },
         ]
       },
@@ -2209,8 +2209,7 @@ def _get_config() -> dict:
         # Late mode (day-of intraday)
         "late_mode":             config.get("late_mode", True),
         "late_price_ceiling":    config.get("late_price_ceiling", 0.90),
-        "late_max_position_usd": config.get("late_max_position_usd", 100.0),
-        "late_daily_budget_usd": config.get("late_daily_budget_usd", 500.0),
+        "late_max_position_usd": config.get("late_max_position_usd", 125.0),
         "late_entry_hour":       config.get("late_entry_hour", 15),
         "late_edge_buffer_c":    config.get("late_edge_buffer_c", 0.3),
         "late_cities":           config.get("late_cities", "London,Toronto,Singapore,Sao Paulo,Shanghai,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas"),

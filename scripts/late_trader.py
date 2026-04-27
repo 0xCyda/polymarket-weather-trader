@@ -28,7 +28,6 @@ window; one invocation typically hits 1-3 cities.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -100,8 +99,7 @@ _cfg = load_config(CONFIG_SCHEMA, str(_HERE / "weather_trader.py"), slug="polyma
 LATE_MODE            = bool(_cfg.get("late_mode", True))
 LATE_PRICE_CEILING   = float(_cfg.get("late_price_ceiling", 0.90))
 LATE_PRICE_FLOOR     = float(_cfg.get("late_price_floor", 0.55))
-LATE_MAX_POSITION    = float(_cfg.get("late_max_position_usd", 100.0))
-LATE_DAILY_BUDGET    = float(_cfg.get("late_daily_budget_usd", 500.0))
+LATE_MAX_POSITION    = float(_cfg.get("late_max_position_usd", 125.0))
 LATE_ENTRY_HOUR      = int(_cfg.get("late_entry_hour", 15))
 LATE_EDGE_BUFFER_C   = float(_cfg.get("late_edge_buffer_c", 0.3))
 LATE_ALLOWED_CITIES  = [c.strip() for c in str(_cfg.get("late_cities", "")).split(",") if c.strip()]
@@ -127,14 +125,81 @@ LATE_CITY_CEILINGS: dict[str, float] = {
     # Paris dropped from whitelist (69.7% post-DST fix, below 70% threshold).
 }
 
-TWC_API_KEY = os.environ.get("TWC_API_KEY", "6532d6454b8aa370768e63d6ba5a832e")
+LATE_CITY_PRIORS: dict[str, float] = {
+    "Los Angeles": 1.000,
+    "Miami": 0.977,
+    "London": 0.955,
+    "Seattle": 0.954,
+    "Singapore": 0.949,
+    "Sao Paulo": 0.923,
+    "Shanghai": 0.923,
+    "Chicago": 0.909,
+    "Toronto": 0.864,
+    "Dallas": 0.851,
+    "Tokyo": 0.786,
+    "Beijing": 0.774,
+}
+LATE_DEFAULT_CITY_PRIOR = 0.74
 
-_BUDGET_FILE = _HERE / "data" / "late_daily_budget.json"
+TWC_API_KEY = os.environ.get("TWC_API_KEY", "6532d6454b8aa370768e63d6ba5a832e")
 
 
 def _effective_ceiling(city: str) -> float:
     """Tighter of the global LATE_PRICE_CEILING and this city's backtest-derived cap."""
     return min(LATE_PRICE_CEILING, LATE_CITY_CEILINGS.get(city, LATE_PRICE_CEILING))
+
+
+def _late_city_prior(city: str) -> float:
+    return LATE_CITY_PRIORS.get(city, LATE_DEFAULT_CITY_PRIOR)
+
+
+def _late_maturity_bonus(local_hour: int) -> float:
+    if local_hour >= LATE_ENTRY_HOUR + 3:
+        return 0.04
+    if local_hour >= LATE_ENTRY_HOUR + 2:
+        return 0.03
+    if local_hour >= LATE_ENTRY_HOUR + 1:
+        return 0.02
+    return 0.01
+
+
+def _late_lock_bonus(edge_c: float) -> float:
+    if edge_c >= 1.0:
+        return 0.06
+    if edge_c >= 0.8:
+        return 0.045
+    if edge_c >= 0.6:
+        return 0.03
+    if edge_c >= 0.45:
+        return 0.02
+    return 0.01
+
+
+def _estimate_late_probability(city: str, edge_c: float, local_hour: int) -> float:
+    """Approximate true win probability for a LATE setup.
+
+    Base = city hit rate from the Jan-Apr backtest. Then bump it modestly for:
+      - how far inside the bucket the running max already sits
+      - how mature the local day is beyond the 3pm snapshot
+    """
+    p_true = _late_city_prior(city) + _late_lock_bonus(edge_c) + _late_maturity_bonus(local_hour)
+    return max(0.55, min(0.985, p_true))
+
+
+def _size_late_trade(model_edge: float) -> float:
+    """Edge-banded LATE sizing.
+
+    Confidence decides entry. Mispricing decides size.
+    """
+    if model_edge < 0.02:
+        return 0.0
+    if model_edge < 0.04:
+        return 35.0
+    if model_edge < 0.06:
+        return 60.0
+    if model_edge < 0.08:
+        return 85.0
+    return 125.0
 
 
 # ----- TWC intraday fetch -----
@@ -226,66 +291,6 @@ def _bucket_label(bucket: tuple) -> str:
     if lo == hi:
         return f"{lo}°{unit}"
     return f"{lo}-{hi}°{unit}"
-
-
-# ----- Budget tracking -----
-
-_BUDGET_LOCK_FILE = _HERE / "data" / "late_daily_budget.lock"
-
-
-def _budget_lock():
-    """Cross-platform advisory file lock for budget read-modify-write."""
-    import contextlib
-
-    @contextlib.contextmanager
-    def _ctx():
-        _BUDGET_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-        fd = None
-        try:
-            fd = open(_BUDGET_LOCK_FILE, "w")
-            try:
-                import fcntl
-                fcntl.flock(fd, fcntl.LOCK_EX)
-            except (ImportError, OSError):
-                try:
-                    import msvcrt
-                    msvcrt.locking(fd.fileno(), msvcrt.LK_LOCK, 1)
-                except (ImportError, OSError):
-                    pass
-            yield
-        finally:
-            if fd:
-                try:
-                    fd.close()
-                except Exception:
-                    pass
-    return _ctx()
-
-
-def _load_budget() -> dict:
-    today = datetime.now(timezone.utc).date().isoformat()
-    try:
-        b = json.loads(_BUDGET_FILE.read_text())
-        if b.get("date") != today:
-            return {"date": today, "spent": 0.0}
-        return b
-    except Exception:
-        return {"date": today, "spent": 0.0}
-
-
-def _save_budget(b: dict) -> None:
-    _BUDGET_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _BUDGET_FILE.write_text(json.dumps(b))
-
-
-def _spend_budget(amount: float) -> dict:
-    """Atomic read-modify-write of the daily budget under a file lock.
-    Prevents overlapping cron + manual runs from double-spending."""
-    with _budget_lock():
-        b = _load_budget()
-        b["spent"] = b.get("spent", 0.0) + amount
-        _save_budget(b)
-        return b
 
 
 # ----- Core scan -----
@@ -411,26 +416,32 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
         result["reason"] = f"price_too_low_{price:.3f}_vs_{LATE_PRICE_FLOOR:.2f}"
         return result
 
-    # Budget check (daily cap + paper balance)
-    budget = _load_budget()
-    remaining = LATE_DAILY_BUDGET - budget["spent"]
-    size = min(LATE_MAX_POSITION, remaining)
-    # Also respect paper balance — sum all open trade costs
+    est_prob = _estimate_late_probability(city, edge_c, cur_hour)
+    model_edge = est_prob - price
+    result["estimated_prob"] = round(est_prob, 4)
+    result["model_edge"] = round(model_edge, 4)
+
+    size = min(LATE_MAX_POSITION, _size_late_trade(model_edge))
+    if size < 5:
+        result["reason"] = f"edge_too_thin_{model_edge:.3f}"
+        return result
+
+    # Respect paper balance — but no daily LATE budget anymore.
     try:
         from paper_journal import get_open_positions, get_stats
         stats = get_stats()
         paper_balance = float(_cfg.get("paper_balance", 10000.0))
         open_exposure = sum(float(p.get("cost", 0)) for p in get_open_positions())
         available = paper_balance + stats.get("total_pnl", 0) - open_exposure
-        size = min(size, max(0, available * 0.5))  # never use more than 50% of remaining balance
+        size = min(size, max(0, available * 0.5))
     except Exception:
         pass
     if size < 5:
-        result["reason"] = "daily_budget_exhausted"
+        result["reason"] = "insufficient_balance"
         return result
 
     result["status"] = "buy"
-    result["size_usd"] = size
+    result["size_usd"] = round(size, 2)
     result["market_id"] = pick_market.get("id")
     result["question"] = pick_market.get("question") or pick_market.get("event_name")
     result["metric"] = metric
@@ -442,12 +453,13 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
     # while real wallet trades go through --live (validated in main()).
     mode_tag = "PAPER" if dry_run else "LIVE"
     log(f"  [{mode_tag}] {city}: running={running_c:.2f}°C locked in {result['bucket']} "
-        f"@ ${price:.3f} (edge {edge_c:.2f}°C) size=${size:.0f}")
+        f"@ ${price:.3f} (lock {edge_c:.2f}°C, p≈{est_prob:.3f}, misprice={model_edge:+.3f}) size=${size:.0f}")
 
     reasoning = (
         f"LATE: {city} running {metric} at {local_now.strftime('%H:%M %Z')} = "
         f"{running_c:.1f}°C, locked into {result['bucket']} (edge {edge_c:.2f}°C). "
-        f"Entry price ${price:.3f} <= effective ceiling ${ceiling:.2f}."
+        f"Estimated true win probability {est_prob:.1%} vs market price ${price:.3f} "
+        f"(mispricing {model_edge:+.1%}); sized at ${size:.0f}."
     )
     signal_data = {
         "mode": "late",
@@ -459,6 +471,9 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
         "edge_c": round(edge_c, 3),
         "local_entry_hour": cur_hour,
         "price": round(price, 4),
+        "estimated_prob": round(est_prob, 4),
+        "model_edge": round(model_edge, 4),
+        "size_usd": round(size, 2),
     }
     trade = execute_trade(
         market_id=pick_market.get("id"), side="yes", amount=size,
@@ -475,10 +490,6 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
     log(f"  [BUY] {city}: {shares:.0f} @ ${price:.3f} bucket={result['bucket']} "
         f"({'paper' if trade.get('simulated') else 'live'})")
 
-    # Update budget atomically under a file lock so overlapping cron + manual
-    # runs don't double-spend the same remaining budget.
-    _spend_budget(size)
-
     # Paper journal entry (mirrors CORE/PUNT pattern)
     if trade.get("simulated"):
         try:
@@ -493,7 +504,7 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
                 models_used=0, agreement_pct=100.0, spread=0.0,
                 model_temps={"twc_running": round(running_c, 2)},
                 strategy="late",
-                confidence=None,
+                confidence=est_prob,
                 polymarket_token_id=pick_market.get("polymarket_token_id"),
                 polymarket_no_token_id=pick_market.get("polymarket_no_token_id"),
             )
@@ -537,7 +548,7 @@ def main():
 
     print(f"LATE mode ({'DRY' if dry else 'LIVE'}): scanning {len(cities)} cities at entry window")
     print(f"  price=${LATE_PRICE_FLOOR:.2f}-${LATE_PRICE_CEILING:.2f}  max_size=${LATE_MAX_POSITION:.0f}  "
-          f"edge>=${LATE_EDGE_BUFFER_C:.2f}°C  hour={LATE_ENTRY_HOUR}")
+          f"lock>=${LATE_EDGE_BUFFER_C:.2f}°C  hour={LATE_ENTRY_HOUR}  sizing=edge-banded")
 
     # Fetch Simmer market list once per scan and reuse across cities.
     markets = fetch_weather_markets()
