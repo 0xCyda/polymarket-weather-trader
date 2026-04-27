@@ -542,6 +542,104 @@ def _fetch_polymarket_event_live(slug_city: str, date_str: str, metric: str) -> 
         return None
 
 
+def _json_list(raw) -> list:
+    """Parse a JSON list field from Gamma/CLI responses."""
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        try:
+            val = json.loads(raw)
+            return val if isinstance(val, list) else []
+        except Exception:
+            return []
+    return []
+
+
+def _find_trade_gamma_market(trade: dict) -> dict | None:
+    """Return the exact Gamma bucket market for a paper trade."""
+    location = trade.get("location") or ""
+    target_date = trade.get("target_date") or ""
+    metric = trade.get("metric", "high")
+    bucket = (trade.get("bucket") or "").strip().lower()
+    yes_token = str(trade.get("polymarket_token_id") or "")
+    no_token = str(trade.get("polymarket_no_token_id") or "")
+
+    if not location or not target_date:
+        return None
+
+    for slug_city in _location_to_slug_cities(location):
+        markets = _fetch_polymarket_event_live(slug_city, target_date, metric) or []
+        if not markets:
+            continue
+
+        if yes_token or no_token:
+            for m in markets:
+                token_ids = [str(x) for x in _json_list(m.get("clobTokenIds"))]
+                if (yes_token and yes_token in token_ids) or (no_token and no_token in token_ids):
+                    return m
+
+        if bucket:
+            for m in markets:
+                title = str(m.get("groupItemTitle") or "").strip().lower()
+                if title == bucket:
+                    return m
+
+    return None
+
+
+def _fetch_polymarket_bucket_resolution(trade: dict) -> dict | None:
+    """Return exact bucket settlement from Gamma, or unresolved if still live.
+
+    This avoids settling a trade just because the parent event/resolves_at has
+    passed. The exact bucket must be closed/resolved or effectively at a final
+    settlement price.
+    """
+    market = _find_trade_gamma_market(trade)
+    if not market:
+        return None
+
+    prices = _parse_outcome_prices(market.get("outcomePrices"))
+    if not prices or len(prices) < 2:
+        return {"resolved": False, "source": "gamma"}
+
+    try:
+        yes_price = float(prices[0])
+    except (TypeError, ValueError):
+        return {"resolved": False, "source": "gamma"}
+
+    is_closed = bool(market.get("closed")) or market.get("umaResolutionStatus") == "resolved"
+    effectively_settled = yes_price <= 0.001 or yes_price >= 0.999
+
+    if not (is_closed or effectively_settled):
+        return {
+            "resolved": False,
+            "source": "gamma",
+            "yes_price": yes_price,
+            "bucket": market.get("groupItemTitle"),
+        }
+
+    if yes_price >= 0.99:
+        return {
+            "resolved": True,
+            "outcome": "yes",
+            "exit_price": 1.0,
+            "source": "gamma",
+            "yes_price": yes_price,
+            "bucket": market.get("groupItemTitle"),
+        }
+    if yes_price <= 0.01:
+        return {
+            "resolved": True,
+            "outcome": "no",
+            "exit_price": 0.0,
+            "source": "gamma",
+            "yes_price": yes_price,
+            "bucket": market.get("groupItemTitle"),
+        }
+
+    return {"resolved": False, "source": "gamma", "yes_price": yes_price}
+
+
 def fetch_historical_temp(location: str, date_str: str, metric: str, unit: str = "F") -> float | None:
     """Return the Polymarket-resolved actual temperature for a past date.
 
@@ -624,13 +722,14 @@ _FALLBACK_DAYS_PAST = 1
 
 def _fetch_actual_temp_via_polymarket_cli(location: str, date_str: str, metric: str) -> float | None:
     """
-    Use `polymarket markets search` to find all bucket markets for a city/date,
-    identify the winning bucket (highest lastTradePrice), and extract the actual
-    temperature in Fahrenheit. This is the authoritative resolution source —
-    Polymarket itself — before falling back to Open-Meteo which may differ.
+    Use `polymarket markets search` as a last-ditch fallback for resolved
+    city/date events. Results are filtered to the exact event date/year and
+    metric before picking a settled/winning bucket.
 
-    Returns temperature in F, or None if the CLI is unavailable or fails.
+    Returns temperature in F, or None if the CLI is unavailable, unresolved, or
+    only returns stale/current prices.
     """
+    slug_cities = _location_to_slug_cities(location)
     city_part = location.lower().replace(" ", "")
     try:
         year, mo, day = date_str.split("-")
@@ -638,7 +737,7 @@ def _fetch_actual_temp_via_polymarket_cli(location: str, date_str: str, metric: 
         return None
     month_name = ["january","february","march","april","may","june",
                   "july","august","september","october","november","december"][int(mo)-1]
-    search_query = f"{city_part} {month_name} {int(day)}"
+    search_query = f"{city_part} {month_name} {int(day)} {year}"
 
     try:
         r = subprocess.run(
@@ -659,19 +758,42 @@ def _fetch_actual_temp_via_polymarket_cli(location: str, date_str: str, metric: 
     if not results:
         return None
 
-    # Find the bucket with the highest lastTradePrice — that's the winning bucket
+    prefix = "highest" if metric == "high" else "lowest"
+    expected_date = f"{year}-{mo}-{int(day):02d}"
+    candidates = []
+    for m in results:
+        end_date = str(m.get("endDate") or m.get("endDateIso") or "")[:10]
+        slug = str(m.get("slug") or "")
+        if end_date != expected_date:
+            continue
+        if not any(slug.startswith(f"{prefix}-temperature-in-{city}-on-") for city in slug_cities):
+            continue
+        prices = _parse_outcome_prices(m.get("outcomePrices"))
+        try:
+            yes_price = float(prices[0]) if prices and len(prices) >= 2 else float(m.get("lastTradePrice") or 0)
+        except (TypeError, ValueError):
+            yes_price = 0.0
+        closed = bool(m.get("closed")) or m.get("umaResolutionStatus") == "resolved" or yes_price >= 0.99
+        if closed:
+            candidates.append(m)
+
+    if not candidates:
+        return None
+
+    # Find the settled bucket with the highest YES price.
     best_price = -1.0
     best_market = None
-    for m in results:
+    for m in candidates:
+        prices = _parse_outcome_prices(m.get("outcomePrices"))
         try:
-            price = float(m.get("lastTradePrice") or 0)
+            price = float(prices[0]) if prices and len(prices) >= 2 else float(m.get("lastTradePrice") or 0)
         except (TypeError, ValueError):
             continue
         if price > best_price:
             best_price = price
             best_market = m
 
-    if not best_market or best_price < 0.1:
+    if not best_market or best_price < 0.99:
         return None
 
     # Parse temperature from the winning bucket's question
@@ -775,11 +897,11 @@ def _compute_pnl(side: str, entry: float, exit_price: float, shares: float) -> f
 def update_resolved_trades() -> list:
     """
     Check all open paper trades. Settlement flow:
-      1. Query Simmer API for resolution status + outcome.
-      2. If Simmer says resolved AND outcome surfaced → settle.
-      3. If Simmer says resolved but outcome=None, OR target_date is >2 days
-         past with no resolution, → fall back to Open-Meteo archive historical
-         temperature and settle ourselves.
+      1. Query Gamma for the exact Polymarket bucket market.
+      2. Settle only when that exact bucket is closed/resolved or effectively
+         at final settlement price.
+      3. If Gamma cannot identify the bucket, fall back to the legacy Simmer +
+         historical chain.
 
     Returns list of newly resolved trades.
     """
@@ -791,40 +913,52 @@ def update_resolved_trades() -> list:
             continue
 
         market_id = trade.get("market_id")
-        resolution = _fetch_market_resolution(market_id) if market_id else None
+        resolution = None
 
         outcome = None
         exit_price = None
         source = None
 
-        # Path 1: Simmer reports resolved + outcome
-        if resolution and resolution.get("resolved") and resolution.get("outcome"):
-            outcome = resolution["outcome"]
-            exit_price = 1.0 if outcome.lower() in ("yes", "true") else 0.0
-            source = "simmer"
-            # Fetch and persist actual temp once at resolution time (not on every dashboard load)
-            if trade.get("actual_temp") is None:
-                try:
-                    loc = trade.get("location", "")
-                    date_str = trade.get("target_date") or trade.get("resolution_date", "")[:10]
-                    metric = trade.get("metric", "high")
-                    if loc and date_str:
-                        actual = fetch_historical_temp(loc, date_str, metric, unit="F")
-                        if actual is not None:
-                            trade["actual_temp"] = actual
-                except Exception:
-                    pass
+        # Path 1: exact bucket settlement from Gamma/Polymarket. If the bucket
+        # exists but is still live, do NOT let Simmer parent-event status close it.
+        gamma_resolution = _fetch_polymarket_bucket_resolution(trade)
+        if gamma_resolution:
+            if not gamma_resolution.get("resolved"):
+                continue
+            outcome = gamma_resolution["outcome"]
+            exit_price = gamma_resolution["exit_price"]
+            source = gamma_resolution["source"]
         else:
-            # Path 2: historical fallback (Simmer outcome=None OR just expired).
-            # Pass force=True when Simmer already confirmed resolved — no point
-            # waiting _FALLBACK_DAYS_PAST extra days for Open-Meteo data.
-            simmer_resolved = bool(resolution and resolution.get("resolved"))
-            fb = _historical_fallback_settlement(trade, force=simmer_resolved)
-            if fb:
-                outcome = fb["outcome"]
-                exit_price = fb["exit_price"]
-                source = fb["source"]
-                trade["actual_temp"] = fb["actual_temp"]
+            resolution = _fetch_market_resolution(market_id) if market_id else None
+
+            # Path 2: legacy Simmer fallback only when Gamma cannot find the exact bucket.
+            if resolution and resolution.get("resolved") and resolution.get("outcome"):
+                outcome = resolution["outcome"]
+                exit_price = 1.0 if outcome.lower() in ("yes", "true") else 0.0
+                source = "simmer"
+                # Fetch and persist actual temp once at resolution time (not on every dashboard load)
+                if trade.get("actual_temp") is None:
+                    try:
+                        loc = trade.get("location", "")
+                        date_str = trade.get("target_date") or trade.get("resolution_date", "")[:10]
+                        metric = trade.get("metric", "high")
+                        if loc and date_str:
+                            actual = fetch_historical_temp(loc, date_str, metric, unit="F")
+                            if actual is not None:
+                                trade["actual_temp"] = actual
+                    except Exception:
+                        pass
+            else:
+                # Path 3: historical fallback (Simmer outcome=None OR just expired).
+                # Pass force=True when Simmer already confirmed resolved — no point
+                # waiting _FALLBACK_DAYS_PAST extra days for Open-Meteo data.
+                simmer_resolved = bool(resolution and resolution.get("resolved"))
+                fb = _historical_fallback_settlement(trade, force=simmer_resolved)
+                if fb:
+                    outcome = fb["outcome"]
+                    exit_price = fb["exit_price"]
+                    source = fb["source"]
+                    trade["actual_temp"] = fb["actual_temp"]
 
         if outcome is None or exit_price is None:
             continue  # Not ready yet

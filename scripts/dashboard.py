@@ -613,7 +613,7 @@ DASHBOARD_HTML = """
 
 <div class="layout-split">
   <div class="card table-wrap">
-    <h2>Open Positions</h2>
+    <h2>Open Positions <span id="open-positions-count" style="font-size:14px;font-weight:500;margin-left:6px;color:var(--muted)"></span></h2>
     <table id="positions-table"></table>
   </div>
   <div class="card">
@@ -877,12 +877,23 @@ function renderBreakdown(d) {
 
 function renderPositions(d) {
   const container = document.getElementById('positions-table');
+  const countEl = document.getElementById('open-positions-count');
   if (!d.positions.length) {
+    if (countEl) countEl.textContent = '(0)';
     container.innerHTML = `<tr><td colspan="9">${emptyState('📭', 'No open positions')}</td></tr>`;
     return;
   }
+
+  // Sort by target_date ascending (earliest resolution first)
+  const sorted = [...d.positions].sort((a, b) => {
+    const da = a.target_date || '9999';
+    const db = b.target_date || '9999';
+    return da.localeCompare(db);
+  });
+  if (countEl) countEl.textContent = `(${sorted.length})`;
+
   const headers = ['Market', 'Strategy', 'Side', 'Shares', 'Entry', 'Current', 'uPNL', 'Resolves', 'ID'];
-  const rows = d.positions.map(p => {
+  const rows = sorted.map(p => {
     const q = p.question || '—';
     const truncQ = q.length > 58 ? q.substring(0, 55) + '…' : q;
     const side = p.side ? p.side.toUpperCase() : 'YES';
