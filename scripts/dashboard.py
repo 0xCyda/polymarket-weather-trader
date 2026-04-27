@@ -451,6 +451,8 @@ DASHBOARD_HTML = """
     }
     .badge-yes       { background: rgba(52, 211, 153, 0.12);  color: var(--accent-green); border-color: rgba(52, 211, 153, 0.25); }
     .badge-no        { background: rgba(248, 113, 113, 0.12); color: var(--accent-red); border-color: rgba(248, 113, 113, 0.25); }
+    .badge-tp        { background: rgba(52, 211, 153, 0.16); color: var(--accent-green); border-color: rgba(52, 211, 153, 0.32); }
+    .badge-sl        { background: rgba(248, 113, 113, 0.16); color: var(--accent-red); border-color: rgba(248, 113, 113, 0.32); }
     .badge-win       { background: rgba(52, 211, 153, 0.15);  color: var(--accent-green); }
     .badge-loss      { background: rgba(248, 113, 113, 0.15); color: var(--accent-red); }
     .badge-neutral   { background: rgba(120, 130, 160, 0.15); color: var(--text-secondary); }
@@ -728,6 +730,14 @@ function signalBadge(s) {
 function positionBadge(side) {
   const cls = side === 'YES' ? 'badge-yes' : 'badge-no';
   return `<span class="badge ${cls}">${side}</span>`;
+}
+
+function pmExitBadge(source, pnl) {
+  if ((source || '').toLowerCase() !== 'early_exit_position_manager') return '';
+  const n = Number(pnl || 0);
+  if (n > 0) return `<span class="badge badge-tp" title="PM take profit">TP</span>`;
+  if (n < 0) return `<span class="badge badge-sl" title="PM stop loss">SL</span>`;
+  return '';
 }
 
 function strategyBadge(strat) {
@@ -1081,7 +1091,7 @@ function renderResolved(d) {
     return [
       locCell,
       strategyBadge(t.strategy),
-      positionBadge(outcome),
+      `<div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap">${positionBadge(outcome)}${pmExitBadge(t.resolution_source, pnl)}</div>`,
       forecastCell,
       actualCell,
       `<span class="mono">$${entry.toFixed(3)}</span>`,
