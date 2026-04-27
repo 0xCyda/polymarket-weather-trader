@@ -1091,7 +1091,7 @@ function renderResolved(d) {
     return [
       locCell,
       strategyBadge(t.strategy),
-      `<div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap">${positionBadge(outcome)}${pmExitBadge(t.resolution_source, pnl)}</div>`,
+      `<div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:nowrap;white-space:nowrap">${positionBadge(outcome)}${pmExitBadge(t.resolution_source, pnl)}</div>`,
       forecastCell,
       actualCell,
       `<span class="mono">$${entry.toFixed(3)}</span>`,
