@@ -1033,7 +1033,7 @@ function fmtAwstTimestamp(iso) {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  }).replace(',', '') + ' AWST';
+  }).replace(',', '').replace(/\sat\s/, ' ') + ' AWST';
 }
 
 function renderResolved(d) {
@@ -1055,7 +1055,7 @@ function renderResolved(d) {
   const start = page * RESOLVED_PAGE_SIZE;
   const slice = sorted.slice(start, start + RESOLVED_PAGE_SIZE);
 
-  const headers = ['Location', 'Strategy', 'Outcome', 'Forecast', 'Actual', 'Entry Px', 'Exit Px', 'P&L', 'Entered', 'Resolved'];
+  const headers = ['Location', 'Strategy', 'Outcome', 'Forecast', 'Actual', 'Entry', 'Exit', 'P&L', 'Entered', 'Resolved'];
   const rows = slice.map(t => {
     const exit = Number(t.exit_price || 0);
     const entry = Number(t.entry_price || 0);
