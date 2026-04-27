@@ -767,18 +767,18 @@ function emptyState(icon, message) {
 }
 
 function renderCards(d) {
-  const equity = Number(d.portfolio.realized_pnl || 0) + Number(d.portfolio.unrealized_pnl || 0);
-  const winRate = d.stats.win_rate;
-  const totalPnl = Number(d.portfolio.realized_pnl || 0);
+  const realized = Number(d.portfolio.realized_pnl || 0);
   const unrealPnl = Number(d.portfolio.unrealized_pnl || 0);
+  const equity = realized + unrealPnl;
+  const winRate = d.stats.win_rate;
   document.getElementById('summary-cards').innerHTML = [
-    metricCard('Balance', money(d.portfolio.balance), {sub: 'paper · simulated'}),
+    metricCard('Balance', money(d.portfolio.balance), {
+      tone: realized > 0 ? 'positive' : realized < 0 ? 'negative' : null,
+      sub: 'paper · realized P&L baked in',
+    }),
     metricCard('Total P&L', fmtPnl(equity), {
       tone: equity > 0 ? 'positive' : equity < 0 ? 'negative' : null,
       sub: 'realized + unrealized',
-    }),
-    metricCard('Realized', fmtPnl(totalPnl), {
-      tone: totalPnl > 0 ? 'positive' : totalPnl < 0 ? 'negative' : null,
     }),
     metricCard('Unrealized', fmtPnl(unrealPnl), {
       tone: unrealPnl > 0 ? 'positive' : unrealPnl < 0 ? 'negative' : null,
