@@ -1,0 +1,63 @@
+Polymarket Weather Events Pull - 2026-04-27 09:11 UTC
+============================================================
+Mode: RESOLVED | tag=weather
+Limit: 2000
+
+  page offset=    0 → +100 events (total 100)
+  page offset=  100 → +100 events (total 200)
+  page offset=  200 → +100 events (total 300)
+  page offset=  300 → +100 events (total 400)
+  page offset=  400 → +100 events (total 500)
+  page offset=  500 → +100 events (total 600)
+  page offset=  600 → +100 events (total 700)
+  page offset=  700 → +100 events (total 800)
+  page offset=  800 → +100 events (total 900)
+  page offset=  900 → +100 events (total 1000)
+  page offset= 1000 → +100 events (total 1100)
+  page offset= 1100 → +100 events (total 1200)
+  page offset= 1200 → +100 events (total 1300)
+  page offset= 1300 → +100 events (total 1400)
+  page offset= 1400 → +100 events (total 1500)
+  page offset= 1500 → +100 events (total 1600)
+  page offset= 1600 → +100 events (total 1700)
+  page offset= 1700 → +100 events (total 1800)
+  page offset= 1800 → +100 events (total 1900)
+  page offset= 1900 → +100 events (total 2000)
+
+  Total events:       2000
+  Resolved/closed:    2000
+  Still open:         0
+  Total sub-markets:  14630
+
+  Top 15 cities:
+    Nyc                 429 events
+    London              421 events
+    Seattle             108 events
+    Dallas              106 events
+    Atlanta             105 events
+    Seoul               105 events
+    Toronto             104 events
+    Buenos Aires        104 events
+    Miami                60 events
+    Chicago              59 events
+    Ankara               57 events
+    Wellington           56 events
+    Sao Paulo            34 events
+    Paris                34 events
+    Lucknow              14 events
+
+  Target months covered:
+    February      412 events
+    March         401 events
+    January       304 events
+    December      246 events
+    August         77 events
+    September      72 events
+    May            71 events
+    October        70 events
+    June           66 events
+    November       66 events
+    July           66 events
+    April          63 events
+
+  Saved 2000 events -> /home/brandon/projects/polymarket-weather-trader/data/polymarket_events.jsonl

@@ -399,7 +399,19 @@ def _location_to_slug_cities(location: str) -> list[str]:
 
 
 def _load_events_index() -> dict:
-    """Build {(slug_city, YYYY-MM-DD, metric): markets[]} from local cache."""
+    """Build {(slug_city, YYYY-MM-DD, metric): markets[]} from local cache.
+
+    Year-source precedence (CRITICAL — prior bug used slug-or-default-2026):
+      1. Year suffix in the slug if present (e.g. "...-april-26-2026").
+      2. ISO year of event.endDate / endDateIso / startDateIso (the event's
+         own resolution time — authoritative).
+      3. SKIP the event entirely if neither is available.
+
+    The earlier "default to 2026" fallback caused 2025 closed events with
+    year-less slugs (e.g. "highest-temperature-in-nyc-on-april-26") to be
+    indexed as 2026 entries. Every same-date 2026 trade then resolved
+    against last year's actual temperature — the NYC 2026-04-26 trade got
+    actual_temp=73.5°F (Apr 26 2025) instead of the real ~56°F (Apr 26 2026)."""
     global _events_index_cache
     if _events_index_cache is not None:
         return _events_index_cache
@@ -424,10 +436,28 @@ def _load_events_index() -> dict:
             mo = months.get(m.group(3))
             if not mo:
                 continue
-            year = int(m.group(5)) if m.group(5) else 2026
+            year: int | None = int(m.group(5)) if m.group(5) else None
+            if year is None:
+                # Fall back to the event's own date metadata.
+                for date_field in ("endDate", "endDateIso", "startDateIso", "startDate"):
+                    val = ev.get(date_field)
+                    if not val or not isinstance(val, str):
+                        continue
+                    try:
+                        year = int(val[:4])
+                        break
+                    except (ValueError, TypeError):
+                        continue
+            if year is None:
+                # No reliable year source — skip rather than guess.
+                continue
             date = f"{year:04d}-{mo:02d}-{int(m.group(4)):02d}"
             metric = "high" if m.group(1) == "highest" else "low"
-            idx[(m.group(2), date, metric)] = ev.get("markets", [])
+            # Append to the slot rather than overwrite — multiple events can
+            # legitimately resolve on the same (city, date, metric) (e.g.
+            # different airports/stations) and the YES-bucket finder picks
+            # whichever resolves YES.
+            idx.setdefault((m.group(2), date, metric), []).extend(ev.get("markets", []))
     _events_index_cache = idx
     return idx
 
