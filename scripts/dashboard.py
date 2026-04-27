@@ -1500,11 +1500,22 @@ def _get_simmer_positions() -> list[dict]:
 
 def _fetch_price_via_clob(token_id: str) -> float | None:
     """Hit Polymarket CLOB directly when we already know the YES token id.
-    Avoids the Gamma resolve and the Simmer fallback entirely."""
+    Prefer midpoint for mark-to-market so dashboard P&L reflects a fair live mark
+    instead of the more punitive best-bid liquidation quote."""
     if not token_id:
         return None
     try:
         import requests
+        mid_resp = requests.get(
+            "https://clob.polymarket.com/midpoint",
+            params={"token_id": token_id},
+            timeout=5,
+        )
+        if mid_resp.status_code == 200:
+            mid = float(mid_resp.json().get("mid", 0) or 0)
+            if mid > 0:
+                return mid
+
         resp = requests.get(
             "https://clob.polymarket.com/price",
             params={"token_id": token_id, "side": "buy"},

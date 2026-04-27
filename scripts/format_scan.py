@@ -168,6 +168,29 @@ def compute_upnl(position: dict[str, Any]) -> float | None:
 
 
 def _fetch_live_price(market_id: str) -> float | None:
+    def _mid_or_buy(token_id: str) -> float | None:
+        try:
+            import requests
+            mid_resp = requests.get(
+                "https://clob.polymarket.com/midpoint",
+                params={"token_id": token_id},
+                timeout=5,
+            )
+            if mid_resp.status_code == 200:
+                mid = float(mid_resp.json().get("mid", 0) or 0)
+                if mid > 0:
+                    return mid
+            clob_resp = requests.get(
+                "https://clob.polymarket.com/price",
+                params={"token_id": token_id, "side": "buy"},
+                timeout=5,
+            )
+            if clob_resp.status_code == 200:
+                return float(clob_resp.json().get("price", 0) or 0)
+        except Exception:
+            return None
+        return None
+
     if not market_id:
         return None
 
@@ -185,13 +208,7 @@ def _fetch_live_price(market_id: str) -> float | None:
                     ctids = json.loads(ctids_raw)
                     yes_token = ctids[0] if len(ctids) > 0 else None
                     if yes_token:
-                        clob_resp = requests.get(
-                            "https://clob.polymarket.com/price",
-                            params={"token_id": yes_token, "side": "buy"},
-                            timeout=5,
-                        )
-                        if clob_resp.status_code == 200:
-                            return float(clob_resp.json().get("price", 0) or 0)
+                        return _mid_or_buy(str(yes_token))
         except Exception:
             return None
         return None
@@ -214,6 +231,11 @@ def _fetch_live_price(market_id: str) -> float | None:
             return None
         market = data.get("market", {})
         price = float(market.get("current_price", 0) or 0)
+        token_id = market.get("polymarket_token_id") or market.get("yes_token_id")
+        if token_id:
+            mid = _mid_or_buy(str(token_id))
+            if mid is not None:
+                return mid
         if market.get("status") == "resolved" and 0.05 <= price <= 0.95:
             return None
         return price
