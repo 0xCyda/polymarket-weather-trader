@@ -1946,7 +1946,24 @@ def _run_scan_bg():
         summary_lines = []
         for line in output.splitlines():
             stripped = line.strip()
-            if any(k in stripped for k in ("Events scanned:", "Entry opportunities:", "Trades executed:", "Punts executed:", "BUY", "SELL", "punt", "Bought", "Sold", "Error", "error")):
+            # Keep the scan toast tight: counts, actual trades, exits, errors.
+            # Skip per-bucket model breakdowns and "BUY opportunity!" debug
+            # lines — the user wants to see what was traded, not the model
+            # internals. Trade-entered lines now self-contain city/bucket/
+            # price/size in the form: "✅ [PAPER] BUY <city> <bucket> YES @ $X (...)".
+            keep = (
+                "Events scanned:" in stripped
+                or "Entry opportunities:" in stripped
+                or "Trades executed:" in stripped
+                or "Punts executed:" in stripped
+                or " BUY " in stripped         # "✅ [PAPER] BUY Munich 19°C YES @ $0.80 (...)"
+                or " PUNT " in stripped        # "✅ [PAPER] PUNT London 12°C YES @ $0.05 (...)"
+                or " Sold " in stripped        # exits
+                or " GTC pending " in stripped # GTC orders (live mode)
+                or "Error" in stripped
+                or "error" in stripped
+            )
+            if keep:
                 summary_lines.append(stripped)
 
         with _scan_lock:
