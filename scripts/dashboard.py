@@ -1089,8 +1089,19 @@ function renderResolved(d) {
     return;
   }
 
-  // Newest first
-  const sorted = all.slice().reverse();
+  const parseResolvedDate = (t) => {
+    const dateStr = t.resolution_date || t.target_date || (t.resolved_at ? t.resolved_at.substring(0, 10) : '');
+    return dateStr ? Date.parse(`${dateStr}T00:00:00+08:00`) : Number.NEGATIVE_INFINITY;
+  };
+  const parseResolvedAt = (t) => t.resolved_at ? Date.parse(t.resolved_at) : Number.NEGATIVE_INFINITY;
+  const parseEnteredAt = (t) => t.entered_at ? Date.parse(t.entered_at) : Number.NEGATIVE_INFINITY;
+
+  // Resolution date first, then actual settlement time, then entry time.
+  const sorted = all.slice().sort((a, b) => (
+    parseResolvedDate(b) - parseResolvedDate(a)
+    || parseResolvedAt(b) - parseResolvedAt(a)
+    || parseEnteredAt(b) - parseEnteredAt(a)
+  ));
   const totalPages = Math.max(1, Math.ceil(sorted.length / RESOLVED_PAGE_SIZE));
   if (window._resolvedPage === undefined) window._resolvedPage = 0;
   // Clamp page if data shrank between renders
@@ -1099,7 +1110,7 @@ function renderResolved(d) {
   const start = page * RESOLVED_PAGE_SIZE;
   const slice = sorted.slice(start, start + RESOLVED_PAGE_SIZE);
 
-  const headers = ['Location', 'Strategy', 'Outcome', 'Forecast', 'Actual', 'Entry', 'Exit', 'P&L', 'Entered', 'Resolved'];
+  const headers = ['Resolved', 'Location', 'Strategy', 'Outcome', 'Forecast', 'Actual', 'Entry', 'Exit', 'P&L', 'Entered'];
   const rows = slice.map(t => {
     const exit = Number(t.exit_price || 0);
     const entry = Number(t.entry_price || 0);
@@ -1107,7 +1118,11 @@ function renderResolved(d) {
     const pnl = Number(t.pnl || 0);
     const outcome = t.outcome ? t.outcome.toUpperCase() : (exit > 0.5 ? 'YES' : 'NO');
     const enteredDate = fmtAwstTimestamp(t.entered_at);
-    const resolvedDate = t.resolved_at ? fmtAwstTimestamp(t.resolved_at) : (t.resolution_date || '—');
+    const resolutionDate = t.resolution_date || t.target_date || (t.resolved_at ? t.resolved_at.substring(0, 10) : '—');
+    const resolvedStamp = t.resolved_at ? fmtAwstTimestamp(t.resolved_at) : '';
+    const resolvedCell = resolvedStamp && resolvedStamp !== resolutionDate
+      ? `<div><span class="mono">${resolutionDate}</span><div class="faint" style="font-size:10px">${resolvedStamp}</div></div>`
+      : `<span class="mono">${resolutionDate}</span>`;
     const locName = (t.location || '—').substring(0, 28);
     const locCell = t.polymarket_url
       ? `<a class="pm-link" href="${t.polymarket_url}" target="_blank" rel="noopener" title="Open on Polymarket">${locName}</a>`
@@ -1133,6 +1148,7 @@ function renderResolved(d) {
     }
 
     return [
+      `${resolvedCell}${srcBadge}`,
       locCell,
       strategyBadge(t.strategy),
       `<div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:nowrap;white-space:nowrap">${positionBadge(outcome)}${pmExitBadge(t.resolution_source, pnl, t.exit_reason)}</div>`,
@@ -1142,7 +1158,6 @@ function renderResolved(d) {
       `<span class="mono">$${exit.toFixed(3)}</span>`,
       winBadge(pnl),
       `<span class="mono">${enteredDate}</span>`,
-      `<span class="mono">${resolvedDate}</span>${srcBadge}`,
     ];
   });
   container.innerHTML =
@@ -1556,6 +1571,32 @@ def _build_timeseries(trades: list[dict]) -> list[dict]:
         cumulative += r["pnl"]
         aggregated[r["date"]] = round(cumulative, 4)
     return [{"date": d, "cumulative_pnl": v} for d, v in aggregated.items()]
+
+
+def _parse_sort_dt(value: str | None) -> datetime:
+    """Best-effort parser for dashboard trade sorting."""
+    if not value:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    raw = str(value).strip()
+    if not raw:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        if len(raw) == 10:
+            return datetime.fromisoformat(raw).replace(tzinfo=timezone.utc)
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
+
+def _resolved_trade_sort_key(trade: dict) -> tuple[datetime, datetime, datetime]:
+    """Sort resolved history by market resolution date first, then settlement time."""
+    resolution_date = _parse_sort_dt(
+        trade.get("resolution_date") or trade.get("target_date") or (trade.get("resolved_at") or "")[:10]
+    )
+    resolved_at = _parse_sort_dt(trade.get("resolved_at"))
+    entered_at = _parse_sort_dt(trade.get("entered_at"))
+    return (resolution_date, resolved_at, entered_at)
 
 
 def _get_simmer_positions() -> list[dict]:
@@ -2185,6 +2226,8 @@ def api_state():
                 "polymarket_url": polymarket_event_url(loc, tgt, metric),
             })
 
+    resolved = sorted(resolved, key=_resolved_trade_sort_key, reverse=True)
+
     return JSONResponse({
         "portfolio": _get_portfolio_stats(positions),
         "stats": _get_stats(),
@@ -2202,6 +2245,7 @@ def api_state():
                 "shares": float(t.get("shares") or 0),
                 "pnl": float(t.get("pnl") or 0),
                 "outcome": t.get("outcome", ""),
+                "target_date": t.get("target_date", ""),
                 "entered_at": t.get("entered_at", ""),
                 "resolved_at": t.get("resolved_at", ""),
                 "resolution_date": t.get("resolution_date", ""),
