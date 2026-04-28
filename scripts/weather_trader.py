@@ -58,7 +58,7 @@ except ImportError:
 
 # Paper trading journal (local JSONL — no Simmer balance needed)
 try:
-    from paper_journal import log_paper_trade, update_resolved_trades, get_open_positions, get_stats, get_open_positions_by_event
+    from paper_journal import log_paper_trade, update_resolved_trades, get_open_positions, get_stats, get_open_positions_by_event, backfill_actual_temps
     PAPER_JOURNAL_AVAILABLE = True
 except ImportError:
     PAPER_JOURNAL_AVAILABLE = False
@@ -66,6 +66,7 @@ except ImportError:
     def update_resolved_trades(): return []
     def get_open_positions(): return []
     def get_stats(): return {}
+    def backfill_actual_temps(): return []
 
 # --------------------------------------------------------------------
 # Error log — all non-200 responses, API errors, and unexpected
@@ -2116,6 +2117,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                     pnl = t.get('pnl', 0)
                     emoji = "✅" if pnl > 0 else "❌"
                     log(f"  {emoji} Paper trade resolved: {t.get('location')} {t.get('target_date')} {t.get('side', '').upper()} → {t.get('outcome', '')} | P&L: ${pnl:.4f}")
+            patched_actuals = backfill_actual_temps()
+            if patched_actuals:
+                log(f"  🌡️ Backfilled actual temps on {len(patched_actuals)} resolved trade(s)")
         except Exception:
             pass  # Non-critical
 

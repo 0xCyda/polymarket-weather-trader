@@ -48,7 +48,8 @@ from weather_trader import (
 from paper_journal import (
     _HISTORICAL_LOCATIONS as LOCATIONS,
     JOURNAL_FILE, _load_trades, _save_trades, _compute_pnl, log_loss,
-    log_paper_trade, update_trade_atomically,
+    log_paper_trade, update_trade_atomically, fetch_historical_temp,
+    backfill_actual_temps,
 )
 from late_trader import (
     STATIONS, _fetch_twc_intraday, _running_extreme,
@@ -436,6 +437,18 @@ def _execute_exit(trade_id: str, current_price: float, reason: str) -> dict | No
         target["resolved_at"] = datetime.now(timezone.utc).isoformat()
         target["resolution_source"] = "early_exit_position_manager"
         target["exit_reason"] = reason
+        if target.get("actual_temp") is None:
+            try:
+                actual = fetch_historical_temp(
+                    target.get("location", ""),
+                    target.get("target_date", ""),
+                    target.get("metric", "high"),
+                    unit="F",
+                )
+                if actual is not None:
+                    target["actual_temp"] = actual
+            except Exception:
+                pass
         return target
 
     resolved = update_trade_atomically(trade_id, _mutate)
@@ -631,6 +644,14 @@ def main() -> int:
                     print(f"    → scaled into parent trade_id={parent_id}")
             n_add += 1
             _log_action(decision)
+
+    if args.execute:
+        try:
+            patched = backfill_actual_temps()
+            if patched:
+                print(f"position_manager backfill_actual_temps: patched={len(patched)}")
+        except Exception:
+            pass
 
     total = len(open_trades)
     print(f"position_manager done: exit={n_exit} add={n_add} hold={n_hold} skip={n_skip} (of {total})")
