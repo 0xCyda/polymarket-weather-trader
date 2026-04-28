@@ -70,6 +70,8 @@ PRE_PEAK_BREAKOUT_C = float(_cfg.get("position_pre_peak_breakout_c", 0.5))
 HALFHOUR_START_HOUR = int(_cfg.get("position_halfhour_start_hour", ADD_AFTER_HOUR))
 REPRICING_GUARD_START_HOUR = int(_cfg.get("position_repricing_guard_start_hour", ADD_AFTER_HOUR))
 REPRICING_DROP_FRAC = float(_cfg.get("position_repricing_drop_frac", 0.50))
+CORPSE_PRICE_FLOOR = float(_cfg.get("position_corpse_price_floor", 0.05))
+CORPSE_ENTRY_FRAC = float(_cfg.get("position_corpse_entry_frac", 0.35))
 REPRICING_WEATHER_EDGE_C = float(_cfg.get("position_repricing_weather_edge_c", 0.20))
 REPRICING_COOLDOWN_MIN = float(_cfg.get("position_repricing_cooldown_min", 45.0))
 LATE_PROJECTED_EXIT_COOLDOWN_MIN = 45.0
@@ -321,6 +323,27 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
             out["price_drop_frac"] = round(max(0.0, 1.0 - (cur_price / prev_price)), 4) if prev_price > 0 else None
 
     # ----- EXIT rules -----
+    # Emergency market-implied stop: if the same-day position is mature and
+    # Polymarket has repriced it to a corpse probability, get out even before
+    # the peak-hour weather gates. This catches the Buenos Aires / Sao Paulo
+    # failure mode where the PM check saw ~4¢ prices but held until the next
+    # hourly weather breakout exit at a worse fill.
+    if cur_price is not None and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN):
+        try:
+            entry_price = float(trade.get("entry_price") or 0)
+        except Exception:
+            entry_price = 0.0
+        corpse_hit = cur_price <= CORPSE_PRICE_FLOOR and (entry_price <= 0 or cur_price <= entry_price * CORPSE_ENTRY_FRAC)
+        if corpse_hit:
+            out["action"] = "exit"
+            out["reason"] = (
+                f"corpse_price_guard "
+                f"(price=${cur_price:.3f} <= floor=${CORPSE_PRICE_FLOOR:.3f}, "
+                f"entry=${entry_price:.3f}, entry_frac={CORPSE_ENTRY_FRAC:.2f}, "
+                f"running={running_c:.2f}°C, projected={proj['projected_c']:.2f}°C)"
+            )
+            return out
+
     # Repricing guard: late-day price collapse plus weakening weather support.
     if (
         cur_price is not None

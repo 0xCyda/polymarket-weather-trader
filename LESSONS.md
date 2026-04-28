@@ -1,5 +1,13 @@
 # Polymarket Weather Trader — Lessons Learned
 
+## 2026-04-29 — PM held near-corpse positions before hourly breakout exit
+
+**Symptom:** Buenos Aires 18°C YES and Sao Paulo 25°C-or-below YES were held during the last PM check at ~$0.04, then auto-exited one hour later at worse fills ($0.0255 and $0.0005).
+
+**Root cause:** The repricing guard only reacted to a relative collapse after `position_repricing_guard_start_hour` and after weather support weakened. It had no absolute same-day corpse-price stop, so already-dead core positions could be held before the peak-hour gate.
+
+**Fix:** `position_manager.py` now has a configurable corpse-price guard (`position_corpse_price_floor`, default $0.05) that exits mature same-day positions when current price is at/below the floor and has lost most of entry value (`position_corpse_entry_frac`, default 35%). This avoids nuking cheap punt entries while catching core positions the market has already priced as dead.
+
 ## Bug Fixes
 
 ### format_scan.py: get_positions() silent failure when Simmer API returns 401

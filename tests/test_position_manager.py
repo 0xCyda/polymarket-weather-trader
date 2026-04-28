@@ -59,6 +59,59 @@ class FakeDateTime(real_datetime):
         return dt.astimezone(tz)
 
 
+class TestCorpsePriceGuard(unittest.TestCase):
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=25.0)
+    def test_corpse_price_exits_before_peak_hour(self, *_mocks):
+        trade = {
+            "trade_id": "sao-paulo-core",
+            "market_id": "m-sao",
+            "location": "Sao Paulo",
+            "target_date": "2026-04-28",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-04-27T19:09:56+00:00",
+            "question": "Will the highest temperature in Sao Paulo be 25°C or below on April 28?",
+            "forecast_temp": 75.2,
+            "metric": "high",
+            "bucket": "25°C or below",
+            "entry_price": 0.47,
+        }
+        market = {"id": "m-sao", "external_price_yes": 0.04}
+        now_utc = real_datetime(2026, 4, 28, 15, 19, 0, tzinfo=timezone.utc)  # 12:19 local, before repricing guard start
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertIn("corpse_price_guard", decision["reason"])
+        self.assertLess(decision["local_hour"], pm.REPRICING_GUARD_START_HOUR)
+
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=25.0)
+    def test_corpse_price_does_not_stop_positions_that_entered_cheap(self, *_mocks):
+        trade = {
+            "trade_id": "cheap-punt",
+            "market_id": "m-punt",
+            "location": "Sao Paulo",
+            "target_date": "2026-04-28",
+            "side": "yes",
+            "strategy": "punt",
+            "entered_at": "2026-04-27T19:09:56+00:00",
+            "question": "Will the highest temperature in Sao Paulo be 25°C or below on April 28?",
+            "forecast_temp": 75.2,
+            "metric": "high",
+            "bucket": "25°C or below",
+            "entry_price": 0.06,
+        }
+        market = {"id": "m-punt", "external_price_yes": 0.04}
+        now_utc = real_datetime(2026, 4, 28, 15, 19, 0, tzinfo=timezone.utc)
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "hold")
+        self.assertEqual(decision["reason"], "hold_no_signal")
+
+
 class TestLateCooldown(unittest.TestCase):
     @patch.object(pm, "datetime", FakeDateTime)
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
