@@ -1342,7 +1342,7 @@ function renderConfig() {
             <h4>Three Trading Modes</h4>
             <ul>
               <li><strong>CORE</strong>: 4-hourly, buys bucket with highest model edge vs market price</li>
-              <li><strong>PUNT</strong>: tail lottery, buys deeply-mispriced tail buckets (&le;6¢) with fixed small stakes</li>
+              <li><strong>PUNT</strong>: tail lottery, buys deeply-mispriced tail buckets (&le;14.9¢) with fixed small stakes</li>
               <li><strong>LATE</strong>: hourly, buys bucket containing observed daily max at 3pm local</li>
             </ul>
           </div>
@@ -1433,10 +1433,16 @@ function setRefreshBtn(state) {
   }
 }
 
+function scanCityCount() {
+  const cfg = window._lastConfig || {};
+  return Array.isArray(cfg.locations) && cfg.locations.length ? cfg.locations.length : null;
+}
+
 async function refresh() {
   try {
     setStatus('warning', 'Refreshing…');
     const state = await loadJson('/api/state');
+    window._lastConfig = state.config || {};
     renderCards(state);
     renderChart(state);
     renderBreakdown(state);
@@ -1490,7 +1496,9 @@ function pollScanStatus() {
     .then(s => {
       if (s.status === 'running') {
         const elapsed = s.started_at ? Math.round((Date.now() - new Date(s.started_at).getTime()) / 1000) : '?';
-        showToast('Scanning…', `Fetching forecasts across 25 cities… (${elapsed}s)`, 'var(--accent-amber)');
+        const cityCount = scanCityCount();
+        const cityLabel = cityCount ? `${cityCount} cities` : 'configured cities';
+        showToast('Scanning…', `Fetching forecasts across ${cityLabel}… (${elapsed}s)`, 'var(--accent-amber)');
         _scanPollTimer = setTimeout(pollScanStatus, 4000);
       } else if (s.status === 'done') {
         clearTimeout(_scanPollTimer);
@@ -2348,7 +2356,7 @@ def _get_config() -> dict:
         # Punt mode
         "punt_mode":            config.get("punt_mode", True),
         "punt_max_position_usd": config.get("punt_max_position_usd", 15.0),
-        "punt_price_ceiling":   config.get("punt_price_ceiling", 0.06),
+        "punt_price_ceiling":   config.get("punt_price_ceiling", 0.149),
         "punt_min_edge":        config.get("punt_min_edge", 0.50),
         "punt_min_confidence":  config.get("punt_min_confidence", 0.70),
         "punt_daily_budget_usd": config.get("punt_daily_budget_usd", 100.0),
