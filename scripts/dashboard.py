@@ -1080,6 +1080,21 @@ function fmtAwstTimestamp(iso) {
   }).replace(',', '').replace(/\sat\s/, ' ') + ' AWST';
 }
 
+function resolvedSignature(all) {
+  if (!Array.isArray(all) || !all.length) return 'empty';
+  const first = all[0] || {};
+  const last = all[all.length - 1] || {};
+  return [
+    all.length,
+    first.resolution_date || first.target_date || '',
+    first.resolved_at || '',
+    first.location || '',
+    last.resolution_date || last.target_date || '',
+    last.resolved_at || '',
+    last.location || '',
+  ].join('|');
+}
+
 function renderResolved(d) {
   const container = document.getElementById('resolved-table');
   // Accept state object or bare array (for re-render on page change)
@@ -1103,6 +1118,11 @@ function renderResolved(d) {
     || parseEnteredAt(b) - parseEnteredAt(a)
   ));
   const totalPages = Math.max(1, Math.ceil(sorted.length / RESOLVED_PAGE_SIZE));
+  const sig = resolvedSignature(sorted);
+  if (window._resolvedSignature !== sig) {
+    window._resolvedPage = 0;
+    window._resolvedSignature = sig;
+  }
   if (window._resolvedPage === undefined) window._resolvedPage = 0;
   // Clamp page if data shrank between renders
   if (window._resolvedPage >= totalPages) window._resolvedPage = totalPages - 1;
