@@ -14,7 +14,23 @@ from pathlib import Path
 
 _BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_BASE))
-from paper_journal import fetch_historical_temp
+from paper_journal import fetch_historical_temp, _historical_fallback_settlement
+
+
+def _resolve_actual_temp(trade: dict) -> float | None:
+    """Best-effort actual temp lookup for a resolved trade."""
+    loc_name = trade.get("location", "")
+    date_str = trade.get("target_date") or (trade.get("resolution_date", "") or "")[:10]
+    if not loc_name or not date_str:
+        return None
+    metric = trade.get("metric", "high")
+    actual = fetch_historical_temp(loc_name, date_str, metric, unit="F")
+    if actual is not None:
+        return actual
+    fb = _historical_fallback_settlement(trade, force=True)
+    if fb:
+        return fb.get("actual_temp")
+    return None
 
 PAPER_TRADES = _BASE.parent / "data" / "paper_trades.jsonl"
 
@@ -54,8 +70,7 @@ def main() -> None:
         date_str = t.get("target_date") or (t.get("resolution_date", "") or "")[:10]
         if not loc_name or not date_str:
             continue
-        metric = t.get("metric", "high")
-        actual = fetch_historical_temp(loc_name, date_str, metric, unit="F")
+        actual = _resolve_actual_temp(t)
         if actual is None:
             no_resolution += 1
             print(f"  [no resolution] {loc_name} {date_str}")

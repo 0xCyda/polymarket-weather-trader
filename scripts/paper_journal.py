@@ -349,6 +349,48 @@ _HISTORICAL_LOCATIONS = {
     "Buenos Aires": (-34.6037, -58.3816, "America/Argentina/Buenos_Aires"),
 }
 
+_OPEN_METEO_ARCHIVE_ENDPOINT = "https://archive-api.open-meteo.com/v1/archive"
+
+
+def _fetch_archive_actual_temp(location: str, date_str: str, metric: str, unit: str = "F") -> float | None:
+    """Return the observed daily high/low from Open-Meteo archive as a last resort."""
+    coords = _HISTORICAL_LOCATIONS.get(location)
+    if coords is None:
+        want = (location or "").strip().lower()
+        for name, info in _HISTORICAL_LOCATIONS.items():
+            if name.lower() == want:
+                coords = info
+                break
+    if coords is None or not date_str:
+        return None
+
+    lat, lon, tz = coords
+    daily_field = "temperature_2m_max" if str(metric or "high").lower().startswith("h") else "temperature_2m_min"
+    temp_unit = "fahrenheit" if str(unit or "F").upper().startswith("F") else "celsius"
+    try:
+        resp = requests.get(
+            _OPEN_METEO_ARCHIVE_ENDPOINT,
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "start_date": date_str,
+                "end_date": date_str,
+                "daily": daily_field,
+                "temperature_unit": temp_unit,
+                "timezone": tz,
+            },
+            timeout=20,
+        )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        temps = (data.get("daily") or {}).get(daily_field) or []
+        if not temps or temps[0] is None:
+            return None
+        return round(float(temps[0]), 1)
+    except Exception:
+        return None
+
 
 # Polymarket/Gamma-only actual-temperature resolution.
 # The actual high/low for a trade is derived from which bucket resolved YES
@@ -859,6 +901,9 @@ def _historical_fallback_settlement(trade: dict, force: bool = False) -> dict | 
         source = "polymarket_cli"
 
     # Step 5: Open-Meteo archive (last resort)
+    if actual is None:
+        actual = _fetch_archive_actual_temp(location, target_date, metric, unit="F")
+        source = "open_meteo_archive"
     if actual is None:
         return None
 
