@@ -65,6 +65,7 @@ ADD_PRICE_CEILING   = float(_cfg.get("late_add_price_ceiling", 0.85))
 EXIT_AFTER_HOUR     = int(_cfg.get("position_exit_after_hour", 16))   # post-peak local hour
 ADD_AFTER_HOUR      = int(_cfg.get("position_add_after_hour", 14))    # peak-window start
 PRE_PEAK_BREAKOUT_C = float(_cfg.get("position_pre_peak_breakout_c", 0.5))
+LATE_PROJECTED_EXIT_COOLDOWN_MIN = 45.0
 
 ACTIONS_LOG = JOURNAL_FILE.parent / "manager_actions.jsonl"
 
@@ -95,6 +96,19 @@ def _resolve_bucket(trade: dict, market: dict | None) -> tuple | None:
         return b
     label = trade.get("bucket") or ""
     return parse_temperature_bucket(label)
+
+
+def _trade_age_minutes(trade: dict, now_utc: datetime | None = None) -> float | None:
+    """Return minutes since entry, or None if entered_at is unavailable/bad."""
+    entered_at = trade.get("entered_at")
+    if not entered_at:
+        return None
+    try:
+        entered = datetime.fromisoformat(str(entered_at).replace("Z", "+00:00"))
+    except Exception:
+        return None
+    now_utc = now_utc or datetime.now(timezone.utc)
+    return max(0.0, (now_utc - entered).total_seconds() / 60.0)
 
 
 def _project_eod_max_c(running_c: float, local_hour: int, forecast_f: float | None) -> dict:
@@ -190,6 +204,9 @@ def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
 
     cur_hour = local_now.hour
     out["local_hour"] = cur_hour
+    age_min = _trade_age_minutes(trade, datetime.now(timezone.utc))
+    if age_min is not None:
+        out["age_min"] = round(age_min, 1)
 
     obs = _fetch_twc_intraday(station, local_today)
     if not obs:
@@ -239,6 +256,14 @@ def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
     # This was the Warsaw failure mode: running was still barely in 13°C, but the
     # projected max had moved toward 14°C, so adding was backwards.
     if proj["confidence"] >= 0.7 and not in_bucket_proj:
+        strategy = (trade.get("strategy") or "").lower()
+        if strategy == "late" and age_min is not None and age_min < LATE_PROJECTED_EXIT_COOLDOWN_MIN:
+            out["reason"] = (
+                f"late_cooldown_{age_min:.1f}m_projected_outside_bucket "
+                f"(running={running_c:.2f}°C, projected={proj['projected_c']:.2f}°C, "
+                f"bucket={out['bucket']}, confidence={proj['confidence']:.2f})"
+            )
+            return out
         out["action"] = "exit"
         out["reason"] = (
             f"projected_outside_bucket "
