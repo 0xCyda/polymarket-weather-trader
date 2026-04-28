@@ -15,6 +15,7 @@ import json
 import os
 import sys
 import math
+import time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -1479,6 +1480,29 @@ function showToast(title, body, color) {
   toast.style.display = 'block';
 }
 
+function renderScanProgressToast(s) {
+  const elapsed = s.started_at ? Math.round((Date.now() - new Date(s.started_at).getTime()) / 1000) : '?';
+  const cityCount = scanCityCount();
+  const cityLabel = cityCount ? `${cityCount} cities` : 'configured cities';
+  const progress = Math.max(2, Math.min(97, Number(s.progress || 0)));
+  const stage = s.stage_label || 'Scanning';
+  const detail = s.detail || `Working through ${cityLabel}`;
+  showToast('Scanning…', `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px">
+      <span style="font-weight:600;color:var(--text-primary)">${escapeHtml(stage)}</span>
+      <span style="font-family:'JetBrains Mono',monospace;color:var(--text-faint)">${progress}%</span>
+    </div>
+    <div style="height:10px;border-radius:999px;background:rgba(255,255,255,0.08);overflow:hidden;border:1px solid rgba(255,255,255,0.06)">
+      <div style="height:100%;width:${progress}%;background:linear-gradient(90deg, var(--accent-blue), var(--accent-cyan), var(--accent-green));border-radius:999px;transition:width 900ms ease"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;gap:12px;margin-top:8px;color:var(--text-secondary)">
+      <span>${escapeHtml(detail)}</span>
+      <span style="font-family:'JetBrains Mono',monospace;color:var(--text-faint)">${elapsed}s</span>
+    </div>
+    <div style="margin-top:6px;color:var(--text-faint);font-size:11px">Scanning ${cityLabel}</div>
+  `, 'var(--accent-amber)');
+}
+
 function setScanBtn(state) {
   const btn = document.getElementById('btn-scan');
   if (state === 'running') {
@@ -1495,11 +1519,8 @@ function pollScanStatus() {
     .then(r => r.json())
     .then(s => {
       if (s.status === 'running') {
-        const elapsed = s.started_at ? Math.round((Date.now() - new Date(s.started_at).getTime()) / 1000) : '?';
-        const cityCount = scanCityCount();
-        const cityLabel = cityCount ? `${cityCount} cities` : 'configured cities';
-        showToast('Scanning…', `Fetching forecasts across ${cityLabel}… (${elapsed}s)`, 'var(--accent-amber)');
-        _scanPollTimer = setTimeout(pollScanStatus, 4000);
+        renderScanProgressToast(s);
+        _scanPollTimer = setTimeout(pollScanStatus, 1500);
       } else if (s.status === 'done') {
         clearTimeout(_scanPollTimer);
         setScanBtn('idle');
@@ -2093,7 +2114,17 @@ import subprocess
 import threading
 
 _scan_lock = threading.Lock()
-_scan_state: dict = {"status": "idle", "started_at": None, "finished_at": None, "summary": None, "error": None}
+_scan_state: dict = {
+    "status": "idle",
+    "started_at": None,
+    "finished_at": None,
+    "summary": None,
+    "error": None,
+    "progress": 0,
+    "stage": "idle",
+    "stage_label": "Idle",
+    "detail": None,
+}
 
 _LOCATIONS = (
     "NYC,Chicago,Seattle,Atlanta,Dallas,Miami,Houston,San Francisco,Phoenix,LA,"
@@ -2103,6 +2134,56 @@ _LOCATIONS = (
 _TRADER_SCRIPT = str(Path(__file__).resolve().parent / "weather_trader.py")
 _VENV_PYTHON = "/home/brandon/.openclaw/venv/bin/python3"
 _SIMMER_KEY_FILE = "/home/brandon/.openclaw/workspace/SOLEBRACE/API/.simmer-key"
+
+_SCAN_STAGE_LABELS = {
+    "initializing": "Initialising scan",
+    "discovering": "Discovering markets",
+    "loading": "Loading market data",
+    "forecasting": "Fetching forecasts",
+    "ranking": "Ranking candidates",
+    "trading": "Executing entries",
+    "punt": "Running punt pass",
+    "exits": "Checking exits",
+    "finalizing": "Finalising",
+    "done": "Complete",
+    "error": "Scan failed",
+}
+
+
+def _set_scan_progress(progress: int | None = None, stage: str | None = None, detail: str | None = None) -> None:
+    with _scan_lock:
+        if progress is not None:
+            _scan_state["progress"] = max(int(_scan_state.get("progress", 0)), int(progress))
+        if stage is not None:
+            _scan_state["stage"] = stage
+            _scan_state["stage_label"] = _SCAN_STAGE_LABELS.get(stage, stage.replace("_", " ").title())
+        if detail is not None:
+            _scan_state["detail"] = detail
+
+
+def _scan_progress_from_line(line: str) -> tuple[int | None, str | None, str | None]:
+    stripped = line.strip()
+    if not stripped:
+        return None, None, None
+    if "🔍 Discovering new weather markets" in stripped:
+        return 10, "discovering", "Searching Polymarket weather events"
+    if "📡 Fetching weather markets" in stripped:
+        return 24, "loading", "Pulling live market books"
+    if "Fetching ensemble forecast" in stripped:
+        return 42, "forecasting", "Refreshing ensemble forecasts"
+    if stripped.startswith("🏆 Ranked"):
+        return 68, "ranking", stripped
+    if " BUY " in stripped or " GTC pending " in stripped:
+        return 78, "trading", stripped
+    if stripped.startswith("🎯 Punt pass") or " PUNT " in stripped:
+        return 86, "punt", stripped
+    if "Checking " in stripped and "weather positions for exit" in stripped:
+        return 92, "exits", stripped
+    if "Events scanned:" in stripped or "Entry opportunities:" in stripped or "Trades executed:" in stripped or "Punts executed:" in stripped:
+        return 96, "finalizing", stripped
+    if "Error" in stripped or "error" in stripped:
+        return 96, "finalizing", stripped
+    return None, None, None
 
 
 def _run_scan_bg():
@@ -2118,39 +2199,72 @@ def _run_scan_bg():
         env["SIMMER_API_KEY"] = api_key
         env["SIMMER_WEATHER_LOCATIONS"] = _LOCATIONS
 
-        result = subprocess.run(
+        summary_lines: list[str] = []
+        output_lines: list[str] = []
+        _set_scan_progress(4, "initializing", "Booting weather trader")
+
+        proc = subprocess.Popen(
             [_VENV_PYTHON, _TRADER_SCRIPT, "--smart-sizing", "--punt-mode"],
             env=env,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=480,
+            bufsize=1,
             cwd=str(Path(_TRADER_SCRIPT).parent),
         )
-        output = result.stdout + result.stderr
 
-        # Extract summary lines
-        summary_lines = []
-        for line in output.splitlines():
-            stripped = line.strip()
-            # Keep the scan toast tight: counts, actual trades, exits, errors.
-            # Skip per-bucket model breakdowns and "BUY opportunity!" debug
-            # lines — the user wants to see what was traded, not the model
-            # internals. Trade-entered lines now self-contain city/bucket/
-            # price/size in the form: "✅ [PAPER] BUY <city> <bucket> YES @ $X (...)".
-            keep = (
-                "Events scanned:" in stripped
-                or "Entry opportunities:" in stripped
-                or "Trades executed:" in stripped
-                or "Punts executed:" in stripped
-                or " BUY " in stripped         # "✅ [PAPER] BUY Munich 19°C YES @ $0.80 (...)"
-                or " PUNT " in stripped        # "✅ [PAPER] PUNT London 12°C YES @ $0.05 (...)"
-                or " Sold " in stripped        # exits
-                or " GTC pending " in stripped # GTC orders (live mode)
-                or "Error" in stripped
-                or "error" in stripped
-            )
-            if keep:
-                summary_lines.append(stripped)
+        def _reader() -> None:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                output_lines.append(line)
+                stripped = line.strip()
+                progress, stage, detail = _scan_progress_from_line(line)
+                if progress is not None or stage is not None or detail is not None:
+                    _set_scan_progress(progress, stage, detail)
+                keep = (
+                    "Events scanned:" in stripped
+                    or "Entry opportunities:" in stripped
+                    or "Trades executed:" in stripped
+                    or "Punts executed:" in stripped
+                    or " BUY " in stripped
+                    or " PUNT " in stripped
+                    or " Sold " in stripped
+                    or " GTC pending " in stripped
+                    or "Error" in stripped
+                    or "error" in stripped
+                )
+                if keep:
+                    summary_lines.append(stripped)
+
+        reader = threading.Thread(target=_reader, daemon=True)
+        reader.start()
+
+        started = time.time()
+        while True:
+            rc = proc.poll()
+            if rc is not None:
+                break
+            if time.time() - started > 480:
+                proc.kill()
+                reader.join(timeout=2)
+                raise subprocess.TimeoutExpired(proc.args, 480)
+            time.sleep(0.25)
+
+        reader.join(timeout=2)
+        output = "".join(output_lines)
+        if proc.returncode not in (0, None):
+            err_line = next((line.strip() for line in reversed(output.splitlines()) if line.strip()), f"Scan exited with code {proc.returncode}")
+            with _scan_lock:
+                _scan_state.update({
+                    "status": "error",
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "error": err_line,
+                    "summary": summary_lines or None,
+                    "stage": "error",
+                    "stage_label": _SCAN_STAGE_LABELS["error"],
+                    "detail": err_line,
+                })
+            return
 
         with _scan_lock:
             _scan_state.update({
@@ -2158,13 +2272,34 @@ def _run_scan_bg():
                 "finished_at": datetime.now(timezone.utc).isoformat(),
                 "summary": summary_lines or ["Scan complete — no signals"],
                 "error": None,
+                "progress": 100,
+                "stage": "done",
+                "stage_label": _SCAN_STAGE_LABELS["done"],
+                "detail": "Scan complete",
             })
     except subprocess.TimeoutExpired:
         with _scan_lock:
-            _scan_state.update({"status": "error", "finished_at": datetime.now(timezone.utc).isoformat(), "error": "Timed out after 8 min", "summary": None})
+            _scan_state.update({
+                "status": "error",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "error": "Timed out after 8 min",
+                "summary": None,
+                "progress": max(int(_scan_state.get("progress", 0)), 96),
+                "stage": "error",
+                "stage_label": _SCAN_STAGE_LABELS["error"],
+                "detail": "Timed out after 8 min",
+            })
     except Exception as exc:
         with _scan_lock:
-            _scan_state.update({"status": "error", "finished_at": datetime.now(timezone.utc).isoformat(), "error": str(exc), "summary": None})
+            _scan_state.update({
+                "status": "error",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "error": str(exc),
+                "summary": None,
+                "stage": "error",
+                "stage_label": _SCAN_STAGE_LABELS["error"],
+                "detail": str(exc),
+            })
 
 
 # ---------------------------------------------------------------------------
@@ -2184,7 +2319,17 @@ def api_scan_trigger():
     with _scan_lock:
         if _scan_state["status"] == "running":
             return JSONResponse({"ok": False, "error": "Scan already running"}, status_code=409)
-        _scan_state.update({"status": "running", "started_at": datetime.now(timezone.utc).isoformat(), "finished_at": None, "summary": None, "error": None})
+        _scan_state.update({
+            "status": "running",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": None,
+            "summary": None,
+            "error": None,
+            "progress": 3,
+            "stage": "initializing",
+            "stage_label": _SCAN_STAGE_LABELS["initializing"],
+            "detail": "Preparing scan",
+        })
     t = threading.Thread(target=_run_scan_bg, daemon=True)
     t.start()
     return JSONResponse({"ok": True, "status": "running"})
