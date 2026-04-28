@@ -177,10 +177,10 @@ CONFIG_SCHEMA = {
                           "help": "Min model probability for a punt. Don't punt on weak tail signals."},
     "punt_daily_budget_usd":{"env": "SIMMER_WEATHER_PUNT_DAILY_BUDGET","default": 100.0,"type": float,
                           "help": "Max USD spent on punts per day. Safety cap."},
-    # Late mode: day-of intraday strategy. At ~3pm local, buys the bucket
-    # containing the observed running daily max/min from TWC. Orthogonal
-    # to CORE (model forecast) and PUNT (tail lottery). Runs separately
-    # via scripts/late_trader.py on an hourly cron.
+    # Late mode: day-of intraday strategy. In a narrow post-3pm local window,
+    # buys the bucket containing the observed running daily max/min from TWC.
+    # Orthogonal to CORE (model forecast) and PUNT (tail lottery). Runs
+    # separately via scripts/late_trader.py on a frequent cron.
     "late_mode":         {"env": "SIMMER_WEATHER_LATE_MODE",         "default": True,  "type": bool,
                           "help": "Enable LATE mode: day-of intraday entry based on TWC observations."},
     "late_price_ceiling":{"env": "SIMMER_WEATHER_LATE_PRICE_CEILING","default": 0.95,  "type": float,
@@ -190,7 +190,11 @@ CONFIG_SCHEMA = {
     "late_max_position_usd":{"env": "SIMMER_WEATHER_LATE_POSITION_USD","default": 125.0,"type": float,
                           "help": "Hard cap per LATE trade. Actual size is edge-banded in late_trader.py (35/60/85/125 by mispricing)."},
     "late_entry_hour":   {"env": "SIMMER_WEATHER_LATE_ENTRY_HOUR",   "default": 15,    "type": int,
-                          "help": "Local hour at which LATE mode takes its snapshot (15 = 3pm local)."},
+                          "help": "Anchor local hour for the LATE entry window (15 = 3pm local)."},
+    "late_entry_minute_start": {"env": "SIMMER_WEATHER_LATE_ENTRY_MINUTE_START", "default": 0, "type": int,
+                          "help": "Start minute within late_entry_hour for the LATE window (inclusive)."},
+    "late_entry_minute_end": {"env": "SIMMER_WEATHER_LATE_ENTRY_MINUTE_END", "default": 45, "type": int,
+                          "help": "End minute within late_entry_hour for the LATE window (inclusive)."},
     "late_edge_buffer_c":{"env": "SIMMER_WEATHER_LATE_EDGE_BUFFER_C","default": 0.3,   "type": float,
                           "help": "Min distance (°C) from running temp to bucket edges to count as locked in."},
     "late_cities":       {"env": "SIMMER_WEATHER_LATE_CITIES",

@@ -2,8 +2,8 @@
 """
 LATE mode: day-of intraday weather trader.
 
-At ~3pm local (or any hour configured), pulls TWC/Wunderground intraday
-observations for a set of whitelisted cities, finds the Polymarket bucket
+In a narrow post-3pm local window (or any configured hour/minute window),
+pulls TWC/Wunderground intraday observations for a set of whitelisted cities, finds the Polymarket bucket
 containing the running daily max/min, and buys it if:
 
   * the observed running value is >= `late_edge_buffer_c` from both bucket edges
@@ -19,15 +19,16 @@ Run:
   python3 scripts/late_trader.py --live       # execute real trades
   python3 scripts/late_trader.py --city London --force  # process one city now
 
-Cron (hourly):
-  0 * * * *  python3 /path/to/late_trader.py --live
+Cron (every 15 minutes):
+  */15 * * * *  python3 /path/to/late_trader.py --live
 
-The hourly cron processes whichever cities are currently in their 3pm-local
-window; one invocation typically hits 1-3 cities.
+The cron processes whichever cities are currently in their configured
+3pm-local minute window; one invocation typically hits 0-3 cities.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -101,8 +102,12 @@ LATE_PRICE_CEILING   = float(_cfg.get("late_price_ceiling", 0.90))
 LATE_PRICE_FLOOR     = float(_cfg.get("late_price_floor", 0.55))
 LATE_MAX_POSITION    = float(_cfg.get("late_max_position_usd", 125.0))
 LATE_ENTRY_HOUR      = int(_cfg.get("late_entry_hour", 15))
+LATE_ENTRY_MINUTE_START = int(_cfg.get("late_entry_minute_start", 0))
+LATE_ENTRY_MINUTE_END   = int(_cfg.get("late_entry_minute_end", 45))
 LATE_EDGE_BUFFER_C   = float(_cfg.get("late_edge_buffer_c", 0.3))
 LATE_ALLOWED_CITIES  = [c.strip() for c in str(_cfg.get("late_cities", "")).split(",") if c.strip()]
+
+LATE_STATE_FILE = _HERE / "data" / "late_window_state.json"
 
 # Per-city price ceilings derived from the Jan-Apr 2026 backtest hit rate
 # (DST-corrected 3pm-local snapshot) with a 3¢ safety margin.
@@ -295,8 +300,42 @@ def _bucket_label(bucket: tuple) -> str:
 
 # ----- Core scan -----
 
+def _in_late_window(local_dt: datetime) -> bool:
+    if local_dt.hour != LATE_ENTRY_HOUR:
+        return False
+    return LATE_ENTRY_MINUTE_START <= local_dt.minute <= LATE_ENTRY_MINUTE_END
+
+
+def _load_late_state() -> dict:
+    try:
+        return json.loads(LATE_STATE_FILE.read_text()) if LATE_STATE_FILE.exists() else {}
+    except Exception:
+        return {}
+
+
+def _save_late_state(state: dict) -> None:
+    LATE_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    LATE_STATE_FILE.write_text(json.dumps(state, indent=2, sort_keys=True))
+
+
+def _late_state_key(city: str, date_str: str) -> str:
+    return f"{city}|{date_str}"
+
+
+def _is_structural_skip(reason: str | None) -> bool:
+    if not reason:
+        return False
+    return reason.startswith((
+        "already_held_by_",
+        "borderline_edge_",
+        "price_too_high_",
+        "price_too_low_",
+        "no_bucket_match",
+    ))
+
+
 def _cities_in_window(force: bool, specific: str | None) -> list[str]:
-    """Return allowed cities whose local hour currently equals LATE_ENTRY_HOUR.
+    """Return allowed cities whose local time is currently inside the configured LATE window.
     With force=True, return all allowed. With specific, return just that one."""
     if specific:
         return [specific] if specific in LOCATIONS else []
@@ -308,12 +347,12 @@ def _cities_in_window(force: bool, specific: str | None) -> list[str]:
             continue
         tz = ZoneInfo(loc[2])
         local = now_utc.astimezone(tz)
-        if force or local.hour == LATE_ENTRY_HOUR:
+        if force or _in_late_window(local):
             out.append(city)
     return out
 
 
-def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print) -> dict:
+def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print, late_state: dict | None = None) -> dict:
     result = {"city": city, "status": "skip", "reason": None, "price": None, "bucket": None}
     loc = LOCATIONS.get(city)
     station = STATIONS.get(city)
@@ -325,6 +364,12 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print)
     local_now = datetime.now(timezone.utc).astimezone(tz)
     date_str = local_now.date().isoformat()
     cur_hour = local_now.hour
+    state_key = _late_state_key(city, date_str)
+    locked = (late_state or {}).get(state_key)
+    if locked and locked.get("kind") == "structural_skip":
+        result["reason"] = f"locked_after_{locked.get('reason', 'skip')}"
+        result["locked"] = True
+        return result
 
     # Check for duplicate: skip if core/punt already holds this city+date
     try:
@@ -543,28 +588,41 @@ def main():
 
     cities = _cities_in_window(force=args.force or bool(args.city), specific=args.city)
     if not cities:
-        print(f"LATE: no allowed cities currently at local hour {LATE_ENTRY_HOUR} (whitelist: {LATE_ALLOWED_CITIES})")
+        print(
+            f"LATE: no allowed cities currently in local window {LATE_ENTRY_HOUR}:"
+            f"{LATE_ENTRY_MINUTE_START:02d}-{LATE_ENTRY_HOUR}:{LATE_ENTRY_MINUTE_END:02d} "
+            f"(whitelist: {LATE_ALLOWED_CITIES})"
+        )
         return 0
 
     print(f"LATE mode ({'DRY' if dry else 'LIVE'}): scanning {len(cities)} cities at entry window")
     print(f"  price=${LATE_PRICE_FLOOR:.2f}-${LATE_PRICE_CEILING:.2f}  max_size=${LATE_MAX_POSITION:.0f}  "
-          f"lock>=${LATE_EDGE_BUFFER_C:.2f}°C  hour={LATE_ENTRY_HOUR}  sizing=edge-banded")
+          f"lock>=${LATE_EDGE_BUFFER_C:.2f}°C  window={LATE_ENTRY_HOUR}:{LATE_ENTRY_MINUTE_START:02d}-{LATE_ENTRY_HOUR}:{LATE_ENTRY_MINUTE_END:02d}  sizing=edge-banded")
 
     # Fetch Simmer market list once per scan and reuse across cities.
     markets = fetch_weather_markets()
+    late_state = _load_late_state()
 
     n_buy = 0
     for city in cities:
-        r = _scan_city(city, dry_run=dry, markets=markets)
+        r = _scan_city(city, dry_run=dry, markets=markets, late_state=late_state)
         if r["status"] == "buy":
             n_buy += 1
         elif r["status"] == "skip":
             print(f"  [SKIP] {city}: {r.get('reason')}"
                   + (f" (running={r.get('running_c')}°C bucket={r.get('bucket')} price=${r.get('price')})"
                      if r.get("bucket") else ""))
+            if _is_structural_skip(r.get("reason")):
+                city_date = datetime.now(timezone.utc).astimezone(ZoneInfo(LOCATIONS[city][2])).date().isoformat()
+                late_state[_late_state_key(city, city_date)] = {
+                    "kind": "structural_skip",
+                    "reason": r.get("reason"),
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
         elif r["status"] == "error":
             print(f"  [ERR] {city}: {r.get('reason')}")
 
+    _save_late_state(late_state)
     print(f"LATE done: {n_buy}/{len(cities)} entered")
     return 0
 
