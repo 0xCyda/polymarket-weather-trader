@@ -61,6 +61,15 @@ def polymarket_event_url(location: str, target_date: str, metric: str) -> str | 
         return None
     return f"https://polymarket.com/event/{metric_word}-temperature-in-{loc_slug}-on-{month}-{int(d)}-{y}"
 
+
+def _coerce_price(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
 DASHBOARD_HTML = """
 <!doctype html>
 <html>
@@ -711,6 +720,30 @@ function fmtPnl(v) {
     : `<span class="bad">-$${Math.abs(n).toFixed(2)}</span>`;
 }
 
+function fmtPrice(v, digits) {
+  if (v == null || v === '') return '—';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  const d = digits != null ? digits : 3;
+  return '$' + n.toFixed(d);
+}
+
+function priceSourceLabel(source, status) {
+  if (status === 'missing') return 'mark unavailable';
+  const s = String(source || '').toLowerCase();
+  if (!s) return 'live mark';
+  if (s === 'clob_midpoint') return 'CLOB mid';
+  if (s === 'clob_buy') return 'CLOB buy';
+  if (s === 'gamma_clob_midpoint') return 'Gamma → CLOB mid';
+  if (s === 'gamma_clob_buy') return 'Gamma → CLOB buy';
+  if (s === 'gamma_clob') return 'Gamma → CLOB';
+  if (s === 'simmer_context') return 'Simmer ctx';
+  if (s === 'simmer_positions') return 'Simmer';
+  if (s === 'simmer_price_yes') return 'Simmer yes';
+  if (s === 'simmer_price') return 'Simmer';
+  return s.replace(/_/g, ' ');
+}
+
 function escapeHtml(s) {
   return String(s || '')
     .replace(/&/g, '&amp;')
@@ -798,6 +831,8 @@ function renderCards(d) {
   const unrealPnl = Number(d.portfolio.unrealized_pnl || 0);
   const equity = realized + unrealPnl;
   const winRate = d.stats.win_rate;
+  const missingMarks = Number(d.portfolio.missing_marks || 0);
+  const markedPositions = Number(d.portfolio.marked_positions || 0);
   document.getElementById('summary-cards').innerHTML = [
     metricCard('Balance', money(d.portfolio.balance), {
       tone: realized > 0 ? 'positive' : realized < 0 ? 'negative' : null,
@@ -805,10 +840,11 @@ function renderCards(d) {
     }),
     metricCard('Total P&L', fmtPnl(equity), {
       tone: equity > 0 ? 'positive' : equity < 0 ? 'negative' : null,
-      sub: 'realized + unrealized',
+      sub: missingMarks > 0 ? `realized + ${markedPositions} live mark${markedPositions === 1 ? '' : 's'}` : 'realized + unrealized',
     }),
     metricCard('Unrealized', fmtPnl(unrealPnl), {
       tone: unrealPnl > 0 ? 'positive' : unrealPnl < 0 ? 'negative' : null,
+      sub: missingMarks > 0 ? `${missingMarks} mark${missingMarks === 1 ? '' : 's'} missing` : '',
     }),
     metricCard('Win Rate', winRate != null ? winRate + '%' : '—', {
       tone: winRate >= 55 ? 'positive' : winRate < 45 && winRate != null ? 'negative' : null,
@@ -924,12 +960,20 @@ function renderPositions(d) {
     const q = p.question || '—';
     const truncQ = q.length > 58 ? q.substring(0, 55) + '…' : q;
     const side = p.side ? p.side.toUpperCase() : 'YES';
-    const upnl = Number(p.upnl || 0);
-    const upnlStr = upnl > 0
-      ? `<span class="good">+$${upnl.toFixed(2)}</span>`
-      : upnl < 0
-      ? `<span class="bad">-$${Math.abs(upnl).toFixed(2)}</span>`
-      : '<span class="neutral">$0.00</span>';
+    const hasMark = p.current_price != null && p.upnl != null;
+    const currentLabel = priceSourceLabel(p.price_source, p.mark_status);
+    const currentStr = hasMark
+      ? `<span class="mono">${fmtPrice(p.current_price, 3)}</span><div class="faint">${escapeHtml(currentLabel)}</div>`
+      : `<span class="muted">—</span><div class="faint">${escapeHtml(currentLabel)}</div>`;
+    let upnlStr = '<span class="muted">—</span>';
+    if (p.upnl != null) {
+      const upnl = Number(p.upnl);
+      upnlStr = upnl > 0
+        ? `<span class="good">+$${upnl.toFixed(2)}</span>`
+        : upnl < 0
+        ? `<span class="bad">-$${Math.abs(upnl).toFixed(2)}</span>`
+        : '<span class="neutral">$0.00</span>';
+    }
     const marketCell = p.polymarket_url
       ? `<a class="pm-link" href="${p.polymarket_url}" target="_blank" rel="noopener" title="${q}">${truncQ}</a>`
       : truncQ;
@@ -938,8 +982,8 @@ function renderPositions(d) {
       strategyBadge(p.strategy),
       positionBadge(side),
       `<span class="mono">${(p.shares || 0).toFixed(1)}</span>`,
-      `<span class="mono">$${(p.entry_price || 0).toFixed(3)}</span>`,
-      `<span class="mono">$${(p.current_price || 0).toFixed(3)}</span>`,
+      `<span class="mono">${fmtPrice(p.entry_price, 3)}</span>`,
+      currentStr,
       upnlStr,
       `<span class="mono">${(p.target_date || '—').substring(0, 10)}</span>`,
       p.market_id ? `<span class="mono" title="${p.market_id}">${p.market_id.substring(0, 6)}…</span>` : '—',
@@ -1552,12 +1596,12 @@ def _get_simmer_positions() -> list[dict]:
         return []
 
 
-def _fetch_price_via_clob(token_id: str) -> float | None:
+def _fetch_price_via_clob(token_id: str) -> tuple[float | None, str | None]:
     """Hit Polymarket CLOB directly when we already know the YES token id.
     Prefer midpoint for mark-to-market so dashboard P&L reflects a fair live mark
     instead of the more punitive best-bid liquidation quote."""
     if not token_id:
-        return None
+        return None, None
     try:
         import requests
         mid_resp = requests.get(
@@ -1566,9 +1610,9 @@ def _fetch_price_via_clob(token_id: str) -> float | None:
             timeout=5,
         )
         if mid_resp.status_code == 200:
-            mid = float(mid_resp.json().get("mid", 0) or 0)
-            if mid > 0:
-                return mid
+            mid = _coerce_price(mid_resp.json().get("mid"))
+            if mid is not None and mid > 0:
+                return mid, "clob_midpoint"
 
         resp = requests.get(
             "https://clob.polymarket.com/price",
@@ -1576,14 +1620,24 @@ def _fetch_price_via_clob(token_id: str) -> float | None:
             timeout=5,
         )
         if resp.status_code != 200:
-            return None
-        return float(resp.json().get("price", 0) or 0)
+            return None, None
+        price = _coerce_price(resp.json().get("price"))
+        return price, ("clob_buy" if price is not None else None)
     except Exception:
-        return None
+        return None, None
 
 
-def _fetch_live_price(market_id: str, polymarket_token_id: str | None = None) -> float | None:
-    """Fetch current price for a market.
+def _mark_missing_position(p: dict, reason: str = "live_price_unavailable") -> dict:
+    p["current_price"] = None
+    p["upnl"] = None
+    p["price_source"] = None
+    p["mark_status"] = "missing"
+    p["price_error"] = reason
+    return p
+
+
+def _fetch_live_mark(market_id: str, polymarket_token_id: str | None = None) -> tuple[float | None, str | None]:
+    """Fetch current mark and its source for a market.
 
     Priority:
       1. Stored polymarket_token_id (CLOB direct — no Simmer, no Gamma).
@@ -1595,15 +1649,15 @@ def _fetch_live_price(market_id: str, polymarket_token_id: str | None = None) ->
     rows, branch (3) effectively goes dark.
     """
     if polymarket_token_id:
-        price = _fetch_price_via_clob(polymarket_token_id)
+        price, source = _fetch_price_via_clob(polymarket_token_id)
         if price is not None:
-            return price
+            return price, source
 
     if not market_id:
-        return None
+        return None, None
 
     # Plain integer = Gamma ID (e.g. "2019315"). Simmer can't resolve these.
-    # Route through Gamma API → extract clobTokenIds → CLOB /price.
+    # Route through Gamma API → extract clobTokenIds → CLOB.
     if market_id.isdigit():
         try:
             import requests
@@ -1612,7 +1666,7 @@ def _fetch_live_price(market_id: str, polymarket_token_id: str | None = None) ->
                 timeout=5,
             )
             if gamma_resp.status_code != 200:
-                return None
+                return None, None
             market = gamma_resp.json()
             if isinstance(market, dict):
                 ctids_raw = market.get("clobTokenIds", "")
@@ -1621,22 +1675,18 @@ def _fetch_live_price(market_id: str, polymarket_token_id: str | None = None) ->
                     ctids = json.loads(ctids_raw)
                     yes_token = ctids[0] if len(ctids) > 0 else None
                     if yes_token:
-                        clob_resp = requests.get(
-                            "https://clob.polymarket.com/price",
-                            params={"token_id": yes_token, "side": "buy"},
-                            timeout=5,
-                        )
-                        if clob_resp.status_code == 200:
-                            return float(clob_resp.json().get("price", 0) or 0)
+                        price, source = _fetch_price_via_clob(yes_token)
+                        if price is not None:
+                            return price, f"gamma_{source}" if source else "gamma_clob"
         except Exception:
             pass
-        return None
+        return None, None
 
     # UUID-format market_id — use Simmer (works for CLOB UUIDs)
     try:
         api_key = os.environ.get("SIMMER_API_KEY")
         if not api_key:
-            return None
+            return None, None
         import requests
         resp = requests.get(
             f"https://api.simmer.markets/api/sdk/context/{market_id}",
@@ -1644,29 +1694,49 @@ def _fetch_live_price(market_id: str, polymarket_token_id: str | None = None) ->
             timeout=5,
         )
         if resp.status_code != 200:
-            return None
+            return None, None
         data = resp.json()
         if isinstance(data, dict):
-            return float(data.get("market", {}).get("current_price", 0) or 0)
-        return None
+            price = _coerce_price(data.get("market", {}).get("current_price"))
+            if price is not None:
+                return price, "simmer_context"
+        return None, None
     except Exception:
-        return None
+        return None, None
 
 
-def _compute_upnl(pos: dict) -> float:
+def _extract_simmer_mark(pos: dict) -> tuple[float | None, str | None]:
+    for key, source in (
+        ("current_price", "simmer_positions"),
+        ("price_yes", "simmer_price_yes"),
+        ("price", "simmer_price"),
+    ):
+        if key in pos and pos.get(key) is not None and pos.get(key) != "":
+            price = _coerce_price(pos.get(key))
+            if price is not None:
+                return price, source
+    market_id = str(pos.get("market_id") or pos.get("id") or "")
+    token_id = pos.get("polymarket_token_id") or pos.get("yes_token_id") or pos.get("token_id")
+    token_id = str(token_id) if token_id else None
+    return _fetch_live_mark(market_id, polymarket_token_id=token_id)
+
+
+def _compute_upnl(pos: dict) -> float | None:
     shares_yes = float(pos.get("shares_yes") or 0)
     shares_no = float(pos.get("shares_no") or 0)
-    entry = float(pos.get("entry_price") or 0)
-    current = float(pos.get("current_price") or 0)
+    shares = float(pos.get("shares") or 0)
+    side = (pos.get("side") or "yes").lower()
+    entry = _coerce_price(pos.get("entry_price"))
+    current = _coerce_price(pos.get("current_price"))
+    if entry is None or current is None:
+        return None
     if shares_yes > 0:
         return round((current - entry) * shares_yes, 2)
-    elif shares_no > 0:
+    if shares_no > 0:
         # NO token settles at (1 - yes_price). Paid `entry` per NO share.
         return round(((1 - current) - entry) * shares_no, 2)
     # Paper journal fallback — respect side
-    shares = float(pos.get("shares") or 0)
-    side = (pos.get("side") or "yes").lower()
-    if shares > 0 and entry > 0:
+    if shares > 0:
         if side == "yes":
             return round((current - entry) * shares, 2)
         return round(((1 - current) - entry) * shares, 2)
@@ -1677,24 +1747,21 @@ def _enrich_positions(positions: list[dict]) -> list[dict]:
     """Add current_price and upnl to paper journal positions concurrently."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    api_key = os.environ.get("SIMMER_API_KEY")
-
     def enrich_one(p: dict) -> dict:
         p = dict(p)
-        market_id = p.get("market_id", "")
+        market_id = str(p.get("market_id") or "")
         token_id = p.get("polymarket_token_id")
-        # Stored token_id lets us hit CLOB directly without Simmer or Gamma.
-        # Legacy rows without token_id fall back to the existing chain (which
-        # may still need SIMMER_API_KEY for UUID-format ids).
-        if (token_id or market_id) and (token_id or api_key):
-            cp = _fetch_live_price(market_id, polymarket_token_id=token_id)
+        token_id = str(token_id) if token_id else None
+        if token_id or market_id:
+            cp, source = _fetch_live_mark(market_id, polymarket_token_id=token_id)
             if cp is not None:
                 p["current_price"] = cp
                 p["upnl"] = _compute_upnl(p)
+                p["price_source"] = source
+                p["mark_status"] = "live"
+                p["price_error"] = ""
                 return p
-        p["current_price"] = 0.0
-        p["upnl"] = 0.0
-        return p
+        return _mark_missing_position(p)
 
     with ThreadPoolExecutor(max_workers=6) as executor:
         futures = {executor.submit(enrich_one, p): p for p in positions}
@@ -1703,10 +1770,8 @@ def _enrich_positions(positions: list[dict]) -> list[dict]:
             try:
                 enriched.append(future.result())
             except Exception:
-                p = futures[future]
-                p["current_price"] = 0.0
-                p["upnl"] = 0.0
-                enriched.append(p)
+                p = dict(futures[future])
+                enriched.append(_mark_missing_position(p, reason="mark_lookup_error"))
     return enriched
 
 
@@ -1895,11 +1960,15 @@ def _get_portfolio_stats(enriched_positions: list[dict]) -> dict:
     trades = _load_trades_jsonl(PAPER_TRADES)
     resolved = [t for t in trades if t.get("status") == "resolved"]
     realized = round(sum(float(t.get("pnl") or 0) for t in resolved), 4)
-    unrealized = round(sum(float(p.get("upnl") or 0) for p in enriched_positions), 2)
+    marked = [p for p in enriched_positions if p.get("upnl") is not None]
+    missing_marks = max(0, len(enriched_positions) - len(marked))
+    unrealized = round(sum(float(p.get("upnl") or 0) for p in marked), 2)
     return {
         "balance": round(10000.0 + realized, 2),
         "realized_pnl": realized,
         "unrealized_pnl": unrealized,
+        "marked_positions": len(marked),
+        "missing_marks": missing_marks,
     }
 
 
@@ -2089,15 +2158,24 @@ def api_state():
             loc = q.split(" in ")[1].split(" on ")[0] if " in " in q else ""
             tgt = p.get("end_date_utc", "")[:10] if p.get("end_date_utc") else ""
             metric = "high" if "highest" in q.lower() else ("low" if "lowest" in q.lower() else "high")
+            current_price, price_source = _extract_simmer_mark(p)
+            pos_for_pnl = dict(p)
+            pos_for_pnl["current_price"] = current_price
+            upnl = _compute_upnl(pos_for_pnl)
             positions.append({
                 "question": q,
                 "side": "YES" if float(p.get("shares_yes") or 0) > 0 else "NO",
                 "shares": float(p.get("shares_yes") or p.get("shares_no") or 0),
                 "entry_price": float(p.get("entry_price") or 0),
-                "current_price": float(p.get("current_price") or 0),
-                "upnl": _compute_upnl(p),
+                "current_price": current_price,
+                "upnl": upnl,
                 "target_date": tgt,
                 "location": loc,
+                "strategy": p.get("strategy") or "core",
+                "market_id": p.get("market_id") or p.get("id") or "",
+                "price_source": price_source,
+                "mark_status": "live" if upnl is not None else "missing",
+                "price_error": "" if upnl is not None else "live_price_unavailable",
                 "polymarket_url": polymarket_event_url(loc, tgt, metric),
             })
     else:
@@ -2112,12 +2190,15 @@ def api_state():
                 "side": p.get("side", "YES").upper(),
                 "shares": float(p.get("shares") or 0),
                 "entry_price": float(p.get("entry_price") or 0),
-                "current_price": float(p.get("current_price") or 0),
-                "upnl": float(p.get("upnl") or 0),
+                "current_price": p.get("current_price"),
+                "upnl": p.get("upnl"),
                 "target_date": tgt,
                 "location": loc,
                 "strategy": p.get("strategy") or "core",
                 "market_id": p.get("market_id", ""),
+                "price_source": p.get("price_source"),
+                "mark_status": p.get("mark_status") or ("live" if p.get("upnl") is not None else "missing"),
+                "price_error": p.get("price_error") or "",
                 "polymarket_url": polymarket_event_url(loc, tgt, metric),
             })
 
