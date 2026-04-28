@@ -62,6 +62,7 @@ _cfg = load_config(CONFIG_SCHEMA, str(_HERE / "weather_trader.py"), slug="polyma
 EDGE_BUFFER_C       = float(_cfg.get("late_edge_buffer_c", 0.3))
 ADD_MAX_POSITION    = float(_cfg.get("late_add_max_position_usd", 100.0))
 ADD_PRICE_CEILING   = float(_cfg.get("late_add_price_ceiling", 0.85))
+ADD_PRICE_FLOOR     = float(_cfg.get("late_price_floor", 0.20))
 EXIT_AFTER_HOUR     = int(_cfg.get("position_exit_after_hour", 16))   # post-peak local hour
 ADD_AFTER_HOUR      = int(_cfg.get("position_add_after_hour", 14))    # peak-window start
 PRE_PEAK_BREAKOUT_C = float(_cfg.get("position_pre_peak_breakout_c", 0.5))
@@ -282,6 +283,9 @@ def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
             return out
         cur_price = float(cur_price)
         out["current_price"] = round(cur_price, 4)
+        if cur_price < ADD_PRICE_FLOOR:
+            out["reason"] = f"add_blocked_price_{cur_price:.3f}_below_floor_{ADD_PRICE_FLOOR:.2f}"
+            return out
         if cur_price > ADD_PRICE_CEILING:
             out["reason"] = f"add_blocked_price_{cur_price:.3f}_above_ceiling_{ADD_PRICE_CEILING:.2f}"
             return out
@@ -348,6 +352,8 @@ def _execute_add(trade: dict, market: dict, size_usd: float, reason: str) -> str
     """
     cur_price = float(market.get("external_price_yes") or 0)
     if cur_price <= 0:
+        return None
+    if cur_price < ADD_PRICE_FLOOR or cur_price > ADD_PRICE_CEILING:
         return None
     # Re-derive bucket from live market question — don't trust trade["bucket"]
     bucket = _resolve_bucket(trade, market)
