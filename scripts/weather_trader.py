@@ -211,6 +211,18 @@ CONFIG_SCHEMA = {
                           "help": "Local hour after which averaging-in is allowed (14 = 2pm, start of typical peak window)."},
     "position_pre_peak_breakout_c": {"env": "SIMMER_WEATHER_POSITION_PRE_PEAK_BREAKOUT_C", "default": 0.5, "type": float,
                           "help": "Pre-peak: exit when running max already exceeds bucket upper edge by this many °C."},
+    "position_halfhour_start_hour": {"env": "SIMMER_WEATHER_POSITION_HALFHOUR_START_HOUR", "default": 14, "type": int,
+                          "help": "Local hour after which the position manager should also run on the half-hour for same-day positions."},
+    "position_repricing_guard_start_hour": {"env": "SIMMER_WEATHER_POSITION_REPRICING_GUARD_START_HOUR", "default": 14, "type": int,
+                          "help": "Local hour after which the repricing guard can force an exit on collapsing prices."},
+    "position_repricing_floor": {"env": "SIMMER_WEATHER_POSITION_REPRICING_FLOOR", "default": 0.10, "type": float,
+                          "help": "Hard panic-exit floor for YES positions once the repricing guard is active."},
+    "position_repricing_drop_frac": {"env": "SIMMER_WEATHER_POSITION_REPRICING_DROP_FRAC", "default": 0.50, "type": float,
+                          "help": "Relative drop threshold for the repricing guard. 0.50 means exit after a 50%+ collapse vs the last observed manager price."},
+    "position_repricing_weather_edge_c": {"env": "SIMMER_WEATHER_POSITION_REPRICING_WEATHER_EDGE_C", "default": 0.20, "type": float,
+                          "help": "Weather support must weaken below this edge distance (°C), or the projection must already have left the bucket, before the repricing guard can fire."},
+    "position_repricing_cooldown_min": {"env": "SIMMER_WEATHER_POSITION_REPRICING_COOLDOWN_MIN", "default": 45.0, "type": float,
+                          "help": "Minimum age in minutes before the repricing guard is allowed to exit a position."},
 }
 
 # Backwards-compatible env var aliases (old name -> new name)

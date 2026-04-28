@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Position manager: hourly day-of management of open paper positions.
+Position manager: adaptive intraday management of open paper positions.
 
 Pulls TWC intraday observations for cities with open positions targeting today
 (in city-local time) and decides one of:
@@ -25,8 +25,8 @@ Run:
   python3 scripts/position_manager.py --execute   # apply exits/adds to paper journal
   python3 scripts/position_manager.py --trade-id X --execute  # one position only
 
-Cron (hourly, after late_trader's slot to avoid double-spending TWC quota):
-  10 * * * *  python3 /path/to/position_manager.py --execute
+Cron (hourly plus half-hour checks during peak / late-day risk windows):
+  19,49 * * * *  python3 /path/to/position_manager.py --execute --scheduled
 """
 from __future__ import annotations
 
@@ -66,6 +66,12 @@ ADD_PRICE_FLOOR     = float(_cfg.get("late_price_floor", 0.20))
 EXIT_AFTER_HOUR     = int(_cfg.get("position_exit_after_hour", 16))   # post-peak local hour
 ADD_AFTER_HOUR      = int(_cfg.get("position_add_after_hour", 14))    # peak-window start
 PRE_PEAK_BREAKOUT_C = float(_cfg.get("position_pre_peak_breakout_c", 0.5))
+HALFHOUR_START_HOUR = int(_cfg.get("position_halfhour_start_hour", ADD_AFTER_HOUR))
+REPRICING_GUARD_START_HOUR = int(_cfg.get("position_repricing_guard_start_hour", ADD_AFTER_HOUR))
+REPRICING_FLOOR = float(_cfg.get("position_repricing_floor", 0.10))
+REPRICING_DROP_FRAC = float(_cfg.get("position_repricing_drop_frac", 0.50))
+REPRICING_WEATHER_EDGE_C = float(_cfg.get("position_repricing_weather_edge_c", 0.20))
+REPRICING_COOLDOWN_MIN = float(_cfg.get("position_repricing_cooldown_min", 45.0))
 LATE_PROJECTED_EXIT_COOLDOWN_MIN = 45.0
 
 ACTIONS_LOG = JOURNAL_FILE.parent / "manager_actions.jsonl"
@@ -112,6 +118,81 @@ def _trade_age_minutes(trade: dict, now_utc: datetime | None = None) -> float | 
     return max(0.0, (now_utc - entered).total_seconds() / 60.0)
 
 
+def _market_price_yes(market: dict | None) -> float | None:
+    try:
+        price = (market or {}).get("external_price_yes")
+        if price is None:
+            return None
+        price = float(price)
+        return price if price > 0 else None
+    except Exception:
+        return None
+
+
+def _last_logged_price(trade_id: str, before_ts: datetime | None = None) -> float | None:
+    if not trade_id or not ACTIONS_LOG.exists():
+        return None
+    try:
+        with open(ACTIONS_LOG) as fh:
+            lines = fh.readlines()
+    except Exception:
+        return None
+
+    cutoff = before_ts or datetime.now(timezone.utc)
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except Exception:
+            continue
+        if rec.get("trade_id") != trade_id:
+            continue
+        ts = rec.get("ts")
+        try:
+            rec_ts = datetime.fromisoformat(str(ts).replace("Z", "+00:00")) if ts else None
+        except Exception:
+            rec_ts = None
+        if rec_ts and rec_ts >= cutoff:
+            continue
+        for key in ("current_price", "exit_price"):
+            val = rec.get(key)
+            if val is None:
+                continue
+            try:
+                price = float(val)
+            except Exception:
+                continue
+            if price > 0:
+                return price
+    return None
+
+
+def _weather_support_weakening(running_edge_c: float, projected_c: float, bucket: tuple, confidence: float) -> bool:
+    projected_edge_c = _edge_distance_c(projected_c, bucket)
+    return (
+        running_edge_c < REPRICING_WEATHER_EDGE_C
+        or projected_edge_c < REPRICING_WEATHER_EDGE_C
+        or (confidence >= 0.7 and projected_edge_c <= 0)
+    )
+
+
+def _should_run_halfhour(trades: list[dict], now_utc: datetime) -> bool:
+    for trade in trades:
+        city = trade.get("location") or ""
+        loc = LOCATIONS.get(city)
+        if not loc:
+            continue
+        tz = ZoneInfo(loc[2])
+        local_now = now_utc.astimezone(tz)
+        if (trade.get("target_date") or "") != local_now.date().isoformat():
+            continue
+        if local_now.hour >= HALFHOUR_START_HOUR:
+            return True
+    return False
+
+
 def _project_eod_max_c(running_c: float, local_hour: int, forecast_f: float | None) -> dict:
     """Crude EOD max projection.
 
@@ -139,7 +220,7 @@ def _project_eod_max_c(running_c: float, local_hour: int, forecast_f: float | No
     return {"projected_c": max(running_c, forecast_c), "confidence": 0.4}
 
 
-def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
+def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | None = None, log=print) -> dict:
     """Decide HOLD / EXIT / ADD for one open position. Pure function — no side effects."""
     out: dict = {
         "trade_id": trade.get("trade_id"),
@@ -167,7 +248,8 @@ def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
         return out
 
     tz = ZoneInfo(loc[2])
-    local_now = datetime.now(timezone.utc).astimezone(tz)
+    now_utc = now_utc or datetime.now(timezone.utc)
+    local_now = now_utc.astimezone(tz)
     local_today = local_now.date().isoformat()
     target = trade.get("target_date") or ""
 
@@ -205,7 +287,7 @@ def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
 
     cur_hour = local_now.hour
     out["local_hour"] = cur_hour
-    age_min = _trade_age_minutes(trade, datetime.now(timezone.utc))
+    age_min = _trade_age_minutes(trade, now_utc)
     if age_min is not None:
         out["age_min"] = round(age_min, 1)
 
@@ -230,7 +312,48 @@ def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
     edge_c_now = _edge_distance_c(running_c, bucket)
     out["edge_c_running"] = round(edge_c_now, 2)
 
+    cur_price = _market_price_yes(market)
+    if cur_price is not None:
+        out["current_price"] = round(cur_price, 4)
+        prev_price = _last_logged_price(str(trade.get("trade_id") or ""), before_ts=now_utc)
+        if prev_price is not None:
+            out["previous_price"] = round(prev_price, 4)
+            out["price_drop_frac"] = round(max(0.0, 1.0 - (cur_price / prev_price)), 4) if prev_price > 0 else None
+
     # ----- EXIT rules -----
+    # Repricing guard: late-day price collapse plus weakening weather support.
+    if (
+        cur_price is not None
+        and cur_hour >= REPRICING_GUARD_START_HOUR
+        and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN)
+        and _weather_support_weakening(edge_c_now, proj["projected_c"], bucket, proj["confidence"])
+    ):
+        prev_price = out.get("previous_price")
+        drop_frac = out.get("price_drop_frac")
+        hard_floor_hit = cur_price <= REPRICING_FLOOR
+        collapse_hit = prev_price is not None and drop_frac is not None and drop_frac >= REPRICING_DROP_FRAC
+        if hard_floor_hit or collapse_hit:
+            out["action"] = "exit"
+            if hard_floor_hit and collapse_hit:
+                out["reason"] = (
+                    f"repricing_guard_floor_and_collapse "
+                    f"(price=${cur_price:.3f}, prev=${float(prev_price):.3f}, drop={float(drop_frac)*100:.1f}%, "
+                    f"running_edge={edge_c_now:.2f}°C, projected={proj['projected_c']:.2f}°C)"
+                )
+            elif hard_floor_hit:
+                out["reason"] = (
+                    f"repricing_guard_floor "
+                    f"(price=${cur_price:.3f} <= floor=${REPRICING_FLOOR:.3f}, "
+                    f"running_edge={edge_c_now:.2f}°C, projected={proj['projected_c']:.2f}°C)"
+                )
+            else:
+                out["reason"] = (
+                    f"repricing_guard_collapse "
+                    f"(price=${cur_price:.3f}, prev=${float(prev_price):.3f}, drop={float(drop_frac)*100:.1f}% >= {REPRICING_DROP_FRAC*100:.1f}%, "
+                    f"running_edge={edge_c_now:.2f}°C, projected={proj['projected_c']:.2f}°C)"
+                )
+            return out
+
     # Post-peak: if running max sits clearly outside held bucket, day is gone.
     if cur_hour >= EXIT_AFTER_HOUR and not in_bucket_now and edge_c_now <= -EDGE_BUFFER_C:
         out["action"] = "exit"
@@ -277,7 +400,6 @@ def _evaluate_position(trade: dict, market: dict | None, log=print) -> dict:
     # Need to be inside peak window with running and projected max both sitting
     # solidly in held bucket AND market price below add ceiling.
     if cur_hour >= ADD_AFTER_HOUR and in_bucket_now and in_bucket_proj and edge_c_now >= EDGE_BUFFER_C and proj["confidence"] >= 0.7:
-        cur_price = (market or {}).get("external_price_yes")
         if cur_price is None:
             out["reason"] = "add_blocked_no_price"
             return out
@@ -415,7 +537,18 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Day-of position manager: exit losers, add to winners")
     ap.add_argument("--execute", action="store_true", help="Apply exits/adds (default: dry run, log only)")
     ap.add_argument("--trade-id", help="Process only this trade_id")
+    ap.add_argument("--scheduled", action="store_true", help="Enable adaptive cadence: top-of-hour always, half-hour only once same-day cities reach the peak/late-day window.")
+    ap.add_argument("--now-utc", help="Override current UTC time for testing, e.g. 2026-04-28T14:49:00+00:00")
     args = ap.parse_args()
+
+    if args.now_utc:
+        now_utc = datetime.fromisoformat(str(args.now_utc).replace("Z", "+00:00"))
+        if now_utc.tzinfo is None:
+            now_utc = now_utc.replace(tzinfo=timezone.utc)
+        else:
+            now_utc = now_utc.astimezone(timezone.utc)
+    else:
+        now_utc = datetime.now(timezone.utc)
 
     all_trades = _load_trades()
     open_trades = [t for t in all_trades if t.get("status") == "open"]
@@ -425,6 +558,13 @@ def main() -> int:
         print("no open positions")
         return 0
 
+    if args.scheduled and now_utc.minute >= 30 and not _should_run_halfhour(open_trades, now_utc):
+        print(
+            "position_manager scheduled skip: half-hour run gated until same-day open positions reach "
+            f"local hour >= {HALFHOUR_START_HOUR}"
+        )
+        return 0
+
     markets = fetch_weather_markets()
     market_by_id = {m.get("id"): m for m in markets if m.get("id")}
 
@@ -432,7 +572,7 @@ def main() -> int:
     n_exit = n_add = n_hold = n_skip = 0
     for trade in open_trades:
         market = market_by_id.get(trade.get("market_id"))
-        decision = _evaluate_position(trade, market)
+        decision = _evaluate_position(trade, market, now_utc=now_utc)
         decision["mode"] = "execute" if args.execute else "dry"
 
         if decision["action"] == "hold":
