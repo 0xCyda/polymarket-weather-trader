@@ -40,3 +40,17 @@
 {"ts": "2026-04-26T12:19:27.790674+00:00", "kind": "api_error", "msg": "HTTPSConnectionPool(host='api.simmer.markets', port=443): Read timed out. (read timeout=30)", "label": "portfolio", "fn": "get_portfolio"}
 {"ts": "2026-04-26T12:21:09.325117+00:00", "kind": "api_error", "msg": "HTTPSConnectionPool(host='api.simmer.markets', port=443): Read timed out. (read timeout=30)", "label": "positions", "fn": "get_positions"}
 {"ts": "2026-04-26T12:22:23.281436+00:00", "kind": "api_error", "msg": "HTTPSConnectionPool(host='api.simmer.markets', port=443): Read timed out. (read timeout=30)", "label": "positions", "fn": "get_positions"}
+{"ts": "2026-04-27T19:09:46.337472+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-02-13", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-27T19:09:47.361087+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Chicago", "date": "2027-03-25", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-27T19:09:48.387942+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-27T19:09:49.422586+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-04-06", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-27T21:19:22.612366+00:00", "kind": "twc_http", "msg": "status=400", "station": "LTAC:9:TR", "date": "2026-04-28"}
+{"ts": "2026-04-27T22:25:05.203014+00:00", "kind": "twc_http", "msg": "status=400", "station": "LIMC:9:IT", "date": "2026-04-28"}
+{"ts": "2026-04-27T23:12:48.511445+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-02-13", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-27T23:12:49.532552+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Chicago", "date": "2027-03-25", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-27T23:12:50.548872+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-27T23:12:51.568077+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-04-06", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-27T23:25:35.737848+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-02-13", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-27T23:25:38.541227+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Chicago", "date": "2027-03-25", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-27T23:25:40.859025+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
+{"ts": "2026-04-27T23:25:42.066518+00:00", "kind": "no_forecast", "msg": "unknown", "location": "NYC", "date": "2027-04-06", "metric": "high", "signal": "no_data"}
