@@ -728,22 +728,6 @@ function fmtPrice(v, digits) {
   return '$' + n.toFixed(d);
 }
 
-function priceSourceLabel(source, status) {
-  if (status === 'missing') return 'mark unavailable';
-  const s = String(source || '').toLowerCase();
-  if (!s) return 'live mark';
-  if (s === 'clob_midpoint') return 'CLOB mid';
-  if (s === 'clob_buy') return 'CLOB buy';
-  if (s === 'gamma_clob_midpoint') return 'Gamma → CLOB mid';
-  if (s === 'gamma_clob_buy') return 'Gamma → CLOB buy';
-  if (s === 'gamma_clob') return 'Gamma → CLOB';
-  if (s === 'simmer_context') return 'Simmer ctx';
-  if (s === 'simmer_positions') return 'Simmer';
-  if (s === 'simmer_price_yes') return 'Simmer yes';
-  if (s === 'simmer_price') return 'Simmer';
-  return s.replace(/_/g, ' ');
-}
-
 function escapeHtml(s) {
   return String(s || '')
     .replace(/&/g, '&amp;')
@@ -961,10 +945,9 @@ function renderPositions(d) {
     const truncQ = q.length > 58 ? q.substring(0, 55) + '…' : q;
     const side = p.side ? p.side.toUpperCase() : 'YES';
     const hasMark = p.current_price != null && p.upnl != null;
-    const currentLabel = priceSourceLabel(p.price_source, p.mark_status);
     const currentStr = hasMark
-      ? `<span class="mono">${fmtPrice(p.current_price, 3)}</span><div class="faint">${escapeHtml(currentLabel)}</div>`
-      : `<span class="muted">—</span><div class="faint">${escapeHtml(currentLabel)}</div>`;
+      ? `<span class="mono">${fmtPrice(p.current_price, 3)}</span>`
+      : `<span class="muted">—</span>`;
     let upnlStr = '<span class="muted">—</span>';
     if (p.upnl != null) {
       const upnl = Number(p.upnl);
