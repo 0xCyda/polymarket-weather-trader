@@ -68,7 +68,6 @@ ADD_AFTER_HOUR      = int(_cfg.get("position_add_after_hour", 14))    # peak-win
 PRE_PEAK_BREAKOUT_C = float(_cfg.get("position_pre_peak_breakout_c", 0.5))
 HALFHOUR_START_HOUR = int(_cfg.get("position_halfhour_start_hour", ADD_AFTER_HOUR))
 REPRICING_GUARD_START_HOUR = int(_cfg.get("position_repricing_guard_start_hour", ADD_AFTER_HOUR))
-REPRICING_FLOOR = float(_cfg.get("position_repricing_floor", 0.10))
 REPRICING_DROP_FRAC = float(_cfg.get("position_repricing_drop_frac", 0.50))
 REPRICING_WEATHER_EDGE_C = float(_cfg.get("position_repricing_weather_edge_c", 0.20))
 REPRICING_COOLDOWN_MIN = float(_cfg.get("position_repricing_cooldown_min", 45.0))
@@ -330,28 +329,14 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
     ):
         prev_price = out.get("previous_price")
         drop_frac = out.get("price_drop_frac")
-        hard_floor_hit = cur_price <= REPRICING_FLOOR
         collapse_hit = prev_price is not None and drop_frac is not None and drop_frac >= REPRICING_DROP_FRAC
-        if hard_floor_hit or collapse_hit:
+        if collapse_hit:
             out["action"] = "exit"
-            if hard_floor_hit and collapse_hit:
-                out["reason"] = (
-                    f"repricing_guard_floor_and_collapse "
-                    f"(price=${cur_price:.3f}, prev=${float(prev_price):.3f}, drop={float(drop_frac)*100:.1f}%, "
-                    f"running_edge={edge_c_now:.2f}°C, projected={proj['projected_c']:.2f}°C)"
-                )
-            elif hard_floor_hit:
-                out["reason"] = (
-                    f"repricing_guard_floor "
-                    f"(price=${cur_price:.3f} <= floor=${REPRICING_FLOOR:.3f}, "
-                    f"running_edge={edge_c_now:.2f}°C, projected={proj['projected_c']:.2f}°C)"
-                )
-            else:
-                out["reason"] = (
-                    f"repricing_guard_collapse "
-                    f"(price=${cur_price:.3f}, prev=${float(prev_price):.3f}, drop={float(drop_frac)*100:.1f}% >= {REPRICING_DROP_FRAC*100:.1f}%, "
-                    f"running_edge={edge_c_now:.2f}°C, projected={proj['projected_c']:.2f}°C)"
-                )
+            out["reason"] = (
+                f"repricing_guard_collapse "
+                f"(price=${cur_price:.3f}, prev=${float(prev_price):.3f}, drop={float(drop_frac)*100:.1f}% >= {REPRICING_DROP_FRAC*100:.1f}%, "
+                f"running_edge={edge_c_now:.2f}°C, projected={proj['projected_c']:.2f}°C)"
+            )
             return out
 
     # Post-peak: if running max sits clearly outside held bucket, day is gone.
