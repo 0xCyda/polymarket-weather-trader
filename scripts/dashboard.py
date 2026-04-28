@@ -1131,7 +1131,7 @@ function renderResolved(d) {
   const start = page * RESOLVED_PAGE_SIZE;
   const slice = sorted.slice(start, start + RESOLVED_PAGE_SIZE);
 
-  const headers = ['Resolved', 'Location', 'Strategy', 'Outcome', 'Forecast', 'Actual', 'Entry', 'Exit', 'P&L', 'Entered'];
+  const headers = ['Location', 'Strategy', 'Outcome', 'Forecast', 'Actual', 'Entry', 'Exit', 'P&L', 'Entered', 'Resolved'];
   const rows = slice.map(t => {
     const exit = Number(t.exit_price || 0);
     const entry = Number(t.entry_price || 0);
@@ -1169,7 +1169,6 @@ function renderResolved(d) {
     }
 
     return [
-      `${resolvedCell}${srcBadge}`,
       locCell,
       strategyBadge(t.strategy),
       `<div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:nowrap;white-space:nowrap">${positionBadge(outcome)}${pmExitBadge(t.resolution_source, pnl, t.exit_reason)}</div>`,
@@ -1179,6 +1178,7 @@ function renderResolved(d) {
       `<span class="mono">$${exit.toFixed(3)}</span>`,
       winBadge(pnl),
       `<span class="mono">${enteredDate}</span>`,
+      `${resolvedCell}${srcBadge}`,
     ];
   });
   container.innerHTML =
