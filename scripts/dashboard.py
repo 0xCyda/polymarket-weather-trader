@@ -711,6 +711,15 @@ function fmtPnl(v) {
     : `<span class="bad">-$${Math.abs(n).toFixed(2)}</span>`;
 }
 
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function metricCard(label, value, opts) {
   opts = opts || {};
   const cls = opts.tone === 'positive' ? 'positive' : opts.tone === 'negative' ? 'negative' : '';
@@ -732,12 +741,20 @@ function positionBadge(side) {
   return `<span class="badge ${cls}">${side}</span>`;
 }
 
-function pmExitBadge(source, pnl) {
+function pmExitBadge(source, pnl, exitReason) {
   if ((source || '').toLowerCase() !== 'early_exit_position_manager') return '';
+  const reason = String(exitReason || '').toLowerCase();
   const n = Number(pnl || 0);
-  if (n > 0) return `<span class="badge badge-tp" title="PM take profit">TP</span>`;
-  if (n < 0) return `<span class="badge badge-sl" title="PM stop loss">SL</span>`;
-  return '';
+  const titleSuffix = exitReason ? ` · ${escapeHtml(String(exitReason))}` : '';
+
+  if (reason.includes('take_profit') || reason.includes('profit_target') || reason.includes('locked_in_profit')) {
+    return `<span class="badge badge-tp" title="PM take profit${titleSuffix}">TP</span>`;
+  }
+  if (reason.includes('stop_loss')) {
+    return `<span class="badge badge-sl" title="PM stop loss${titleSuffix}">SL</span>`;
+  }
+  if (n > 0) return `<span class="badge badge-tp" title="PM take profit${titleSuffix}">TP</span>`;
+  return `<span class="badge badge-sl" title="PM stop loss${titleSuffix}">SL</span>`;
 }
 
 function strategyBadge(strat) {
@@ -1091,7 +1108,7 @@ function renderResolved(d) {
     return [
       locCell,
       strategyBadge(t.strategy),
-      `<div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:nowrap;white-space:nowrap">${positionBadge(outcome)}${pmExitBadge(t.resolution_source, pnl)}</div>`,
+      `<div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:nowrap;white-space:nowrap">${positionBadge(outcome)}${pmExitBadge(t.resolution_source, pnl, t.exit_reason)}</div>`,
       forecastCell,
       actualCell,
       `<span class="mono">$${entry.toFixed(3)}</span>`,
@@ -2125,6 +2142,7 @@ def api_state():
                 "resolved_at": t.get("resolved_at", ""),
                 "resolution_date": t.get("resolution_date", ""),
                 "resolution_source": t.get("resolution_source", ""),
+                "exit_reason": t.get("exit_reason", ""),
                 "strategy": t.get("strategy") or "core",
                 "forecast_temp": t.get("forecast_temp"),
                 "actual_temp": t.get("actual_temp"),
