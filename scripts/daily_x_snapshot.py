@@ -168,10 +168,10 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], daily: 
         parts = [
             title,
             "",
-            "Starting a public build for a Polymarket weather bot challenge.",
-            "Goal: take a paper portfolio from $10,000 to $50,000 by trading weather markets with a rules-based system.",
-            "This is Day 1, so this post is the system overview before the daily scorecards start.",
-            "Paper trading only. Realized and unrealized P&L will always be shown separately.",
+            "Built a weather bot for Polymarket.",
+            "The challenge: take a $10,000 paper account to $50,000 with fully systematic entries, sizing, and exits.",
+            "Day 1 is the setup post, not a victory lap.",
+            "Every update after this will show the balance, the swings, and the changes we made to the system.",
         ]
         return "\n".join(parts)
 
@@ -182,8 +182,7 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], daily: 
     parts = [
         title,
         "",
-        "Daily weather bot snapshot.",
-        f"Paper balance: ${money(balance)}",
+        f"Balance: ${money(balance)}",
         f"24h P&L: ${money(pnl_24h, signed=True)}",
         f"Total P&L: ${money(total_pnl, signed=True) if total_pnl is not None else 'N/A'}",
         f"Open positions: {open_trades}",
@@ -191,25 +190,25 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], daily: 
     if daily["count"]:
         parts.append(f"Closed today: {daily['count']} ({daily['wins']}W/{daily['losses']}L)")
     parts.append(f"Today: {update_line}")
-    parts.append("Paper trading, not live capital.")
+    parts.append("Still paper. Realized and unrealized stay separate.")
     return "\n".join(parts)
 
 
 def build_x_reply(day_number: int, portfolio: dict[str, Any], stats: dict[str, Any], daily: dict[str, Any], positions: list[dict[str, Any]]) -> str:
     if day_number == 1:
         lines = [
-            "System breakdown:",
-            "1. CORE trades multi-day weather markets when model agreement, spread, and edge line up.",
-            "2. PUNT handles cheap tail-pricing dislocations the main strategy should not size like normal trades.",
-            "3. LATE handles day-of entries using intraday observed weather once the live range is clearer.",
-            "4. Position management watches open trades for adds, take-profit, stop-loss, repricing, and same-day exits.",
-            "5. Every trade is journaled, marked, and reviewed so the strategy can be tuned from actual outcomes instead of vibes.",
-            f"Current paper snapshot: balance ${money(portfolio.get('balance'))}, realized ${money(portfolio.get('realized_pnl'), signed=True)}, unrealized ${money(portfolio.get('unrealized_pnl'), signed=True) if portfolio.get('unrealized_pnl') is not None else 'N/A'}, win rate {stats.get('win_rate') if stats.get('win_rate') is not None else 'N/A'}%.",
+            "How it works:",
+            "1. CORE trades the main weather mispricings when model agreement, spread, and edge are good enough.",
+            "2. PUNT takes the cheap tail setups the main strategy should not size like normal bets.",
+            "3. LATE handles day-of entries once live observed weather gives a cleaner read.",
+            "4. Position management handles adds, TP, SL, repricing, and same-day exits after entry.",
+            "5. Everything is journaled and reviewed so the bot gets tuned off outcomes, not gut feel.",
+            f"Current snapshot: balance ${money(portfolio.get('balance'))}, realized ${money(portfolio.get('realized_pnl'), signed=True)}, unrealized ${money(portfolio.get('unrealized_pnl'), signed=True) if portfolio.get('unrealized_pnl') is not None else 'N/A'}, win rate {stats.get('win_rate') if stats.get('win_rate') is not None else 'N/A'}%.",
         ]
         top = summarize_positions(positions)
         if top:
             lines.append("Current open swings: " + " | ".join(top) + ".")
-        lines.append("From Day 2 onward the posts switch to daily balance snapshots plus any meaningful strategy updates.")
+        lines.append("From Day 2 onward it’s straight daily snapshots, open risk, and any real system changes.")
         return "\n".join(lines)
 
     realized = portfolio.get("realized_pnl")
