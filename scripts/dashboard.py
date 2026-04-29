@@ -576,7 +576,6 @@ DASHBOARD_HTML = """
 <div class="header">
   <div class="header-left">
     <h1>AIFS ENS · Weather Dashboard</h1>
-    <div class="subtitle">Polymarket Weather Markets · Systematic Multi-Strategy Execution</div>
   </div>
   <div class="status-line">
     <div class="status-pill" id="status-pill">
