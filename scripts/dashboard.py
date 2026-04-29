@@ -576,14 +576,14 @@ DASHBOARD_HTML = """
 <div class="header">
   <div class="header-left">
     <h1>AIFS ENS · Weather Dashboard</h1>
-    <div class="subtitle">Polymarket weather markets · Systematic multi-strategy execution</div>
+    <div class="subtitle">Polymarket Weather Markets · Systematic Multi-Strategy Execution</div>
   </div>
   <div class="status-line">
     <div class="status-pill" id="status-pill">
       <span class="status-dot" id="status-dot"></span>
       <span id="status-text">Connecting…</span>
     </div>
-    <div class="last-updated">Last updated: <span id="last-updated">—</span></div>
+    <div class="last-updated">Last Updated: <span id="last-updated">—</span></div>
   </div>
   <div class="header-right">
     <button class="tab-btn" id="btn-overview" onclick="showTab('overview')">Overview</button>
@@ -829,11 +829,11 @@ function renderCards(d) {
     }),
     metricCard('Total P&L', fmtPnl(equity), {
       tone: equity > 0 ? 'positive' : equity < 0 ? 'negative' : null,
-      sub: missingMarks > 0 ? `realized + ${markedPositions} live mark${markedPositions === 1 ? '' : 's'}` : 'realized + unrealized',
+      sub: missingMarks > 0 ? `Realized + ${markedPositions} Live Mark${markedPositions === 1 ? '' : 's'}` : 'Realized + Unrealized',
     }),
     metricCard('Unrealized', fmtPnl(unrealPnl), {
       tone: unrealPnl > 0 ? 'positive' : unrealPnl < 0 ? 'negative' : null,
-      sub: missingMarks > 0 ? `${missingMarks} mark${missingMarks === 1 ? '' : 's'} missing` : '',
+      sub: missingMarks > 0 ? `${missingMarks} Mark${missingMarks === 1 ? '' : 's'} Missing` : '',
     }),
     metricCard('Win Rate', winRate != null ? winRate + '%' : '—', {
       tone: winRate >= 55 ? 'positive' : winRate < 45 && winRate != null ? 'negative' : null,
@@ -841,11 +841,11 @@ function renderCards(d) {
     }),
     metricCard('Today P&L', fmtPnl(d.stats.today_pnl || 0), {
       tone: (d.stats.today_pnl || 0) > 0 ? 'positive' : (d.stats.today_pnl || 0) < 0 ? 'negative' : null,
-      sub: `${d.stats.today_trades || 0} resolved today`,
+      sub: `${d.stats.today_trades || 0} Resolved Today`,
     }),
-    metricCard('Open', String(d.stats.open_trades || 0), {sub: 'positions'}),
-    metricCard('Resolved', String(d.stats.resolved_trades || 0), {sub: 'settled'}),
-    metricCard('Total', String(d.stats.total_trades || 0), {sub: 'all trades'}),
+    metricCard('Open', String(d.stats.open_trades || 0), {sub: 'Positions'}),
+    metricCard('Resolved', String(d.stats.resolved_trades || 0), {sub: 'Settled'}),
+    metricCard('Total', String(d.stats.total_trades || 0), {sub: 'All Trades'}),
   ].join('');
 }
 
@@ -1457,7 +1457,7 @@ async function refresh() {
     const now = new Date();
     const t = now.toLocaleTimeString('en-AU', { timeZone: 'Australia/Perth' });
     document.getElementById('last-updated').textContent = t + ' AWST';
-    setStatus('ok', 'Live · 30m refresh');
+    setStatus('ok', 'Live · 30m Refresh');
   } catch (e) {
     setStatus('error', 'Connection lost');
     console.error(e);
