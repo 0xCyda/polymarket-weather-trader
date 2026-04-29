@@ -62,6 +62,11 @@ setsid /usr/bin/python3.12 /home/brandon/projects/polymarket-weather-trader/scri
 ss -tlnp | grep 8414
 ```
 
+**Do not use instead:**
+- plain `... &`
+- `nohup ... &` from an exec wrapper you expect to exit cleanly
+- launch patterns that keep the dashboard tied to the parent shell lifecycle
+
 ## Canonical repo and interpreter
 
 - Repo: `/home/brandon/projects/polymarket-weather-trader`
