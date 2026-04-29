@@ -825,7 +825,7 @@ function renderCards(d) {
   document.getElementById('summary-cards').innerHTML = [
     metricCard('Balance', money(d.portfolio.balance), {
       tone: realized > 0 ? 'positive' : realized < 0 ? 'negative' : null,
-      sub: 'realized P&L baked in',
+      sub: 'Realized P&L Baked In',
     }),
     metricCard('Total P&L', fmtPnl(equity), {
       tone: equity > 0 ? 'positive' : equity < 0 ? 'negative' : null,
