@@ -2268,12 +2268,25 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         # PUNT still runs below since it targets deep tail mispricings where
         # the math is independent of forecast freshness.
         is_d0_event = (date_str == _today_in_city(location))
+        d0_best_rb = None
         if is_d0_event:
             log(f"  ⏭️  D+0 event — CORE skip (LATE mode handles day-of trades)")
             skip_reasons.append("D+0 (CORE skipped — LATE-eligible)")
-            _log_skip("d0_core_skip", location, date_str, metric,
-                      signal_strength=signal_strength, spread=spread)
-            ranked_buckets = []  # don't rank, but allow PUNT pass below
+            # Rank once for audit metadata, but keep CORE disabled for D+0.
+            d0_ranked_buckets = rank_event_buckets_by_edge(
+                event_markets, forecast_temp, spread, signal_strength,
+                is_international=is_international,
+            )
+            d0_best_rb = d0_ranked_buckets[0] if d0_ranked_buckets else None
+            _log_skip(
+                "d0_core_skip", location, date_str, metric,
+                market_id=(d0_best_rb["market"].get("id") if d0_best_rb else None),
+                price=(d0_best_rb.get("price") if d0_best_rb else None),
+                confidence=(d0_best_rb.get("confidence") if d0_best_rb else None),
+                edge=(d0_best_rb.get("edge") if d0_best_rb else None),
+                signal_strength=signal_strength, spread=spread,
+            )
+            ranked_buckets = []  # keep CORE off, but allow PUNT pass below
         else:
             # Rank every bucket in this event by edge (Gaussian bucket probability
             # × signal-strength discount − market price). Picks the BEST bucket
@@ -2329,6 +2342,25 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             punt_candidates.extend(_event_punts)
 
         if not matching_market:
+            if is_d0_event:
+                # D+0 CORE skips are intentional. Do not also poison the skip
+                # journal with fake parseability/low-edge reasons just because
+                # we intentionally left ranked_buckets empty to suppress CORE.
+                if newly_fetched and FORECAST_HISTORY_AVAILABLE and forecasts.get("weighted_temp") is not None:
+                    try:
+                        log_forecast(
+                            location=location, date_str=date_str, metric=metric,
+                            forecast_temp=forecasts.get("weighted_temp"),
+                            signal_strength=forecasts.get("signal_strength", "unknown"),
+                            models_used=forecasts.get("models_count", 0),
+                            agreement_pct=forecasts.get("agreement_pct", 0),
+                            spread=forecasts.get("max_delta"),
+                            model_temps=forecasts.get("model_temps"),
+                            market_id=(d0_best_rb["market"].get("id") if d0_best_rb else None),
+                        )
+                    except Exception:
+                        pass
+                continue
             # Prefer the top-ranked bucket (matcher output) over a distance-based
             # "nearest" re-scan — the ranker already considered every parseable
             # bucket, so its #1 is the true best candidate. Surface the actual
