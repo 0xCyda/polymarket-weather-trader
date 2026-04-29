@@ -226,6 +226,8 @@ CONFIG_SCHEMA = {
                           "help": "Same-day emergency exit floor. If a mature position reprices to this probability or lower and has lost most of entry value, exit even before peak-hour weather gates."},
     "position_corpse_entry_frac": {"env": "SIMMER_WEATHER_POSITION_CORPSE_ENTRY_FRAC", "default": 0.35, "type": float,
                           "help": "Corpse-price guard also requires current price <= entry_price * this fraction, preventing low-entry punt positions from being closed just because they started cheap."},
+    "position_easy_core_corpse_price_floor": {"env": "SIMMER_WEATHER_POSITION_EASY_CORE_CORPSE_PRICE_FLOOR", "default": 0.07, "type": float,
+                          "help": "Higher same-day emergency exit floor for easy-city CORE trades. Lets the manager stop hoping on obviously dead 5-7¢ positions before the generic corpse floor is hit."},
     "position_repricing_weather_edge_c": {"env": "SIMMER_WEATHER_POSITION_REPRICING_WEATHER_EDGE_C", "default": 0.20, "type": float,
                           "help": "Weather support must weaken below this edge distance (°C), or the projection must already have left the bucket, before the repricing guard can fire."},
     "position_repricing_cooldown_min": {"env": "SIMMER_WEATHER_POSITION_REPRICING_COOLDOWN_MIN", "default": 45.0, "type": float,

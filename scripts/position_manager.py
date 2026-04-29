@@ -43,7 +43,7 @@ if str(_HERE) not in sys.path:
 
 from weather_trader import (
     CONFIG_SCHEMA, fetch_weather_markets, parse_temperature_bucket,
-    parse_market_bucket, log_error,
+    parse_market_bucket, log_error, city_tier,
 )
 from paper_journal import (
     _HISTORICAL_LOCATIONS as LOCATIONS,
@@ -72,6 +72,7 @@ REPRICING_GUARD_START_HOUR = int(_cfg.get("position_repricing_guard_start_hour",
 REPRICING_DROP_FRAC = float(_cfg.get("position_repricing_drop_frac", 0.50))
 CORPSE_PRICE_FLOOR = float(_cfg.get("position_corpse_price_floor", 0.05))
 CORPSE_ENTRY_FRAC = float(_cfg.get("position_corpse_entry_frac", 0.35))
+EASY_CORE_CORPSE_PRICE_FLOOR = float(_cfg.get("position_easy_core_corpse_price_floor", 0.07))
 REPRICING_WEATHER_EDGE_C = float(_cfg.get("position_repricing_weather_edge_c", 0.20))
 REPRICING_COOLDOWN_MIN = float(_cfg.get("position_repricing_cooldown_min", 45.0))
 LATE_PROJECTED_EXIT_COOLDOWN_MIN = 45.0
@@ -333,12 +334,17 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
             entry_price = float(trade.get("entry_price") or 0)
         except Exception:
             entry_price = 0.0
-        corpse_hit = cur_price <= CORPSE_PRICE_FLOOR and (entry_price <= 0 or cur_price <= entry_price * CORPSE_ENTRY_FRAC)
+        strategy = str(trade.get("strategy") or "").lower()
+        tier = city_tier(str(trade.get("location") or ""))
+        effective_corpse_floor = CORPSE_PRICE_FLOOR
+        if strategy == "core" and tier == "easy":
+            effective_corpse_floor = max(CORPSE_PRICE_FLOOR, EASY_CORE_CORPSE_PRICE_FLOOR)
+        corpse_hit = cur_price <= effective_corpse_floor and (entry_price <= 0 or cur_price <= entry_price * CORPSE_ENTRY_FRAC)
         if corpse_hit:
             out["action"] = "exit"
             out["reason"] = (
                 f"corpse_price_guard "
-                f"(price=${cur_price:.3f} <= floor=${CORPSE_PRICE_FLOOR:.3f}, "
+                f"(price=${cur_price:.3f} <= floor=${effective_corpse_floor:.3f}, "
                 f"entry=${entry_price:.3f}, entry_frac={CORPSE_ENTRY_FRAC:.2f}, "
                 f"running={running_c:.2f}°C, projected={proj['projected_c']:.2f}°C)"
             )

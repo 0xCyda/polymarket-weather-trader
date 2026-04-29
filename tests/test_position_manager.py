@@ -60,6 +60,33 @@ class FakeDateTime(real_datetime):
 
 
 class TestCorpsePriceGuard(unittest.TestCase):
+    @patch.object(pm, "city_tier", return_value="easy")
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=6.0)
+    def test_easy_core_positions_exit_above_generic_corpse_floor(self, *_mocks):
+        trade = {
+            "trade_id": "warsaw-core",
+            "market_id": "m-war",
+            "location": "Warsaw",
+            "target_date": "2026-04-29",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-04-28T07:11:48+00:00",
+            "question": "Will the highest temperature in Warsaw be 11°C on April 29?",
+            "forecast_temp": 51.8,
+            "metric": "high",
+            "bucket": "11°C",
+            "entry_price": 0.17,
+        }
+        market = {"id": "m-war", "external_price_yes": 0.055}
+        now_utc = real_datetime(2026, 4, 29, 5, 19, 0, tzinfo=timezone.utc)  # 7:19 local, before generic 5¢ floor hit
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertIn("corpse_price_guard", decision["reason"])
+        self.assertIn("floor=$0.070", decision["reason"])
+
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
     @patch.object(pm, "_running_extreme", return_value=25.0)
     def test_corpse_price_exits_before_peak_hour(self, *_mocks):
@@ -86,6 +113,7 @@ class TestCorpsePriceGuard(unittest.TestCase):
         self.assertIn("corpse_price_guard", decision["reason"])
         self.assertLess(decision["local_hour"], pm.REPRICING_GUARD_START_HOUR)
 
+    @patch.object(pm, "city_tier", return_value="easy")
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
     @patch.object(pm, "_running_extreme", return_value=25.0)
     def test_corpse_price_does_not_stop_positions_that_entered_cheap(self, *_mocks):
