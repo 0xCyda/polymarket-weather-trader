@@ -8,7 +8,8 @@ All notable changes to the Polymarket Weather Trader. Newest first.
 - Early PM TP/SL exits no longer populate `actual_temp` before the market is truly resolved. Dashboard rows now stay blank on same-day exits, and the backfill logic only restores actuals after the target date is past in the city’s local timezone. (`position_manager.py`, `paper_journal.py`, `dashboard.py`)
 - Existing early-exit journal rows were cleaned up so stale same-day actuals do not leak into the dashboard API. (`data/paper_trades.jsonl`)
 - D+0 CORE skip logging no longer pollutes the skip journal with fake `no_bucket_parseable` / `no_bucket_low_edge` reasons caused by intentionally suppressing CORE entries on day-of markets. `d0_core_skip` rows now carry best-bucket audit metadata instead. (`weather_trader.py`)
-- Position manager now has a same-day corpse-price guard so dead core positions can be dumped once the market has already priced them as toast, without nuking tiny punts. (`position_manager.py`, `weather_trader.py`, `tests/test_position_manager.py`)
+- Position manager now has a same-day corpse-price guard plus an earlier easy-city CORE repricing window, so dead same-day easy setups get cut sooner instead of waiting for the generic 2 PM / 5¢ logic. (`position_manager.py`, `weather_trader.py`, `tests/test_position_manager.py`)
+- PUNT now blocks sub-tick/extreme-price entries and refuses duplicate same-market journaling, which closes the hole that let the bogus Dallas 0.0005 paper punt show up as fake exposure. (`weather_trader.py`, `paper_journal.py`, `tests/test_paper_journal.py`, `tests/test_punt_rules.py`, `data/paper_trades.jsonl`)
 
 ### Changed
 - Repo-local operator docs were pruned and rewritten to match the current system. `SKILL.md` and `LESSONS.md` now reflect the live stack, and stale `CLAUDE.md` guidance was removed. (`SKILL.md`, `LESSONS.md`, `CLAUDE.md`)
