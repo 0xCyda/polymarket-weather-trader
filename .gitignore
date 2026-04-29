@@ -13,3 +13,4 @@ losses.log
 scripts/data/forecast_cache.json
 scripts/data/discovery_cache.json
 data/late_daily_budget.json
+reports/x-daily/
