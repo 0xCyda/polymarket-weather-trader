@@ -14,6 +14,8 @@ BASE = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = BASE / "scripts"
 REPORTS_DIR = BASE / "reports" / "x-daily"
 AWST = ZoneInfo("Australia/Perth")
+CHALLENGE_START_DATE = "2026-04-29"
+CHALLENGE_TITLE = "$10,000 to $50,000 Weather Bot Challenge"
 
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -24,6 +26,15 @@ from paper_journal import get_stats, _load_trades  # type: ignore
 
 def now_awst() -> datetime:
     return datetime.now(AWST)
+
+
+def challenge_day(current: datetime) -> int:
+    start = datetime.fromisoformat(CHALLENGE_START_DATE).replace(tzinfo=AWST)
+    return ((current.date() - start.date()).days) + 1
+
+
+def challenge_title(current: datetime) -> str:
+    return f"{CHALLENGE_TITLE} - Day {challenge_day(current)}"
 
 
 def awst_day_bounds(day: datetime | None = None) -> tuple[datetime, datetime]:
@@ -152,12 +163,14 @@ def summarize_positions(positions: list[dict[str, Any]], limit: int = 3) -> list
     return lines
 
 
-def build_x_post(portfolio: dict[str, Any], daily: dict[str, Any], update_line: str) -> str:
+def build_x_post(title: str, portfolio: dict[str, Any], daily: dict[str, Any], update_line: str) -> str:
     total_pnl = portfolio.get("total_pnl")
     balance = portfolio.get("balance")
     pnl_24h = portfolio.get("pnl_24h")
     open_trades = portfolio.get("open_trades")
     parts = [
+        title,
+        "",
         "Daily weather bot snapshot.",
         f"Paper balance: ${money(balance)}",
         f"24h P&L: ${money(pnl_24h, signed=True)}",
@@ -229,6 +242,7 @@ def build_markdown(snapshot: dict[str, Any]) -> str:
     daily = snapshot["daily_resolved"]
     lines = [
         f"# Daily X Draft — {snapshot['snapshot_date']}",
+        f"## {snapshot['challenge_title']}",
         "",
         f"Generated: {snapshot['generated_at_awst']}",
         "",
@@ -271,15 +285,18 @@ def generate_snapshot() -> dict[str, Any]:
     daily = load_daily_resolved()
     updates = todays_commit_subjects()
     update_line = build_update_line(updates)
+    title = challenge_title(current)
     snapshot = {
         "snapshot_date": current.strftime("%Y-%m-%d"),
         "generated_at_awst": current.strftime("%Y-%m-%d %I:%M %p AWST").replace(" 0", " "),
+        "challenge_title": title,
+        "challenge_day": challenge_day(current),
         "portfolio": portfolio,
         "stats": stats,
         "daily_resolved": daily,
         "progress_updates": updates,
         "top_open_positions": summarize_positions(positions),
-        "x_post": build_x_post(portfolio, daily, update_line),
+        "x_post": build_x_post(title, portfolio, daily, update_line),
         "x_reply": build_x_reply(portfolio, stats, daily, positions),
     }
     snapshot["markdown"] = build_markdown(snapshot)
