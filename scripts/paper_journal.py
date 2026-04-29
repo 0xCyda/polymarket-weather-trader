@@ -352,6 +352,31 @@ _HISTORICAL_LOCATIONS = {
 _OPEN_METEO_ARCHIVE_ENDPOINT = "https://archive-api.open-meteo.com/v1/archive"
 
 
+def _is_past_target_date_for_location(date_str: str, location: str | None = None) -> bool:
+    """Return True when the target date is already behind today in the city's local timezone."""
+    try:
+        target = datetime.fromisoformat(date_str).date()
+    except (TypeError, ValueError):
+        return False
+    today = datetime.now(timezone.utc).date()
+    if location:
+        coords = _HISTORICAL_LOCATIONS.get(location)
+        if coords is None:
+            want = (location or "").strip().lower()
+            for name, info in _HISTORICAL_LOCATIONS.items():
+                if name.lower() == want:
+                    coords = info
+                    break
+        try:
+            tz_name = coords[2] if coords else None
+            if tz_name:
+                from zoneinfo import ZoneInfo
+                today = datetime.now(ZoneInfo(tz_name)).date()
+        except Exception:
+            pass
+    return target < today
+
+
 def _fetch_archive_actual_temp(location: str, date_str: str, metric: str, unit: str = "F") -> float | None:
     """Return the observed daily high/low from Open-Meteo archive as a last resort."""
     coords = _HISTORICAL_LOCATIONS.get(location)
@@ -1094,9 +1119,12 @@ def backfill_actual_temps() -> list:
     for t in trades:
         if t.get("status") != "resolved":
             continue
-        # TP/SL exits are not true market settlement. Do not backfill actuals for
-        # early exits just because we know the running temp mid-session.
-        if t.get("resolution_source") == "early_exit_position_manager":
+        # TP/SL exits should stay blank until the market's weather day is actually over.
+        # Once the target date is in the past for that city, backfilling actuals is valid.
+        if (
+            t.get("resolution_source") == "early_exit_position_manager"
+            and not _is_past_target_date_for_location(t.get("target_date", ""), t.get("location", ""))
+        ):
             continue
         if t.get("actual_temp") is not None:
             continue

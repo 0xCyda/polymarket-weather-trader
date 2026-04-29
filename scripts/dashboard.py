@@ -776,7 +776,7 @@ function pmExitBadge(source, pnl, exitReason) {
 }
 
 function shouldShowActualTemp(t) {
-  return t.actual_temp != null && (t.resolution_source || '').toLowerCase() !== 'early_exit_position_manager';
+  return t.actual_temp != null;
 }
 
 function strategyBadge(strat) {
