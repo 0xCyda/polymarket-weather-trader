@@ -460,18 +460,9 @@ def _execute_exit(trade_id: str, current_price: float, reason: str) -> dict | No
         target["resolved_at"] = datetime.now(timezone.utc).isoformat()
         target["resolution_source"] = "early_exit_position_manager"
         target["exit_reason"] = reason
-        if target.get("actual_temp") is None:
-            try:
-                actual = fetch_historical_temp(
-                    target.get("location", ""),
-                    target.get("target_date", ""),
-                    target.get("metric", "high"),
-                    unit="F",
-                )
-                if actual is not None:
-                    target["actual_temp"] = actual
-            except Exception:
-                pass
+        # Early TP/SL exits are not final market resolution. Keep actual_temp blank
+        # until the underlying weather market has truly resolved.
+        target.pop("actual_temp", None)
         return target
 
     resolved = update_trade_atomically(trade_id, _mutate)

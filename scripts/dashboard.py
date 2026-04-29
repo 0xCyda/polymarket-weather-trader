@@ -775,6 +775,10 @@ function pmExitBadge(source, pnl, exitReason) {
   return `<span class="badge badge-sl" title="PM stop loss${titleSuffix}">SL</span>`;
 }
 
+function shouldShowActualTemp(t) {
+  return t.actual_temp != null && (t.resolution_source || '').toLowerCase() !== 'early_exit_position_manager';
+}
+
 function strategyBadge(strat) {
   const s = (strat || 'core').toLowerCase();
   let cls, label;
@@ -1158,7 +1162,7 @@ function renderResolved(d) {
 
     // Actual temp — show if recorded, otherwise blank
     let actualCell;
-    if (t.actual_temp != null) {
+    if (shouldShowActualTemp(t)) {
       const delta = t.forecast_temp != null ? Number(t.actual_temp) - Number(t.forecast_temp) : null;
       const deltaStr = delta != null
         ? `<span style="color:${Math.abs(delta) <= 3 ? 'var(--accent-green)' : 'var(--accent-amber)'};font-size:10px"> (${delta > 0 ? '+' : ''}${isUSLocation(t.location) ? Math.round(delta) + '°F' : Math.round(delta * 5/9) + '°C'})</span>`

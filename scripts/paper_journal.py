@@ -1094,6 +1094,10 @@ def backfill_actual_temps() -> list:
     for t in trades:
         if t.get("status") != "resolved":
             continue
+        # TP/SL exits are not true market settlement. Do not backfill actuals for
+        # early exits just because we know the running temp mid-session.
+        if t.get("resolution_source") == "early_exit_position_manager":
+            continue
         if t.get("actual_temp") is not None:
             continue
         loc = t.get("location") or ""
