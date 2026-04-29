@@ -163,7 +163,18 @@ def summarize_positions(positions: list[dict[str, Any]], limit: int = 3) -> list
     return lines
 
 
-def build_x_post(title: str, portfolio: dict[str, Any], daily: dict[str, Any], update_line: str) -> str:
+def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], daily: dict[str, Any], update_line: str) -> str:
+    if day_number == 1:
+        parts = [
+            title,
+            "",
+            "Starting a public build for a Polymarket weather bot challenge.",
+            "Goal: take a paper portfolio from $10,000 to $50,000 by trading weather markets with a rules-based system.",
+            "This is Day 1, so this post is the system overview before the daily scorecards start.",
+            "Paper trading only. Realized and unrealized P&L will always be shown separately.",
+        ]
+        return "\n".join(parts)
+
     total_pnl = portfolio.get("total_pnl")
     balance = portfolio.get("balance")
     pnl_24h = portfolio.get("pnl_24h")
@@ -184,7 +195,23 @@ def build_x_post(title: str, portfolio: dict[str, Any], daily: dict[str, Any], u
     return "\n".join(parts)
 
 
-def build_x_reply(portfolio: dict[str, Any], stats: dict[str, Any], daily: dict[str, Any], positions: list[dict[str, Any]]) -> str:
+def build_x_reply(day_number: int, portfolio: dict[str, Any], stats: dict[str, Any], daily: dict[str, Any], positions: list[dict[str, Any]]) -> str:
+    if day_number == 1:
+        lines = [
+            "System breakdown:",
+            "1. CORE trades multi-day weather markets when model agreement, spread, and edge line up.",
+            "2. PUNT handles cheap tail-pricing dislocations the main strategy should not size like normal trades.",
+            "3. LATE handles day-of entries using intraday observed weather once the live range is clearer.",
+            "4. Position management watches open trades for adds, take-profit, stop-loss, repricing, and same-day exits.",
+            "5. Every trade is journaled, marked, and reviewed so the strategy can be tuned from actual outcomes instead of vibes.",
+            f"Current paper snapshot: balance ${money(portfolio.get('balance'))}, realized ${money(portfolio.get('realized_pnl'), signed=True)}, unrealized ${money(portfolio.get('unrealized_pnl'), signed=True) if portfolio.get('unrealized_pnl') is not None else 'N/A'}, win rate {stats.get('win_rate') if stats.get('win_rate') is not None else 'N/A'}%.",
+        ]
+        top = summarize_positions(positions)
+        if top:
+            lines.append("Current open swings: " + " | ".join(top) + ".")
+        lines.append("From Day 2 onward the posts switch to daily balance snapshots plus any meaningful strategy updates.")
+        return "\n".join(lines)
+
     realized = portfolio.get("realized_pnl")
     unrealized = portfolio.get("unrealized_pnl")
     lines = [
@@ -286,18 +313,19 @@ def generate_snapshot() -> dict[str, Any]:
     updates = todays_commit_subjects()
     update_line = build_update_line(updates)
     title = challenge_title(current)
+    day_number = challenge_day(current)
     snapshot = {
         "snapshot_date": current.strftime("%Y-%m-%d"),
         "generated_at_awst": current.strftime("%Y-%m-%d %I:%M %p AWST").replace(" 0", " "),
         "challenge_title": title,
-        "challenge_day": challenge_day(current),
+        "challenge_day": day_number,
         "portfolio": portfolio,
         "stats": stats,
         "daily_resolved": daily,
         "progress_updates": updates,
         "top_open_positions": summarize_positions(positions),
-        "x_post": build_x_post(title, portfolio, daily, update_line),
-        "x_reply": build_x_reply(portfolio, stats, daily, positions),
+        "x_post": build_x_post(title, day_number, portfolio, daily, update_line),
+        "x_reply": build_x_reply(day_number, portfolio, stats, daily, positions),
     }
     snapshot["markdown"] = build_markdown(snapshot)
     return snapshot
