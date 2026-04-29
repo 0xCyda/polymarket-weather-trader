@@ -140,6 +140,35 @@ class TestCorpsePriceGuard(unittest.TestCase):
         self.assertEqual(decision["reason"], "hold_no_signal")
 
 
+class TestRepricingGuard(unittest.TestCase):
+    @patch.object(pm, "city_tier", return_value="easy")
+    @patch.object(pm, "_last_logged_price", return_value=0.20)
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=10.0)
+    def test_easy_core_repricing_guard_starts_before_generic_hour(self, *_mocks):
+        trade = {
+            "trade_id": "warsaw-repricing",
+            "market_id": "m-war-reprice",
+            "location": "Warsaw",
+            "target_date": "2026-04-29",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-04-28T07:11:48+00:00",
+            "question": "Will the highest temperature in Warsaw be 11°C on April 29?",
+            "forecast_temp": 51.8,
+            "metric": "high",
+            "bucket": "11°C",
+            "entry_price": 0.17,
+        }
+        market = {"id": "m-war-reprice", "external_price_yes": 0.09}
+        now_utc = real_datetime(2026, 4, 29, 10, 19, 0, tzinfo=timezone.utc)  # 12:19 local in Warsaw
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertIn("repricing_guard_collapse", decision["reason"])
+
+
 class TestLateCooldown(unittest.TestCase):
     @patch.object(pm, "datetime", FakeDateTime)
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])

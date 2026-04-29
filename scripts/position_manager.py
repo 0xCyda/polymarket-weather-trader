@@ -69,6 +69,7 @@ ADD_AFTER_HOUR      = int(_cfg.get("position_add_after_hour", 14))    # peak-win
 PRE_PEAK_BREAKOUT_C = float(_cfg.get("position_pre_peak_breakout_c", 0.5))
 HALFHOUR_START_HOUR = int(_cfg.get("position_halfhour_start_hour", ADD_AFTER_HOUR))
 REPRICING_GUARD_START_HOUR = int(_cfg.get("position_repricing_guard_start_hour", ADD_AFTER_HOUR))
+EASY_CORE_REPRICING_GUARD_START_HOUR = int(_cfg.get("position_easy_core_repricing_guard_start_hour", 12))
 REPRICING_DROP_FRAC = float(_cfg.get("position_repricing_drop_frac", 0.50))
 CORPSE_PRICE_FLOOR = float(_cfg.get("position_corpse_price_floor", 0.05))
 CORPSE_ENTRY_FRAC = float(_cfg.get("position_corpse_entry_frac", 0.35))
@@ -290,6 +291,8 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
 
     cur_hour = local_now.hour
     out["local_hour"] = cur_hour
+    strategy = str(trade.get("strategy") or "").lower()
+    tier = city_tier(str(trade.get("location") or ""))
     age_min = _trade_age_minutes(trade, now_utc)
     if age_min is not None:
         out["age_min"] = round(age_min, 1)
@@ -334,8 +337,6 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
             entry_price = float(trade.get("entry_price") or 0)
         except Exception:
             entry_price = 0.0
-        strategy = str(trade.get("strategy") or "").lower()
-        tier = city_tier(str(trade.get("location") or ""))
         effective_corpse_floor = CORPSE_PRICE_FLOOR
         if strategy == "core" and tier == "easy":
             effective_corpse_floor = max(CORPSE_PRICE_FLOOR, EASY_CORE_CORPSE_PRICE_FLOOR)
@@ -350,10 +351,13 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
             )
             return out
 
-    # Repricing guard: late-day price collapse plus weakening weather support.
+    # Repricing guard: price collapse plus weakening weather support.
+    effective_repricing_guard_start_hour = REPRICING_GUARD_START_HOUR
+    if strategy == "core" and tier == "easy":
+        effective_repricing_guard_start_hour = min(REPRICING_GUARD_START_HOUR, EASY_CORE_REPRICING_GUARD_START_HOUR)
     if (
         cur_price is not None
-        and cur_hour >= REPRICING_GUARD_START_HOUR
+        and cur_hour >= effective_repricing_guard_start_hour
         and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN)
         and _weather_support_weakening(edge_c_now, proj["projected_c"], bucket, proj["confidence"])
     ):

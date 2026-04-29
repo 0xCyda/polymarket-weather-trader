@@ -220,6 +220,8 @@ CONFIG_SCHEMA = {
                           "help": "Local hour after which the position manager should also run on the half-hour for same-day positions."},
     "position_repricing_guard_start_hour": {"env": "SIMMER_WEATHER_POSITION_REPRICING_GUARD_START_HOUR", "default": 14, "type": int,
                           "help": "Local hour after which the repricing guard can force an exit on collapsing prices."},
+    "position_easy_core_repricing_guard_start_hour": {"env": "SIMMER_WEATHER_POSITION_EASY_CORE_REPRICING_GUARD_START_HOUR", "default": 12, "type": int,
+                          "help": "Earlier repricing-guard start hour for easy-city CORE trades. Lets obvious midday collapses exit before the generic 2pm gate."},
     "position_repricing_drop_frac": {"env": "SIMMER_WEATHER_POSITION_REPRICING_DROP_FRAC", "default": 0.50, "type": float,
                           "help": "Relative drop threshold for the repricing guard. 0.50 means exit after a 50%+ collapse vs the last observed manager price."},
     "position_corpse_price_floor": {"env": "SIMMER_WEATHER_POSITION_CORPSE_PRICE_FLOOR", "default": 0.05, "type": float,
