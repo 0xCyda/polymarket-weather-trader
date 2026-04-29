@@ -58,7 +58,7 @@ except ImportError:
 
 # Paper trading journal (local JSONL — no Simmer balance needed)
 try:
-    from paper_journal import log_paper_trade, update_resolved_trades, get_open_positions, get_stats, get_open_positions_by_event, backfill_actual_temps
+    from paper_journal import log_paper_trade, update_resolved_trades, get_open_positions, get_stats, get_open_positions_by_event, backfill_actual_temps, has_logged_trade
     PAPER_JOURNAL_AVAILABLE = True
 except ImportError:
     PAPER_JOURNAL_AVAILABLE = False
@@ -67,6 +67,7 @@ except ImportError:
     def get_open_positions(): return []
     def get_stats(): return {}
     def backfill_actual_temps(): return []
+    def has_logged_trade(*args, **kwargs): return False
 
 # --------------------------------------------------------------------
 # Error log — all non-200 responses, API errors, and unexpected
@@ -1181,6 +1182,8 @@ def find_punt_candidates(event_markets: list, forecast_temp: float, spread: floa
             continue
         price = market.get("external_price_yes")
         if price is None or price <= 0 or price > PUNT_PRICE_CEILING:
+            continue
+        if price < MIN_TICK_SIZE or price > (1 - MIN_TICK_SIZE):
             continue
         bucket, outcome_name = parse_market_bucket(market)
         if not bucket:
@@ -2824,6 +2827,12 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         punt_candidates.sort(key=lambda c: c["edge"], reverse=True)
         # Dedupe by market_id (in case same bucket punt-scanned twice)
         _seen_punt_ids = set()
+        open_by_event = {}
+        if PAPER_JOURNAL_AVAILABLE:
+            try:
+                open_by_event = get_open_positions_by_event()
+            except Exception:
+                open_by_event = {}
         for p in punt_candidates:
             if remaining_budget < PUNT_MAX_POSITION_USD:
                 log(f"  ⏸️  Punt daily budget exhausted (${punt_usd_today + punt_usd_spent:.2f}/${PUNT_DAILY_BUDGET_USD:.2f})")
@@ -2840,6 +2849,36 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                           edge=p.get("edge"), spread=p.get("spread"),
                           signal_strength=p.get("signal_strength"))
                 continue
+
+            if p.get("price") is None or p["price"] < MIN_TICK_SIZE or p["price"] > (1 - MIN_TICK_SIZE):
+                log(f"  ⏭️  Punt blocked: extreme price ${float(p.get('price') or 0):.4f}")
+                _log_skip("punt_price_extreme", p["location"], p["date_str"], p["metric"],
+                          market_id=mid, price=p.get("price"), confidence=p.get("confidence"),
+                          edge=p.get("edge"), spread=p.get("spread"),
+                          signal_strength=p.get("signal_strength"))
+                continue
+
+            event_key = (p.get("location"), p.get("date_str"), p.get("metric"))
+            existing = open_by_event.get(event_key)
+            if existing:
+                log(f"  ⏭️  Punt blocked: same-event position already open ({existing.get('bucket','?')})")
+                _log_skip("punt_same_event_open", p["location"], p["date_str"], p["metric"],
+                          market_id=mid, price=p.get("price"), confidence=p.get("confidence"),
+                          edge=p.get("edge"), spread=p.get("spread"),
+                          signal_strength=p.get("signal_strength"))
+                continue
+
+            if PAPER_JOURNAL_AVAILABLE:
+                try:
+                    if has_logged_trade(mid, strategy="punt"):
+                        log("  ⏭️  Punt blocked: market already logged in paper journal")
+                        _log_skip("punt_already_logged", p["location"], p["date_str"], p["metric"],
+                                  market_id=mid, price=p.get("price"), confidence=p.get("confidence"),
+                                  edge=p.get("edge"), spread=p.get("spread"),
+                                  signal_strength=p.get("signal_strength"))
+                        continue
+                except Exception:
+                    pass
 
             if use_safeguards:
                 punt_context = get_market_context(mid, p.get("confidence"))
@@ -2899,7 +2938,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                     else:
                         _label = p["outcome_name"]
                     try:
-                        log_paper_trade(
+                        logged_trade_id = log_paper_trade(
                             market_id=mid,
                             question=p["market"].get("question", "") or p["market"].get("event_name", ""),
                             side="yes", entry_price=p["price"], shares=shares,
@@ -2916,6 +2955,14 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                             polymarket_token_id=p["market"].get("polymarket_token_id"),
                             polymarket_no_token_id=p["market"].get("polymarket_no_token_id"),
                         )
+                        if logged_trade_id:
+                            open_by_event[event_key] = {
+                                "side": "yes",
+                                "market_id": mid,
+                                "bucket": _label,
+                                "entry_price": p["price"],
+                                "cost": size,
+                            }
                     except Exception:
                         pass
             else:

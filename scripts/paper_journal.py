@@ -194,6 +194,25 @@ def _save_trades(trades: list) -> None:
         os.replace(tmp, JOURNAL_FILE)
 
 
+def has_logged_trade(market_id: str, strategy: str | None = None, open_only: bool = False) -> bool:
+    """Return True if the journal already contains this market.
+
+    Strategy can narrow the lookup when multiple strategy labels legitimately
+    coexist on one market (for example late + late_add). By default we search
+    all statuses so a resolved paper trade cannot be silently logged again.
+    """
+    for existing in _load_trades():
+        if existing.get("market_id") != market_id:
+            continue
+        if strategy is not None and existing.get("strategy") != strategy:
+            continue
+        if open_only and existing.get("status") != "open":
+            continue
+        return True
+    return False
+
+
+
 def log_paper_trade(
     market_id: str,
     question: str,
@@ -249,15 +268,13 @@ def log_paper_trade(
         "resolved_at": None,
         "entered_at": datetime.now(timezone.utc).isoformat(),
     }
-    # Hard dedup: prevent same (market_id, strategy) from being logged twice while
-    # still open. Different strategies (e.g. late + late_add) may coexist on the
-    # same market — that's the whole point of late_add scaling into a held bucket.
+    # Hard dedup: never log the same (market_id, strategy) twice. Re-buying the
+    # exact same paper market after it already resolved creates fake duplicate
+    # exposure and breaks analytics, as happened with the Dallas punt.
     trades = _load_trades()
     for existing in trades:
-        if (existing.get("market_id") == market_id
-                and existing.get("strategy") == strategy
-                and existing.get("status") == "open"):
-            print(f"Warning: open {strategy} position already exists for market {market_id[:16]} — skipping duplicate log")
+        if existing.get("market_id") == market_id and existing.get("strategy") == strategy:
+            print(f"Warning: {strategy} trade already logged for market {market_id[:16]} — skipping duplicate log")
             return existing.get("trade_id", "")
     trades.append(trade)
     _save_trades(trades)
