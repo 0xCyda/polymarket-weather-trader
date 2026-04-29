@@ -163,7 +163,7 @@ def summarize_positions(positions: list[dict[str, Any]], limit: int = 3) -> list
     return lines
 
 
-def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], daily: dict[str, Any], update_line: str) -> str:
+def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], stats: dict[str, Any], daily: dict[str, Any], update_line: str) -> str:
     if day_number == 1:
         parts = [
             title,
@@ -171,6 +171,28 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], daily: 
             "OVERVIEW",
             "POLYMARKET WEATHER TRADER",
             "A rules-based weather trading system built for Polymarket daily-temperature markets. It combines ensemble forecasts, live intraday observations, and hard risk controls to find mispriced buckets, size entries by confidence, and manage positions from entry to exit.",
+            "",
+            "Data Sources",
+            "ECMWF AIFS ENS (18%)",
+            "ECMWF IFS 0.25° (24%)",
+            "NOAA GFS seamless (14%)",
+            "Météo-France ARPEGE (10%)",
+            "TWC / Wunderground intraday obs",
+            "METAR live airport feeds (US, D+0)",
+            "",
+            "Three Trading Modes",
+            "CORE: scans every 4 hours and takes the bucket with the strongest model edge vs market price",
+            "PUNT: takes cheap tail dislocations (≤14.9¢) with fixed small size",
+            "LATE: runs hourly and uses observed daily max at 3pm local for day-of entries",
+            "",
+            "Risk & Sizing",
+            "Per-mode daily budgets and max-position caps",
+            "Volatility targeting available (EWMA-based)",
+            "Laddered exits + dynamic profit multiplier",
+            "Optional daily-loss hard stop",
+            "",
+            f"Current Snapshot: Balance ${money(portfolio.get('balance'))}, Realized ${money(portfolio.get('realized_pnl'), signed=True)}, Unrealized ${money(portfolio.get('unrealized_pnl'), signed=True) if portfolio.get('unrealized_pnl') is not None else 'N/A'}, Win Rate {stats.get('win_rate') if stats.get('win_rate') is not None else 'N/A'}%.",
+            "From here it turns into daily snapshots, open risk, and real system changes.",
         ]
         return "\n".join(parts)
 
@@ -195,30 +217,7 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], daily: 
 
 def build_x_reply(day_number: int, portfolio: dict[str, Any], stats: dict[str, Any], daily: dict[str, Any], positions: list[dict[str, Any]]) -> str:
     if day_number == 1:
-        lines = [
-            "Data Sources",
-            "ECMWF AIFS ENS (18%)",
-            "ECMWF IFS 0.25° (24%)",
-            "NOAA GFS seamless (14%)",
-            "Météo-France ARPEGE (10%)",
-            "TWC / Wunderground intraday obs",
-            "METAR live airport feeds (US, D+0)",
-            "",
-            "Three Trading Modes",
-            "CORE: scans every 4 hours and takes the bucket with the strongest model edge vs market price",
-            "PUNT: takes cheap tail dislocations (≤14.9¢) with fixed small size",
-            "LATE: runs hourly and uses observed daily max at 3pm local for day-of entries",
-            "",
-            "Risk & Sizing",
-            "Per-mode daily budgets and max-position caps",
-            "Volatility targeting available (EWMA-based)",
-            "Laddered exits + dynamic profit multiplier",
-            "Optional daily-loss hard stop",
-            "",
-            f"Current Snapshot: Balance ${money(portfolio.get('balance'))}, Realized ${money(portfolio.get('realized_pnl'), signed=True)}, Unrealized ${money(portfolio.get('unrealized_pnl'), signed=True) if portfolio.get('unrealized_pnl') is not None else 'N/A'}, Win Rate {stats.get('win_rate') if stats.get('win_rate') is not None else 'N/A'}%.",
-            "From here it turns into daily snapshots, open risk, and real system changes.",
-        ]
-        return "\n".join(lines)
+        return ""
 
     realized = portfolio.get("realized_pnl")
     unrealized = portfolio.get("unrealized_pnl")
@@ -299,10 +298,13 @@ def build_markdown(snapshot: dict[str, Any]) -> str:
         "",
         "## X draft",
         snapshot["x_post"],
-        "",
-        "## Reply draft",
-        snapshot["x_reply"],
     ])
+    if snapshot.get("x_reply"):
+        lines.extend([
+            "",
+            "## Reply draft",
+            snapshot["x_reply"],
+        ])
     if snapshot["top_open_positions"]:
         lines.extend([
             "",
@@ -332,7 +334,7 @@ def generate_snapshot() -> dict[str, Any]:
         "daily_resolved": daily,
         "progress_updates": updates,
         "top_open_positions": summarize_positions(positions),
-        "x_post": build_x_post(title, day_number, portfolio, daily, update_line),
+        "x_post": build_x_post(title, day_number, portfolio, stats, daily, update_line),
         "x_reply": build_x_reply(day_number, portfolio, stats, daily, positions),
     }
     snapshot["markdown"] = build_markdown(snapshot)
