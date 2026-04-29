@@ -168,10 +168,9 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], daily: 
         parts = [
             title,
             "",
-            "Built a weather bot for Polymarket.",
-            "The challenge: take a $10,000 paper account to $50,000 with fully systematic entries, sizing, and exits.",
-            "Day 1 is the setup post, not a victory lap.",
-            "Every update after this will show the balance, the swings, and the changes we made to the system.",
+            "OVERVIEW",
+            "POLYMARKET WEATHER TRADER",
+            "A rules-based weather trading system for Polymarket daily-temperature markets. It combines ensemble forecasts, live intraday observations, and structured risk controls to find mispriced buckets, size entries by confidence, and manage positions through the full trade lifecycle.",
         ]
         return "\n".join(parts)
 
@@ -197,18 +196,27 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], daily: 
 def build_x_reply(day_number: int, portfolio: dict[str, Any], stats: dict[str, Any], daily: dict[str, Any], positions: list[dict[str, Any]]) -> str:
     if day_number == 1:
         lines = [
-            "How it works:",
-            "1. CORE trades the main weather mispricings when model agreement, spread, and edge are good enough.",
-            "2. PUNT takes the cheap tail setups the main strategy should not size like normal bets.",
-            "3. LATE handles day-of entries once live observed weather gives a cleaner read.",
-            "4. Position management handles adds, TP, SL, repricing, and same-day exits after entry.",
-            "5. Everything is journaled and reviewed so the bot gets tuned off outcomes, not gut feel.",
-            f"Current snapshot: balance ${money(portfolio.get('balance'))}, realized ${money(portfolio.get('realized_pnl'), signed=True)}, unrealized ${money(portfolio.get('unrealized_pnl'), signed=True) if portfolio.get('unrealized_pnl') is not None else 'N/A'}, win rate {stats.get('win_rate') if stats.get('win_rate') is not None else 'N/A'}%.",
+            "Data Sources",
+            "ECMWF AIFS ENS (18%)",
+            "ECMWF IFS 0.25° (24%)",
+            "NOAA GFS seamless (14%)",
+            "Météo-France ARPEGE (10%)",
+            "TWC / Wunderground intraday obs",
+            "METAR live airport feeds (US, D+0)",
+            "",
+            "Three Trading Modes",
+            "CORE: 4-hourly, buys bucket with highest model edge vs market price",
+            "PUNT: tail lottery, buys deeply-mispriced tail buckets (≤14.9¢) with fixed small stakes",
+            "LATE: hourly, buys bucket containing observed daily max at 3pm local",
+            "",
+            "Risk & Sizing",
+            "Per-mode daily budgets and max-position caps",
+            "Volatility targeting available (EWMA-based)",
+            "Laddered exits + dynamic profit multiplier",
+            "Optional daily-loss hard stop",
+            "",
+            f"Current Snapshot: Balance ${money(portfolio.get('balance'))}, Realized ${money(portfolio.get('realized_pnl'), signed=True)}, Unrealized ${money(portfolio.get('unrealized_pnl'), signed=True) if portfolio.get('unrealized_pnl') is not None else 'N/A'}, Win Rate {stats.get('win_rate') if stats.get('win_rate') is not None else 'N/A'}%.",
         ]
-        top = summarize_positions(positions)
-        if top:
-            lines.append("Current open swings: " + " | ".join(top) + ".")
-        lines.append("From Day 2 onward it’s straight daily snapshots, open risk, and any real system changes.")
         return "\n".join(lines)
 
     realized = portfolio.get("realized_pnl")
