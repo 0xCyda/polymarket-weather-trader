@@ -40,6 +40,22 @@ DEFAULT_STEPS = tuple(range(0, 73, 6))   # 0,6,12,18,24,30,36,42,48,54,60,66,72 
 DEFAULT_RUN_HOURS = (0, 12)
 
 
+def _clear_cfgrib_index_files(grib_path: str | Path) -> None:
+    """Delete any sibling cfgrib .idx files for this GRIB path."""
+    path = Path(grib_path)
+    for idx_path in path.parent.glob(f"{path.name}*.idx"):
+        try:
+            idx_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _open_grib_dataset(cfgrib_mod, grib_path: str | Path):
+    """Open a GRIB without persisting cfgrib index files to disk."""
+    _clear_cfgrib_index_files(grib_path)
+    return cfgrib_mod.open_file(str(grib_path), indexpath="")
+
+
 def _load_aifs_dependencies():
     """Import ECMWF/GRIB deps lazily so the module remains importable."""
     missing = []
@@ -280,12 +296,7 @@ def _extract_member_daily_values(grib_path: str, lat: float, lon: float,
     target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
 
     try:
-        # cfgrib creates a .idx index file keyed to GRIB content — stale idx from
-        # a prior run causes FileNotFoundError when GRIB changes, so nuke it first
-        idx_path = grib_path + ".idx"
-        if os.path.exists(idx_path):
-            os.unlink(idx_path)
-        ds = cfgrib_mod.open_file(grib_path)
+        ds = _open_grib_dataset(cfgrib_mod, grib_path)
     except Exception as exc:
         raise RuntimeError(f"cfgrib failed to open {grib_path}: {exc}")
 
@@ -416,7 +427,7 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
             return False
         # Validate the GRIB file is actually readable by cfgrib (not a corrupt stub)
         try:
-            cfgrib_mod.open_file(str(path))
+            _open_grib_dataset(cfgrib_mod, path)
             return True
         except Exception:
             return False
@@ -438,7 +449,7 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
     # detecting a stale cache and racing to write the same GRIB file simultaneously.
     with _GRIB_DOWNLOAD_LOCK:
         if _is_cache_fresh(cf_cache):
-            ds = cfgrib_mod.open_file(str(cf_cache))
+            ds = _open_grib_dataset(cfgrib_mod, cf_cache)
             time_ts = float(ds.variables["time"].data)
             run_dt = datetime.fromtimestamp(time_ts, tz=timezone.utc)
             run_date_str = run_dt.strftime("%Y-%m-%d")
@@ -563,7 +574,7 @@ def prewarm_grib_cache(run_date: str | None = None, run_hour: int | None = None)
         if age_hours >= AIFS_CACHE_MAX_AGE_HOURS:
             return False
         try:
-            cfgrib_mod.open_file(str(path))
+            _open_grib_dataset(cfgrib_mod, path)
             return True
         except Exception:
             return False
