@@ -576,7 +576,7 @@ DASHBOARD_HTML = """
 <div class="header">
   <div class="header-left">
     <h1>AIFS ENS · Weather Dashboard</h1>
-    <div class="subtitle">Paper trading · Polymarket weather markets · Core + Punt strategies</div>
+    <div class="subtitle">Polymarket weather markets · Systematic multi-strategy execution</div>
   </div>
   <div class="status-line">
     <div class="status-pill" id="status-pill">
@@ -825,7 +825,7 @@ function renderCards(d) {
   document.getElementById('summary-cards').innerHTML = [
     metricCard('Balance', money(d.portfolio.balance), {
       tone: realized > 0 ? 'positive' : realized < 0 ? 'negative' : null,
-      sub: 'paper · realized P&L baked in',
+      sub: 'realized P&L baked in',
     }),
     metricCard('Total P&L', fmtPnl(equity), {
       tone: equity > 0 ? 'positive' : equity < 0 ? 'negative' : null,
@@ -1330,7 +1330,7 @@ function renderConfig() {
       <div class="overview-card">
         <div class="overview-tag">Overview</div>
         <h2>Polymarket Weather Trader</h2>
-        <p>A paper-trading bot that takes positions in Polymarket daily-temperature markets via the Simmer API. It pulls weather forecasts and live intraday observations, finds mispriced buckets, and sizes entries based on model confidence. All fills are simulated; real fills require a wallet key.</p>
+        <p>A rules-based weather trading system for Polymarket daily-temperature markets. It combines ensemble forecasts, live intraday observations, and structured risk controls to find mispriced buckets, size entries by confidence, and manage positions through the full trade lifecycle.</p>
         <div class="overview-grid">
           <div class="overview-cell">
             <h4>Data Sources</h4>
