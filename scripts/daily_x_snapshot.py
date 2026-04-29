@@ -170,7 +170,7 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], daily: 
             "",
             "OVERVIEW",
             "POLYMARKET WEATHER TRADER",
-            "A rules-based weather trading system for Polymarket daily-temperature markets. It combines ensemble forecasts, live intraday observations, and structured risk controls to find mispriced buckets, size entries by confidence, and manage positions through the full trade lifecycle.",
+            "A rules-based weather trading system built for Polymarket daily-temperature markets. It combines ensemble forecasts, live intraday observations, and hard risk controls to find mispriced buckets, size entries by confidence, and manage positions from entry to exit.",
         ]
         return "\n".join(parts)
 
@@ -205,9 +205,9 @@ def build_x_reply(day_number: int, portfolio: dict[str, Any], stats: dict[str, A
             "METAR live airport feeds (US, D+0)",
             "",
             "Three Trading Modes",
-            "CORE: 4-hourly, buys bucket with highest model edge vs market price",
-            "PUNT: tail lottery, buys deeply-mispriced tail buckets (≤14.9¢) with fixed small stakes",
-            "LATE: hourly, buys bucket containing observed daily max at 3pm local",
+            "CORE: scans every 4 hours and takes the bucket with the strongest model edge vs market price",
+            "PUNT: takes cheap tail dislocations (≤14.9¢) with fixed small size",
+            "LATE: runs hourly and uses observed daily max at 3pm local for day-of entries",
             "",
             "Risk & Sizing",
             "Per-mode daily budgets and max-position caps",
@@ -216,6 +216,7 @@ def build_x_reply(day_number: int, portfolio: dict[str, Any], stats: dict[str, A
             "Optional daily-loss hard stop",
             "",
             f"Current Snapshot: Balance ${money(portfolio.get('balance'))}, Realized ${money(portfolio.get('realized_pnl'), signed=True)}, Unrealized ${money(portfolio.get('unrealized_pnl'), signed=True) if portfolio.get('unrealized_pnl') is not None else 'N/A'}, Win Rate {stats.get('win_rate') if stats.get('win_rate') is not None else 'N/A'}%.",
+            "From here it turns into daily snapshots, open risk, and real system changes.",
         ]
         return "\n".join(lines)
 
