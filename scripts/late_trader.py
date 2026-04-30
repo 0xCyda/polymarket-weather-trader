@@ -287,6 +287,19 @@ def _edge_distance_c(temp_c: float, bucket: tuple) -> float:
     return min(temp_c - (lo_c - edge), (hi_c + edge) - temp_c)
 
 
+def _project_late_eod_extreme_c(running_c: float, local_hour: int) -> dict:
+    """Simple intraday projection for LATE entry gating.
+
+    After the late-entry window opens, exact-hit buckets are fragile because the
+    day can still climb another half-degree and tip into the next bucket.
+    Mirror the position-manager heuristic closely enough to block those fills
+    before entry instead of buying them and immediately regretting it.
+    """
+    if local_hour >= LATE_ENTRY_HOUR:
+        return {"projected_c": running_c + 0.5, "confidence": 0.7}
+    return {"projected_c": running_c, "confidence": 0.4}
+
+
 def _bucket_label(bucket: tuple) -> str:
     lo, hi, unit = bucket
     if lo == -999:
@@ -436,6 +449,16 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print,
     result["running_c"] = round(running_c, 2)
     result["edge_c"] = round(edge_c, 2)
     result["bucket"] = _bucket_label(pick_bucket)
+
+    proj = _project_late_eod_extreme_c(running_c, cur_hour)
+    result["projected_c"] = round(proj["projected_c"], 2)
+    result["projected_confidence"] = proj["confidence"]
+    if proj["confidence"] >= 0.7 and not _bucket_contains(proj["projected_c"], pick_bucket):
+        result["reason"] = (
+            f"projected_outside_bucket_"
+            f"{proj['projected_c']:.2f}C_vs_{result['bucket']}"
+        )
+        return result
 
     price = pick_market.get("external_price_yes")
     if price is None:
