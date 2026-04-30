@@ -130,13 +130,13 @@ ENSEMBLE_MODELS = {
 }
 
 
-def _fetch_aifs_temp(city: str, date_str: str, metric: str, unit: str) -> float:
-    """Fetch the AIFS ENS ensemble mean for the target city/date."""
+def _fetch_aifs_result(city: str, date_str: str, metric: str, unit: str) -> dict | None:
+    """Fetch the full AIFS ENS payload for the target city/date."""
     loc = _loc(city)
     if not loc:
         return None
 
-    result = get_aifs_ens_forecast(
+    return get_aifs_ens_forecast(
         lat=loc["lat"],
         lon=loc["lon"],
         date_str=date_str,
@@ -144,7 +144,6 @@ def _fetch_aifs_temp(city: str, date_str: str, metric: str, unit: str) -> float:
         unit=unit,
         timezone_name=loc.get("tz", "UTC"),
     )
-    return result.get("ensemble_mean")
 
 
 def _fetch_json(url, headers=None):
@@ -259,6 +258,13 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
     model_temps = {}
     metar_temp = None
     metar_delta = None
+    aifs_meta = {
+        "stale": False,
+        "stale_age_hours": None,
+        "refresh_error": None,
+        "run_date": None,
+        "run_hour": None,
+    }
 
     # Check if target date is today (D+0) in the city's local timezone
     loc = _loc(city)
@@ -275,7 +281,7 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
         futures = {}
         for model_name in ENSEMBLE_MODELS:
             if model_name == "aifs_ens":
-                future = executor.submit(_fetch_aifs_temp, city, date_str, metric, unit)
+                future = executor.submit(_fetch_aifs_result, city, date_str, metric, unit)
             else:
                 future = executor.submit(
                     _fetch_model_temp,
@@ -297,9 +303,23 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
         for future in as_completed(futures):
             model_name = futures[future]
             try:
-                temp = future.result(timeout=15)
-                if temp is not None:
-                    model_temps[model_name] = temp
+                result = future.result(timeout=15)
+                if model_name == "aifs_ens":
+                    if result:
+                        aifs_meta = {
+                            "stale": bool(result.get("stale")),
+                            "stale_age_hours": result.get("stale_age_hours"),
+                            "refresh_error": result.get("refresh_error"),
+                            "run_date": result.get("run_date"),
+                            "run_hour": result.get("run_hour"),
+                        }
+                        temp = result.get("ensemble_mean")
+                        if temp is not None:
+                            model_temps[model_name] = temp
+                else:
+                    temp = result
+                    if temp is not None:
+                        model_temps[model_name] = temp
             except Exception:
                 pass
 
@@ -322,6 +342,11 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
             "signal_strength": "no_data",
             "metar_temp": metar_temp,
             "metar_delta": None,
+            "aifs_stale": aifs_meta["stale"],
+            "aifs_stale_age_hours": aifs_meta["stale_age_hours"],
+            "aifs_refresh_error": aifs_meta["refresh_error"],
+            "aifs_run_date": aifs_meta["run_date"],
+            "aifs_run_hour": aifs_meta["run_hour"],
         }
 
     # Single source
@@ -329,15 +354,23 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
         only_temp = list(model_temps.values())[0]
         if metar_temp is not None:
             metar_delta = round(abs(only_temp - metar_temp), 1)
+        signal_strength = "single_source"
+        if aifs_meta["stale"]:
+            signal_strength = "weak"
         return {
             "weighted_temp": float(only_temp),
             "model_temps": model_temps,
             "models_count": 1,
             "max_delta": 0.0,
             "agreement_pct": 100.0,
-            "signal_strength": "single_source",
+            "signal_strength": signal_strength,
             "metar_temp": metar_temp,
             "metar_delta": metar_delta,
+            "aifs_stale": aifs_meta["stale"],
+            "aifs_stale_age_hours": aifs_meta["stale_age_hours"],
+            "aifs_refresh_error": aifs_meta["refresh_error"],
+            "aifs_run_date": aifs_meta["run_date"],
+            "aifs_run_hour": aifs_meta["run_hour"],
         }
 
     # Compute weighted average — renormalize weights for models that returned data
@@ -391,6 +424,14 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
     else:
         signal_strength = "weak"
 
+    if aifs_meta["stale"]:
+        if is_today:
+            signal_strength = "weak"
+        elif signal_strength == "strong":
+            signal_strength = "moderate"
+        elif signal_strength in ("moderate", "single_source"):
+            signal_strength = "weak"
+
     return {
         "weighted_temp": weighted_temp,
         "model_temps": model_temps,
@@ -401,6 +442,11 @@ def get_ensemble_forecast(city: str, date_str: str, metric: str = "high",
         "metar_temp": metar_temp,
         "metar_delta": metar_delta,
         "metar_adjusted": metar_adjusted,
+        "aifs_stale": aifs_meta["stale"],
+        "aifs_stale_age_hours": aifs_meta["stale_age_hours"],
+        "aifs_refresh_error": aifs_meta["refresh_error"],
+        "aifs_run_date": aifs_meta["run_date"],
+        "aifs_run_hour": aifs_meta["run_hour"],
     }
 
 

@@ -31,10 +31,13 @@ _GRIB_DOWNLOAD_SOCKET_TIMEOUT_S = 300
 # Ensures only one thread downloads the GRIB at a time. Without this, concurrent
 # city forecast threads each detect a stale cache and race to write the same file.
 _GRIB_DOWNLOAD_LOCK = threading.Lock()
+_LAST_REFRESH_FAILURE_AT = 0.0
 
 
 AIFS_CACHE_DIR = Path.home() / ".cache" / "aifs_ens"
 AIFS_CACHE_MAX_AGE_HOURS = 12  # Re-download every 12h to match AIFS ENS cycle (00z and 12z runs)
+AIFS_STALE_FALLBACK_MAX_AGE_HOURS = 24  # One full extra cycle max when upstream throttles
+AIFS_REFRESH_RETRY_COOLDOWN_S = 1800    # Avoid hammering AWS after a refresh failure
 # Covers next-day midnight forecasts at steps 12-36
 DEFAULT_STEPS = tuple(range(0, 73, 6))   # 0,6,12,18,24,30,36,42,48,54,60,66,72 (covers D+2 targets)
 DEFAULT_RUN_HOURS = (0, 12)
@@ -54,6 +57,45 @@ def _open_grib_dataset(cfgrib_mod, grib_path: str | Path):
     """Open a GRIB without persisting cfgrib index files to disk."""
     _clear_cfgrib_index_files(grib_path)
     return cfgrib_mod.open_file(str(grib_path), indexpath="")
+
+
+def _cache_age_hours(path: Path) -> float:
+    return (datetime.now(timezone.utc) - datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)).total_seconds() / 3600
+
+
+def _get_cache_info(cfgrib_mod, path: Path, max_age_hours: float | None = None) -> dict | None:
+    """Return readable cache metadata, or None if missing/corrupt/too old."""
+    if not path.exists():
+        return None
+    age_hours = _cache_age_hours(path)
+    if max_age_hours is not None and age_hours > max_age_hours:
+        return None
+    try:
+        ds = _open_grib_dataset(cfgrib_mod, path)
+        time_ts = float(ds.variables["time"].data)
+        run_dt = datetime.fromtimestamp(time_ts, tz=timezone.utc)
+        return {
+            "path": str(path),
+            "run_date": run_dt.strftime("%Y-%m-%d"),
+            "run_hour": run_dt.hour,
+            "age_hours": age_hours,
+        }
+    except Exception:
+        return None
+
+
+def _refresh_backoff_active() -> bool:
+    return _LAST_REFRESH_FAILURE_AT > 0 and (time.time() - _LAST_REFRESH_FAILURE_AT) < AIFS_REFRESH_RETRY_COOLDOWN_S
+
+
+def _mark_refresh_failure() -> None:
+    global _LAST_REFRESH_FAILURE_AT
+    _LAST_REFRESH_FAILURE_AT = time.time()
+
+
+def _clear_refresh_failure() -> None:
+    global _LAST_REFRESH_FAILURE_AT
+    _LAST_REFRESH_FAILURE_AT = 0.0
 
 
 def _load_aifs_dependencies():
@@ -169,7 +211,7 @@ def _download_aifs_grib(target_path: str,
             f"AIFS dependencies missing: {', '.join(deps['missing'])}"
         )
 
-    # AWS S3 only — reliable, no rate limiting, right file size
+    # AWS S3 gives the right file size, but it can still return 503 Slow Down.
     client = Client(source="aws")
 
     def _is_retryable_aifs_error(exc: Exception) -> bool:
@@ -419,19 +461,6 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
     cf_cache = AIFS_CACHE_DIR / f"{cache_ts}_cf.grib2"
     pf_cache = AIFS_CACHE_DIR / f"{cache_ts}_pf.grib2"
 
-    def _is_cache_fresh(path: Path) -> bool:
-        if not path.exists():
-            return False
-        age_hours = (datetime.now(timezone.utc) - datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)).total_seconds() / 3600
-        if age_hours >= AIFS_CACHE_MAX_AGE_HOURS:
-            return False
-        # Validate the GRIB file is actually readable by cfgrib (not a corrupt stub)
-        try:
-            _open_grib_dataset(cfgrib_mod, path)
-            return True
-        except Exception:
-            return False
-
     cfgrib_mod = deps["cfgrib"]
     if cfgrib_mod is None:
         return {
@@ -448,18 +477,30 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
     # Acquire lock before checking cache — prevents concurrent threads from each
     # detecting a stale cache and racing to write the same GRIB file simultaneously.
     with _GRIB_DOWNLOAD_LOCK:
-        if _is_cache_fresh(cf_cache):
-            ds = _open_grib_dataset(cfgrib_mod, cf_cache)
-            time_ts = float(ds.variables["time"].data)
-            run_dt = datetime.fromtimestamp(time_ts, tz=timezone.utc)
-            run_date_str = run_dt.strftime("%Y-%m-%d")
-            run_hour_int = run_dt.hour
+        fresh_info = _get_cache_info(cfgrib_mod, cf_cache, AIFS_CACHE_MAX_AGE_HOURS)
+        stale_info = _get_cache_info(cfgrib_mod, cf_cache, AIFS_STALE_FALLBACK_MAX_AGE_HOURS)
+
+        if fresh_info:
             download = {
                 "cf_path": str(cf_cache),
                 "pf_path": str(pf_cache) if pf_cache.exists() else None,
                 "cached": True,
-                "run_date": run_date_str,
-                "run_hour": run_hour_int,
+                "run_date": fresh_info["run_date"],
+                "run_hour": fresh_info["run_hour"],
+                "stale": False,
+                "stale_age_hours": round(fresh_info["age_hours"], 1),
+                "refresh_error": None,
+            }
+        elif stale_info and _refresh_backoff_active():
+            download = {
+                "cf_path": str(cf_cache),
+                "pf_path": str(pf_cache) if pf_cache.exists() else None,
+                "cached": True,
+                "run_date": stale_info["run_date"],
+                "run_hour": stale_info["run_hour"],
+                "stale": True,
+                "stale_age_hours": round(stale_info["age_hours"], 1),
+                "refresh_error": "using stale cache during refresh cooldown",
             }
         else:
             import tempfile as _tmp
@@ -473,21 +514,42 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
                         steps=DEFAULT_STEPS,
                     )
                 except Exception as exc:
-                    return {
-                        "ensemble_mean": None,
-                        "spread": None,
-                        "agreement_pct": 0.0,
-                        "member_count": 0,
-                        "run_date": run_date,
-                        "run_hour": run_hour,
-                        "source": "aifs_ens",
-                        "error": str(exc),
-                    }
+                    if stale_info:
+                        _mark_refresh_failure()
+                        download = {
+                            "cf_path": str(cf_cache),
+                            "pf_path": str(pf_cache) if pf_cache.exists() else None,
+                            "cached": True,
+                            "run_date": stale_info["run_date"],
+                            "run_hour": stale_info["run_hour"],
+                            "stale": True,
+                            "stale_age_hours": round(stale_info["age_hours"], 1),
+                            "refresh_error": str(exc),
+                        }
+                    else:
+                        return {
+                            "ensemble_mean": None,
+                            "spread": None,
+                            "agreement_pct": 0.0,
+                            "member_count": 0,
+                            "run_date": run_date,
+                            "run_hour": run_hour,
+                            "source": "aifs_ens",
+                            "error": str(exc),
+                            "stale": False,
+                            "stale_age_hours": None,
+                            "refresh_error": str(exc),
+                        }
+                else:
+                    _clear_refresh_failure()
+                    download["stale"] = False
+                    download["stale_age_hours"] = 0.0
+                    download["refresh_error"] = None
                 cf_path = download.get("cf_path")
-                if cf_path and Path(cf_path).exists():
+                if not download.get("stale") and cf_path and Path(cf_path).exists():
                     shutil.copy2(cf_path, cf_cache)
                 pf_path = download.get("pf_path")
-                if pf_path and Path(pf_path).exists():
+                if not download.get("stale") and pf_path and Path(pf_path).exists():
                     shutil.copy2(pf_path, pf_cache)
 
     member_values_c: list[float] = []
@@ -526,6 +588,9 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
             "run_hour": download.get("run_hour"),
             "source": "aifs_ens",
             "error": f"No AIFS values for {date_str} at lat={lat}, lon={lon}",
+            "stale": bool(download.get("stale")),
+            "stale_age_hours": download.get("stale_age_hours"),
+            "refresh_error": download.get("refresh_error"),
         }
 
     mean_value = float(np.mean(member_values_c))
@@ -548,6 +613,9 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
         "run_hour": download.get("run_hour"),
         "source": "aifs_ens",
         "error": None,
+        "stale": bool(download.get("stale")),
+        "stale_age_hours": download.get("stale_age_hours"),
+        "refresh_error": download.get("refresh_error"),
     }
 
 
@@ -567,20 +635,12 @@ def prewarm_grib_cache(run_date: str | None = None, run_hour: int | None = None)
 
     cfgrib_mod = deps["cfgrib"]
 
-    def _is_cache_fresh(path: Path) -> bool:
-        if not path.exists():
-            return False
-        age_hours = (datetime.now(timezone.utc) - datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)).total_seconds() / 3600
-        if age_hours >= AIFS_CACHE_MAX_AGE_HOURS:
-            return False
-        try:
-            _open_grib_dataset(cfgrib_mod, path)
-            return True
-        except Exception:
-            return False
-
     with _GRIB_DOWNLOAD_LOCK:
-        if _is_cache_fresh(cf_cache):
+        fresh_info = _get_cache_info(cfgrib_mod, cf_cache, AIFS_CACHE_MAX_AGE_HOURS)
+        stale_info = _get_cache_info(cfgrib_mod, cf_cache, AIFS_STALE_FALLBACK_MAX_AGE_HOURS)
+        if fresh_info:
+            return True
+        if stale_info and _refresh_backoff_active():
             return True
         import tempfile as _tmp
         with _tmp.TemporaryDirectory(prefix="aifs_prewarm_") as tmpdir:
@@ -592,14 +652,18 @@ def prewarm_grib_cache(run_date: str | None = None, run_hour: int | None = None)
                     steps=DEFAULT_STEPS,
                 )
             except Exception:
+                if stale_info:
+                    _mark_refresh_failure()
+                    return True
                 return False
+            _clear_refresh_failure()
             cf_path = download.get("cf_path")
             if cf_path and Path(cf_path).exists():
                 shutil.copy2(cf_path, cf_cache)
             pf_path = download.get("pf_path")
             if pf_path and Path(pf_path).exists():
                 shutil.copy2(pf_path, pf_cache)
-    return _is_cache_fresh(cf_cache)
+    return _get_cache_info(cfgrib_mod, cf_cache, AIFS_STALE_FALLBACK_MAX_AGE_HOURS) is not None
 
 
 if __name__ == "__main__":

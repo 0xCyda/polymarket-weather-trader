@@ -2265,7 +2265,11 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             forecast_temp = round(forecast_temp)
             unit_label = "°F"
             display_temp = f"{forecast_temp}°F"
-        log(f"  AIFS ENS: {display_temp} | signal: {signal_strength} | {models_used} models | agree: {agreement_pct}% | spread: {spread}°")
+        stale_age = forecasts.get("aifs_stale_age_hours")
+        stale_note = ""
+        if forecasts.get("aifs_stale"):
+            stale_note = f" | stale AIFS cache {stale_age}h"
+        log(f"  AIFS ENS: {display_temp} | signal: {signal_strength} | {models_used} models | agree: {agreement_pct}% | spread: {spread}°{stale_note}")
 
         # CORE skips D+0 markets entirely. Day-of trades need real observations,
         # not 24h-old forecasts — that's LATE mode's job. CORE's edge comes from
