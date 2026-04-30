@@ -121,6 +121,33 @@ def _copy_if_exists(src_path: str | Path | None, dst_path: Path) -> None:
         shutil.copy2(src_path, dst_path)
 
 
+def _replace_with_link(src_path: str | Path | None, dst_path: Path) -> None:
+    """Point dst_path at src_path without duplicating bytes on disk."""
+    if not src_path:
+        return
+    src = Path(src_path)
+    if not src.exists():
+        return
+    dst_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if dst_path.exists() or dst_path.is_symlink():
+            dst_path.unlink()
+    except FileNotFoundError:
+        pass
+    try:
+        os.link(src, dst_path)
+        return
+    except OSError:
+        pass
+    try:
+        dst_path.symlink_to(src)
+        return
+    except OSError:
+        pass
+    # Last-resort fallback keeps behavior working even on odd filesystems.
+    shutil.copy2(src, dst_path)
+
+
 def _candidate_cached_runs(cfgrib_mod, max_age_hours: float | None = None,
                            now_utc: datetime | None = None) -> list[dict]:
     """Return cached runs newest-first, preferring explicit run-keyed files over latest aliases."""
@@ -630,8 +657,8 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
                     download["refresh_error"] = None
                     _copy_if_exists(download.get("cf_path"), desired_cf_cache)
                     _copy_if_exists(download.get("pf_path"), desired_pf_cache)
-                    _copy_if_exists(download.get("cf_path"), latest_cf_cache)
-                    _copy_if_exists(download.get("pf_path"), latest_pf_cache)
+                    _replace_with_link(desired_cf_cache, latest_cf_cache)
+                    _replace_with_link(desired_pf_cache, latest_pf_cache)
 
     member_values_c: list[float] = []
 
@@ -748,8 +775,8 @@ def prewarm_grib_cache(run_date: str | None = None, run_hour: int | None = None)
             _clear_refresh_failure()
             _copy_if_exists(download.get("cf_path"), desired_cf_cache)
             _copy_if_exists(download.get("pf_path"), desired_pf_cache)
-            _copy_if_exists(download.get("cf_path"), latest_cf_cache)
-            _copy_if_exists(download.get("pf_path"), latest_pf_cache)
+            _replace_with_link(desired_cf_cache, latest_cf_cache)
+            _replace_with_link(desired_pf_cache, latest_pf_cache)
     return _get_cache_info(cfgrib_mod, desired_cf_cache) is not None
 
 
