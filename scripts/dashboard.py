@@ -18,6 +18,7 @@ import math
 import time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from fastapi import FastAPI
@@ -1857,6 +1858,8 @@ def _parse_signals_from_history() -> list[dict]:
     Reads forecast_history.jsonl (every signal the bot evaluated, not just gate-passing
     ones), filters to entries within the latest scan window, dedupes by event, and
     keeps strong + moderate. Single source of truth for the dashboard panel.
+
+    Past-date markets are excluded so resolved D-1 noise does not linger on the dashboard.
     """
     history = _load_trades_jsonl(SCAN_LOG)
     if not history:
@@ -1880,6 +1883,7 @@ def _parse_signals_from_history() -> list[dict]:
 
     # Collect strong/moderate within window, dedup by (loc, date, metric) → keep latest
     by_key: dict[tuple, dict] = {}
+    today_awst = datetime.now(ZoneInfo("Australia/Perth")).date()
     for e in history:
         if not isinstance(e, dict):
             continue
@@ -1899,6 +1903,12 @@ def _parse_signals_from_history() -> list[dict]:
         date = e.get("target_date", "")
         metric = e.get("metric", "")
         if not loc:
+            continue
+        try:
+            target_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            continue
+        if target_date < today_awst:
             continue
         key = (loc, date, metric)
         prev = by_key.get(key)
