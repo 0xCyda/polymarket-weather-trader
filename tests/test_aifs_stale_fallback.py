@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for AIFS stale-cache fallback and signal degradation."""
 
+import os
 import sys
 import tempfile
 import types
@@ -129,6 +130,75 @@ class TestAifsStaleFallback(unittest.TestCase):
         self.assertTrue(result["aifs_stale"])
         self.assertEqual(result["signal_strength"], "moderate")
         self.assertEqual(result["aifs_refresh_error"], "503 Slow Down")
+
+    def test_download_patch_caps_underlying_robust_retries(self):
+        calls = []
+        fake_client_mod = types.ModuleType("ecmwf.opendata.client")
+
+        def fake_original_robust(call, maximum_tries=500, retry_after=120, mirrors=None):
+            calls.append({
+                "maximum_tries": maximum_tries,
+                "retry_after": retry_after,
+            })
+
+            def wrapped(url, *args, **kwargs):
+                return call(url, *args, **kwargs)
+
+            return wrapped
+
+        def fake_download(urls, target, **kwargs):
+            return 0
+
+        fake_client_mod.robust = fake_original_robust
+        fake_client_mod.download = fake_download
+
+        class FakeClient:
+            def __init__(self, source="aws"):
+                self.source = source
+
+            def retrieve(self, date=None, time=None, **request):
+                target = request["target"]
+
+                def do_write(_url, *args, **kwargs):
+                    with open(target, "wb") as fh:
+                        fh.write(b"x" * 1_500_000)
+                    return object()
+
+                fake_client_mod.robust(do_write)("https://example.test/index")
+                return types.SimpleNamespace(size=1_500_000)
+
+        fake_ecmwf = types.ModuleType("ecmwf")
+        fake_opendata = types.ModuleType("ecmwf.opendata")
+        fake_opendata.Client = FakeClient
+        fake_ecmwf.opendata = fake_opendata
+
+        fake_multiurl = types.ModuleType("multiurl")
+        fake_multiurl.download = fake_download
+
+        deps = {"Client": FakeClient, "cfgrib": object(), "np": object(), "missing": []}
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             patch.object(af, "_load_aifs_dependencies", return_value=deps), \
+             patch.dict(sys.modules, {
+                 "ecmwf": fake_ecmwf,
+                 "ecmwf.opendata": fake_opendata,
+                 "ecmwf.opendata.client": fake_client_mod,
+                 "multiurl": fake_multiurl,
+             }):
+            result = af._download_aifs_grib(
+                target_path=os.path.join(tmpdir, "aifs.grib2"),
+                run_date="2026-04-30",
+                run_hour=0,
+                steps=(0, 6),
+            )
+
+        self.assertEqual(result["run_date"], "2026-04-30")
+        self.assertEqual(result["run_hour"], 0)
+        self.assertGreaterEqual(len(calls), 2)  # CF + PF
+        self.assertTrue(all(call["maximum_tries"] == af.AIFS_HTTP_MAX_RETRIES for call in calls))
+        self.assertTrue(all(call["retry_after"] == af.AIFS_HTTP_RETRY_AFTER for call in calls))
+        self.assertIs(fake_client_mod.robust, fake_original_robust)
+
 
 
 if __name__ == "__main__":

@@ -304,13 +304,27 @@ def _download_aifs_grib(target_path: str,
     from multiurl import download as multiurl_download
 
     original_download = ecmwf_client_mod.download
+    original_robust = ecmwf_client_mod.robust
 
     def _bounded_download(urls, target, **kwargs):
         kwargs.setdefault("maximum_retries", AIFS_HTTP_MAX_RETRIES)
         kwargs.setdefault("retry_after", AIFS_HTTP_RETRY_AFTER)
         return multiurl_download(urls, target, **kwargs)
 
+    def _bounded_robust(call, maximum_tries=500, retry_after=120, mirrors=None):
+        # ECMWF's index fetch path calls `robust()` directly before the actual
+        # GRIB download starts. If we only patch `download()`, a 503 on the
+        # `.index` request still falls back to multiurl's 500 x 120s default
+        # retry loop and the whole scan hangs for hours.
+        return original_robust(
+            call,
+            maximum_tries=min(int(maximum_tries), AIFS_HTTP_MAX_RETRIES),
+            retry_after=AIFS_HTTP_RETRY_AFTER,
+            mirrors=mirrors,
+        )
+
     ecmwf_client_mod.download = _bounded_download
+    ecmwf_client_mod.robust = _bounded_robust
 
     def _is_retryable_aifs_error(exc: Exception) -> bool:
         msg = str(exc).lower()
@@ -406,6 +420,7 @@ def _download_aifs_grib(target_path: str,
         )
     finally:
         ecmwf_client_mod.download = original_download
+        ecmwf_client_mod.robust = original_robust
 
 
 def _normalize_longitude(lon: float) -> float:
