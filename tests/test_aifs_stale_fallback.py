@@ -23,6 +23,49 @@ class _FakeDataset:
 
 
 class TestAifsStaleFallback(unittest.TestCase):
+    def test_expected_run_waits_for_ready_delay_before_refreshing(self):
+        before_ready = datetime(2026, 4, 30, 2, 0, tzinfo=timezone.utc)
+        self.assertEqual(
+            af._latest_expected_run(before_ready),
+            ("2026-04-29", 12),
+        )
+
+    def test_run_keyed_cache_skips_refresh_for_expected_run(self):
+        fake_np = types.SimpleNamespace(mean=lambda vals: sum(vals) / len(vals), max=max, min=min)
+        fake_cfgrib = object()
+        cached_run = datetime(2026, 4, 29, 12, 0, tzinfo=timezone.utc)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            cf_cache = cache_dir / "2026-04-29_12_cf.grib2"
+            pf_cache = cache_dir / "2026-04-29_12_pf.grib2"
+            cf_cache.write_bytes(b"cf")
+            pf_cache.write_bytes(b"pf")
+            stale_mtime = (cached_run + timedelta(hours=14)).timestamp()
+            import os
+            os.utime(cf_cache, (stale_mtime, stale_mtime))
+            os.utime(pf_cache, (stale_mtime, stale_mtime))
+
+            with patch.object(af, "AIFS_CACHE_DIR", cache_dir), \
+                 patch.object(af, "_load_aifs_dependencies", return_value={"Client": object(), "cfgrib": fake_cfgrib, "np": fake_np, "missing": []}), \
+                 patch.object(af, "_open_grib_dataset", return_value=_FakeDataset(cached_run.timestamp())), \
+                 patch.object(af, "_latest_expected_run", return_value=("2026-04-29", 12)), \
+                 patch.object(af, "_download_aifs_grib") as mock_download, \
+                 patch.object(af, "_extract_member_daily_values", side_effect=[[20.0], [19.0, 21.0]]):
+                result = af.get_aifs_ens_forecast(
+                    lat=1.0,
+                    lon=2.0,
+                    date_str="2026-05-01",
+                    metric="high",
+                    unit="F",
+                    timezone_name="UTC",
+                )
+
+        mock_download.assert_not_called()
+        self.assertFalse(result["stale"])
+        self.assertEqual(result["run_date"], "2026-04-29")
+        self.assertEqual(result["run_hour"], 12)
+
     def test_uses_stale_cache_when_refresh_fails(self):
         fake_np = types.SimpleNamespace(mean=lambda vals: sum(vals) / len(vals), max=max, min=min)
         fake_cfgrib = object()
