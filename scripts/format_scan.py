@@ -59,12 +59,23 @@ def run_scan() -> str:
 
 def parse_signals(scan_output: str) -> list[str]:
     signals: list[str] = []
+    today_awst = datetime.now(ZoneInfo("Australia/Perth")).date()
     for raw in scan_output.splitlines():
         line = raw.strip()
         if not line:
             continue
-        if "| signal:" in line and re.search(r"\d{4}-\d{2}-\d{2}", line):
-            signals.append(line)
+        if "| signal:" not in line:
+            continue
+        m = re.search(r"(\d{4}-\d{2}-\d{2})", line)
+        if not m:
+            continue
+        try:
+            signal_date = datetime.strptime(m.group(1), "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if signal_date < today_awst:
+            continue
+        signals.append(line)
     return signals
 
 
