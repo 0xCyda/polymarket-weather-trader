@@ -67,7 +67,7 @@ class TestAifsStaleFallback(unittest.TestCase):
         self.assertEqual(result["run_date"], "2026-04-29")
         self.assertEqual(result["run_hour"], 12)
 
-    def test_uses_stale_cache_when_refresh_fails(self):
+    def test_uses_stale_cache_without_refresh_when_any_readable_cache_exists(self):
         fake_np = types.SimpleNamespace(mean=lambda vals: sum(vals) / len(vals), max=max, min=min)
         fake_cfgrib = object()
         stale_run = datetime.now(timezone.utc) - timedelta(hours=18)
@@ -89,7 +89,7 @@ class TestAifsStaleFallback(unittest.TestCase):
                  patch.object(af, "_LAST_REFRESH_FAILURE_AT", 0.0), \
                  patch.object(af, "_load_aifs_dependencies", return_value={"Client": object(), "cfgrib": fake_cfgrib, "np": fake_np, "missing": []}), \
                  patch.object(af, "_open_grib_dataset", return_value=_FakeDataset(stale_run.timestamp())), \
-                 patch.object(af, "_download_aifs_grib", side_effect=RuntimeError("503 Slow Down")), \
+                 patch.object(af, "_download_aifs_grib") as mock_download, \
                  patch.object(af, "_extract_member_daily_values", side_effect=[[20.0], [19.0, 21.0]]):
                 result = af.get_aifs_ens_forecast(
                     lat=1.0,
@@ -100,10 +100,11 @@ class TestAifsStaleFallback(unittest.TestCase):
                     timezone_name="UTC",
                 )
 
+        mock_download.assert_not_called()
         self.assertEqual(result["source"], "aifs_ens")
         self.assertTrue(result["stale"])
         self.assertGreater(result["stale_age_hours"], 12)
-        self.assertIn("503 Slow Down", result["refresh_error"])
+        self.assertEqual(result["refresh_error"], "cache-only mode: using newest readable cached run")
         self.assertIsNotNone(result["ensemble_mean"])
 
     def test_stale_aifs_downgrades_signal_strength(self):

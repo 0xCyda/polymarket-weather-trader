@@ -616,7 +616,7 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
                 "stale_age_hours": round(desired_info["age_hours"], 1),
                 "refresh_error": None,
             }
-        elif stale_info and _refresh_backoff_active():
+        elif stale_info:
             download = {
                 "cf_path": stale_info["cf_path"],
                 "pf_path": stale_info.get("pf_path"),
@@ -625,7 +625,7 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
                 "run_hour": stale_info["run_hour"],
                 "stale": True,
                 "stale_age_hours": round(stale_info["age_hours"], 1),
-                "refresh_error": "using stale cache during refresh cooldown",
+                "refresh_error": "cache-only mode: using newest readable cached run",
             }
         else:
             import tempfile as _tmp
@@ -639,32 +639,19 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
                         steps=DEFAULT_STEPS,
                     )
                 except Exception as exc:
-                    if stale_info:
-                        _mark_refresh_failure()
-                        download = {
-                            "cf_path": stale_info["cf_path"],
-                            "pf_path": stale_info.get("pf_path"),
-                            "cached": True,
-                            "run_date": stale_info["run_date"],
-                            "run_hour": stale_info["run_hour"],
-                            "stale": True,
-                            "stale_age_hours": round(stale_info["age_hours"], 1),
-                            "refresh_error": str(exc),
-                        }
-                    else:
-                        return {
-                            "ensemble_mean": None,
-                            "spread": None,
-                            "agreement_pct": 0.0,
-                            "member_count": 0,
-                            "run_date": desired_run_date,
-                            "run_hour": desired_run_hour,
-                            "source": "aifs_ens",
-                            "error": str(exc),
-                            "stale": False,
-                            "stale_age_hours": None,
-                            "refresh_error": str(exc),
-                        }
+                    return {
+                        "ensemble_mean": None,
+                        "spread": None,
+                        "agreement_pct": 0.0,
+                        "member_count": 0,
+                        "run_date": desired_run_date,
+                        "run_hour": desired_run_hour,
+                        "source": "aifs_ens",
+                        "error": str(exc),
+                        "stale": False,
+                        "stale_age_hours": None,
+                        "refresh_error": str(exc),
+                    }
                 else:
                     _clear_refresh_failure()
                     download["stale"] = False
