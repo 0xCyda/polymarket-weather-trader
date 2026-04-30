@@ -39,6 +39,8 @@ AIFS_CACHE_MAX_AGE_HOURS = 12  # Legacy age gate kept for telemetry, not refresh
 AIFS_STALE_FALLBACK_MAX_AGE_HOURS = 24  # One full extra cycle max when upstream throttles
 AIFS_REFRESH_RETRY_COOLDOWN_S = 1800    # Avoid hammering AWS after a refresh failure
 AIFS_RUN_READY_DELAY_HOURS = 4          # Don't chase a new 00z/12z run until it's likely published
+AIFS_HTTP_MAX_RETRIES = 4               # Override multiurl's default 500 HTTP retries
+AIFS_HTTP_RETRY_AFTER = (2, 8, 2)       # 2s, 4s, 8s, then fail soft to stale cache
 # Covers next-day midnight forecasts at steps 12-36
 DEFAULT_STEPS = tuple(range(0, 73, 6))   # 0,6,12,18,24,30,36,42,48,54,60,66,72 (covers D+2 targets)
 DEFAULT_RUN_HOURS = (0, 12)
@@ -268,8 +270,20 @@ def _download_aifs_grib(target_path: str,
             f"AIFS dependencies missing: {', '.join(deps['missing'])}"
         )
 
-    # AWS S3 gives the right file size, but it can still return 503 Slow Down.
+    # AWS S3 gives the right file size, but ECMWF's multiurl downloader defaults
+    # to 500 HTTP retries with 120s sleeps. That traps interactive scans forever.
     client = Client(source="aws")
+    import ecmwf.opendata.client as ecmwf_client_mod
+    from multiurl import download as multiurl_download
+
+    original_download = ecmwf_client_mod.download
+
+    def _bounded_download(urls, target, **kwargs):
+        kwargs.setdefault("maximum_retries", AIFS_HTTP_MAX_RETRIES)
+        kwargs.setdefault("retry_after", AIFS_HTTP_RETRY_AFTER)
+        return multiurl_download(urls, target, **kwargs)
+
+    ecmwf_client_mod.download = _bounded_download
 
     def _is_retryable_aifs_error(exc: Exception) -> bool:
         msg = str(exc).lower()
@@ -306,62 +320,65 @@ def _download_aifs_grib(target_path: str,
 
     errors = []
 
-    for date_str, hour in attempts:
-        # Step 1: download CF (control forecast)
-        cf_path = target_path.replace(".grib2", "_cf.grib2")
-        cf_ok = False
-        for request in _build_request_variants(cf_path, steps, include_cf=True, include_pf=False):
-            cf_ok, cf_err = _retrieve_with_backoff(
-                date_str=date_str,
-                hour=hour,
-                request=request,
-                path=cf_path,
-                min_bytes=1_000_000,
-                label=f"{date_str} {hour:02d}Z CF",
-            )
-            if cf_ok:
-                cf_meta = {k: v for k, v in request.items() if k != "target"}
+    try:
+        for date_str, hour in attempts:
+            # Step 1: download CF (control forecast)
+            cf_path = target_path.replace(".grib2", "_cf.grib2")
+            cf_ok = False
+            for request in _build_request_variants(cf_path, steps, include_cf=True, include_pf=False):
+                cf_ok, cf_err = _retrieve_with_backoff(
+                    date_str=date_str,
+                    hour=hour,
+                    request=request,
+                    path=cf_path,
+                    min_bytes=1_000_000,
+                    label=f"{date_str} {hour:02d}Z CF",
+                )
+                if cf_ok:
+                    cf_meta = {k: v for k, v in request.items() if k != "target"}
+                    break
+                errors.append(cf_err or f"{date_str} {hour:02d}Z CF: unknown error")
+                cf_path = None
                 break
-            errors.append(cf_err or f"{date_str} {hour:02d}Z CF: unknown error")
-            cf_path = None
-            break
 
-        if not cf_ok:
-            continue
+            if not cf_ok:
+                continue
 
-        # Step 2: download PF subset (5 members)
-        pf_path = target_path.replace(".grib2", "_pf.grib2")
-        pf_ok = False
-        for request in _build_request_variants(pf_path, steps, include_cf=False, include_pf=True):
-            pf_ok, pf_err = _retrieve_with_backoff(
-                date_str=date_str,
-                hour=hour,
-                request=request,
-                path=pf_path,
-                min_bytes=100_000,
-                label=f"{date_str} {hour:02d}Z PF",
-            )
-            if pf_ok:
-                pf_meta = {k: v for k, v in request.items() if k != "target"}
+            # Step 2: download PF subset (5 members)
+            pf_path = target_path.replace(".grib2", "_pf.grib2")
+            pf_ok = False
+            for request in _build_request_variants(pf_path, steps, include_cf=False, include_pf=True):
+                pf_ok, pf_err = _retrieve_with_backoff(
+                    date_str=date_str,
+                    hour=hour,
+                    request=request,
+                    path=pf_path,
+                    min_bytes=100_000,
+                    label=f"{date_str} {hour:02d}Z PF",
+                )
+                if pf_ok:
+                    pf_meta = {k: v for k, v in request.items() if k != "target"}
+                    break
+                errors.append(pf_err or f"{date_str} {hour:02d}Z PF: unknown error")
+                pf_path = None
+                pf_meta = None
                 break
-            errors.append(pf_err or f"{date_str} {hour:02d}Z PF: unknown error")
-            pf_path = None
-            pf_meta = None
-            break
 
-        return {
-            "cf_path": cf_path,
-            "pf_path": pf_path if pf_ok else None,
-            "run_date": date_str,
-            "run_hour": hour,
-            "cf_meta": cf_meta,
-            "pf_meta": pf_meta if pf_ok else None,
-            "source": "aws",
-        }
+            return {
+                "cf_path": cf_path,
+                "pf_path": pf_path if pf_ok else None,
+                "run_date": date_str,
+                "run_hour": hour,
+                "cf_meta": cf_meta,
+                "pf_meta": pf_meta if pf_ok else None,
+                "source": "aws",
+            }
 
-    raise RuntimeError(
-        "Unable to download AIFS ENS GRIB. Last errors: " + " | ".join(errors[-6:])
-    )
+        raise RuntimeError(
+            "Unable to download AIFS ENS GRIB. Last errors: " + " | ".join(errors[-6:])
+        )
+    finally:
+        ecmwf_client_mod.download = original_download
 
 
 def _normalize_longitude(lon: float) -> float:
