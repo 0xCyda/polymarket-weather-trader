@@ -244,6 +244,40 @@ def _candidate_runs(now_utc: datetime | None = None) -> list[tuple[str, int]]:
     return runs
 
 
+def _prune_old_run_caches(keep_runs: list[tuple[str, int]] | None = None, keep_count: int = 2) -> None:
+    """Keep only the newest few run-keyed GRIB caches plus the latest aliases."""
+    if not AIFS_CACHE_DIR.exists():
+        return
+    keep_runs = keep_runs or []
+    prefixes = {
+        path.name[:-len("_cf.grib2")]
+        for path in AIFS_CACHE_DIR.glob("*_cf.grib2")
+        if path.name != "latest_cf.grib2"
+    }
+    prefixes.update(
+        path.name[:-len("_pf.grib2")]
+        for path in AIFS_CACHE_DIR.glob("*_pf.grib2")
+        if path.name != "latest_pf.grib2"
+    )
+    ordered = sorted(prefixes, reverse=True)
+    keep_prefixes = {_run_cache_prefix(run_date, run_hour) for run_date, run_hour in keep_runs}
+    keep_prefixes.update(ordered[:keep_count])
+    for prefix in ordered:
+        if prefix in keep_prefixes:
+            continue
+        for suffix in ("_cf.grib2", "_pf.grib2"):
+            path = AIFS_CACHE_DIR / f"{prefix}{suffix}"
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        for idx_path in AIFS_CACHE_DIR.glob(f"{prefix}_*.idx"):
+            try:
+                idx_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def _build_request_variants(target_path: str, steps: Iterable[int],
                             include_cf: bool = True,
                             include_pf: bool = True) -> list[dict]:
@@ -661,6 +695,7 @@ def get_aifs_ens_forecast(lat: float, lon: float, date_str: str,
                     _copy_if_exists(download.get("pf_path"), desired_pf_cache)
                     _replace_with_link(desired_cf_cache, latest_cf_cache)
                     _replace_with_link(desired_pf_cache, latest_pf_cache)
+        _prune_old_run_caches(keep_runs=[(desired_run_date, desired_run_hour)])
 
     member_values_c: list[float] = []
 
@@ -756,29 +791,29 @@ def prewarm_grib_cache(run_date: str | None = None, run_hour: int | None = None)
             cfgrib_mod,
             max_age_hours=AIFS_STALE_FALLBACK_MAX_AGE_HOURS,
         )
-        if desired_info and desired_info["run_date"] == desired_run_date and desired_info["run_hour"] == desired_run_hour:
-            return True
-        if fallback_candidates and _refresh_backoff_active():
-            return True
-        import tempfile as _tmp
-        with _tmp.TemporaryDirectory(prefix="aifs_prewarm_") as tmpdir:
-            try:
-                download = _download_aifs_grib(
-                    target_path=str(Path(tmpdir) / (_run_cache_prefix(desired_run_date, desired_run_hour) + "_cf.grib2")),
-                    run_date=desired_run_date,
-                    run_hour=desired_run_hour,
-                    steps=DEFAULT_STEPS,
-                )
-            except Exception:
-                if fallback_candidates:
-                    _mark_refresh_failure()
-                    return True
-                return False
-            _clear_refresh_failure()
-            _copy_if_exists(download.get("cf_path"), desired_cf_cache)
-            _copy_if_exists(download.get("pf_path"), desired_pf_cache)
-            _replace_with_link(desired_cf_cache, latest_cf_cache)
-            _replace_with_link(desired_pf_cache, latest_pf_cache)
+        if not (desired_info and desired_info["run_date"] == desired_run_date and desired_info["run_hour"] == desired_run_hour):
+            if fallback_candidates and _refresh_backoff_active():
+                return True
+            import tempfile as _tmp
+            with _tmp.TemporaryDirectory(prefix="aifs_prewarm_") as tmpdir:
+                try:
+                    download = _download_aifs_grib(
+                        target_path=str(Path(tmpdir) / (_run_cache_prefix(desired_run_date, desired_run_hour) + "_cf.grib2")),
+                        run_date=desired_run_date,
+                        run_hour=desired_run_hour,
+                        steps=DEFAULT_STEPS,
+                    )
+                except Exception:
+                    if fallback_candidates:
+                        _mark_refresh_failure()
+                        return True
+                    return False
+                _clear_refresh_failure()
+                _copy_if_exists(download.get("cf_path"), desired_cf_cache)
+                _copy_if_exists(download.get("pf_path"), desired_pf_cache)
+                _replace_with_link(desired_cf_cache, latest_cf_cache)
+                _replace_with_link(desired_pf_cache, latest_pf_cache)
+        _prune_old_run_caches(keep_runs=[(desired_run_date, desired_run_hour)])
     return _get_cache_info(cfgrib_mod, desired_cf_cache) is not None
 
 
