@@ -2056,8 +2056,19 @@ def _get_stats() -> dict:
     resolved = [t for t in trades if t.get("status") == "resolved"]
     open_trades = [t for t in trades if t.get("status") == "open"]
 
-    today = (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%Y-%m-%d")
-    today_resolved = [t for t in resolved if (t.get("resolved_at") or "")[:10] == today]
+    awst = ZoneInfo("Australia/Perth")
+    today = datetime.now(awst).date()
+    today_resolved = []
+    for t in resolved:
+        ts = t.get("resolved_at")
+        if not ts:
+            continue
+        try:
+            resolved_at = datetime.fromisoformat(ts)
+        except ValueError:
+            continue
+        if resolved_at.astimezone(awst).date() == today:
+            today_resolved.append(t)
     today_pnl = round(sum(float(t.get("pnl") or 0) for t in today_resolved), 2)
 
     if not resolved:
