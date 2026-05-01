@@ -73,11 +73,23 @@ def load_daily_resolved() -> dict[str, Any]:
     pnl = round(sum(float(t.get("pnl") or 0) for t in resolved), 2)
     wins = sum(1 for t in resolved if float(t.get("pnl") or 0) > 0)
     losses = sum(1 for t in resolved if float(t.get("pnl") or 0) < 0)
+
+    largest_win = None
+    largest_loss = None
+    for trade in resolved:
+        trade_pnl = float(trade.get("pnl") or 0)
+        if trade_pnl > 0 and (largest_win is None or trade_pnl > float(largest_win.get("pnl") or 0)):
+            largest_win = trade
+        if trade_pnl < 0 and (largest_loss is None or trade_pnl < float(largest_loss.get("pnl") or 0)):
+            largest_loss = trade
+
     return {
         "count": len(resolved),
         "wins": wins,
         "losses": losses,
         "pnl": pnl,
+        "largest_win": largest_win,
+        "largest_loss": largest_loss,
     }
 
 
@@ -163,6 +175,21 @@ def summarize_positions(positions: list[dict[str, Any]], limit: int = 3) -> list
     return lines
 
 
+def build_daily_highlights(daily: dict[str, Any]) -> list[str]:
+    highlights: list[str] = []
+    largest_win = daily.get("largest_win")
+    largest_loss = daily.get("largest_loss")
+    if largest_win:
+        location = largest_win.get("location") or "Unknown"
+        target_date = largest_win.get("target_date") or "?"
+        highlights.append(f"Largest win: {location} {target_date} {money(float(largest_win.get('pnl') or 0), signed=True)}")
+    if largest_loss:
+        location = largest_loss.get("location") or "Unknown"
+        target_date = largest_loss.get("target_date") or "?"
+        highlights.append(f"Largest loss: {location} {target_date} {money(float(largest_loss.get('pnl') or 0), signed=True)}")
+    return highlights
+
+
 def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], stats: dict[str, Any], daily: dict[str, Any], update_line: str) -> str:
     if day_number == 1:
         parts = [
@@ -212,10 +239,12 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], stats: 
     ]
     if daily["count"]:
         parts.append(f"Closed today: {daily['count']} ({daily['wins']}W/{daily['losses']}L)")
+    highlights = build_daily_highlights(daily)
     parts.extend([
         "",
         "Summary of events:",
         f"Performance: {money(daily['pnl'], signed=True)} on {daily['count']} resolved trade(s) ({daily['wins']}W/{daily['losses']}L).",
+        *highlights,
         f"Changes: {update_line}",
         "Still paper. Realized and unrealized stay separate.",
     ])
