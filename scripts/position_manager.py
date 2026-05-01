@@ -69,6 +69,10 @@ ADD_AFTER_HOUR      = int(_cfg.get("position_add_after_hour", 14))    # peak-win
 PRE_PEAK_BREAKOUT_C = float(_cfg.get("position_pre_peak_breakout_c", 0.5))
 POST_PEAK_EXIT_BUFFER_C = float(_cfg.get("position_post_peak_exit_buffer_c", 1.0))
 HALFHOUR_START_HOUR = int(_cfg.get("position_halfhour_start_hour", ADD_AFTER_HOUR))
+HALFHOUR_MIN_LOCAL_HOUR = int(_cfg.get("position_halfhour_min_local_hour", max(12, ADD_AFTER_HOUR - 1)))
+HALFHOUR_MAX_LOCAL_HOUR = int(_cfg.get("position_halfhour_max_local_hour", EXIT_AFTER_HOUR + 3))
+PEAK_LOCK_MINUTES = float(_cfg.get("position_peak_lock_min_minutes", 90.0))
+PEAK_LOCK_BUFFER_C = float(_cfg.get("position_peak_lock_buffer_c", 0.2))
 REPRICING_GUARD_START_HOUR = int(_cfg.get("position_repricing_guard_start_hour", ADD_AFTER_HOUR))
 EASY_CORE_REPRICING_GUARD_START_HOUR = int(_cfg.get("position_easy_core_repricing_guard_start_hour", 12))
 REPRICING_DROP_FRAC = float(_cfg.get("position_repricing_drop_frac", 0.50))
@@ -183,11 +187,72 @@ def _weather_support_weakening(running_edge_c: float, projected_c: float, bucket
     )
 
 
+def _extreme_tracking_state(obs: list[dict], tz: ZoneInfo, now_utc: datetime, metric: str = "high") -> dict | None:
+    """Return how stale the current running extreme looks in city-local time."""
+    best_temp = None
+    extreme_dt = None
+    latest_dt = None
+    latest_temp = None
+
+    for row in obs:
+        ts = row.get("valid_time_gmt") or row.get("validTimeUtc")
+        if ts is None:
+            continue
+        try:
+            obs_utc = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+        except Exception:
+            continue
+        if obs_utc > now_utc:
+            continue
+        local_dt = obs_utc.astimezone(tz)
+        temp = row.get("temp")
+        if temp is None:
+            temp = row.get("temperature")
+        if temp is None:
+            continue
+        try:
+            temp_c = (float(temp) - 32.0) * 5.0 / 9.0
+        except Exception:
+            continue
+        latest_dt = local_dt
+        latest_temp = temp_c
+        if best_temp is None:
+            best_temp = temp_c
+            extreme_dt = local_dt
+            continue
+        if metric == "low":
+            if temp_c < best_temp or (temp_c == best_temp and extreme_dt and local_dt > extreme_dt):
+                best_temp = temp_c
+                extreme_dt = local_dt
+        else:
+            if temp_c > best_temp or (temp_c == best_temp and extreme_dt and local_dt > extreme_dt):
+                best_temp = temp_c
+                extreme_dt = local_dt
+
+    if best_temp is None or extreme_dt is None or latest_dt is None or latest_temp is None:
+        return None
+
+    local_now = now_utc.astimezone(tz)
+    minutes_since_extreme = max(0.0, (local_now - extreme_dt).total_seconds() / 60.0)
+    obs_age_min = max(0.0, (local_now - latest_dt).total_seconds() / 60.0)
+    cooling_c = max(0.0, latest_temp - best_temp) if metric == "low" else max(0.0, best_temp - latest_temp)
+    locked = minutes_since_extreme >= PEAK_LOCK_MINUTES and obs_age_min <= 120.0
+    return {
+        "locked": locked,
+        "minutes_since_extreme": round(minutes_since_extreme, 1),
+        "obs_age_min": round(obs_age_min, 1),
+        "cooling_c": round(cooling_c, 2),
+        "extreme_local_hour": extreme_dt.hour,
+        "latest_local_hour": latest_dt.hour,
+    }
+
+
 def _should_run_halfhour(trades: list[dict], now_utc: datetime) -> bool:
     for trade in trades:
         city = trade.get("location") or ""
         loc = LOCATIONS.get(city)
-        if not loc:
+        station = STATIONS.get(city)
+        if not loc or not station:
             continue
         tz = ZoneInfo(loc[2])
         local_now = now_utc.astimezone(tz)
@@ -195,34 +260,37 @@ def _should_run_halfhour(trades: list[dict], now_utc: datetime) -> bool:
             continue
         if local_now.hour >= HALFHOUR_START_HOUR:
             return True
+        if local_now.hour < HALFHOUR_MIN_LOCAL_HOUR or local_now.hour > HALFHOUR_MAX_LOCAL_HOUR:
+            continue
+        obs = _fetch_twc_intraday(station, local_now.date().isoformat())
+        if not obs:
+            continue
+        peak_state = _extreme_tracking_state(obs, tz, now_utc, metric=trade.get("metric") or "high")
+        if peak_state and peak_state.get("locked"):
+            return True
     return False
 
 
-def _project_eod_max_c(running_c: float, local_hour: int, forecast_f: float | None) -> dict:
-    """Crude EOD max projection.
-
-    Returns {"projected_c": float, "confidence": float in [0,1]}.
-
-    Heuristic — diurnal peak is typically 14:00-16:00 local for highs:
-      * post-peak (>= EXIT_AFTER_HOUR): running max is essentially final, +0.3°C buffer
-      * peak window (ADD_AFTER_HOUR..EXIT_AFTER_HOUR-1): running max ± forecast envelope
-      * pre-peak: running so far is a floor; project up using forecast as ceiling
-
-    Confidence rises through the day because the unknown (rest-of-day climb)
-    shrinks. We don't try to model anything fancier than "how much room is left
-    for the temp to climb past what we've seen so far".
-    """
+def _project_eod_max_c(running_c: float, local_hour: int, forecast_f: float | None, *, metric: str = "high", peak_state: dict | None = None) -> dict:
+    """Crude EOD projection with an observation-driven peak-lock override."""
+    direction = -1.0 if metric == "low" else 1.0
+    if peak_state and peak_state.get("locked") and local_hour >= HALFHOUR_MIN_LOCAL_HOUR:
+        return {
+            "projected_c": running_c + (direction * PEAK_LOCK_BUFFER_C),
+            "confidence": 0.9,
+            "mode": "peak_lock",
+        }
     if local_hour >= EXIT_AFTER_HOUR:
-        return {"projected_c": running_c + 0.3, "confidence": 0.95}
+        return {"projected_c": running_c + (direction * 0.3), "confidence": 0.95, "mode": "post_peak_hour"}
     if local_hour >= ADD_AFTER_HOUR:
-        # Inside peak window — running max is likely close. Add a small upside buffer
-        # if the forecast disagrees by more than 1°C (means day might still climb).
         forecast_c = (forecast_f - 32) * 5 / 9 if forecast_f is not None else running_c
-        ceiling = max(running_c + 0.5, forecast_c)
-        return {"projected_c": ceiling, "confidence": 0.7}
-    # Pre-peak: running so far is just a floor. Project up to forecast envelope.
-    forecast_c = (forecast_f - 32) * 5 / 9 if forecast_f is not None else running_c + 2.0
-    return {"projected_c": max(running_c, forecast_c), "confidence": 0.4}
+        if metric == "low":
+            return {"projected_c": min(running_c - 0.5, forecast_c), "confidence": 0.7, "mode": "peak_window"}
+        return {"projected_c": max(running_c + 0.5, forecast_c), "confidence": 0.7, "mode": "peak_window"}
+    forecast_c = (forecast_f - 32) * 5 / 9 if forecast_f is not None else running_c + (direction * 2.0)
+    if metric == "low":
+        return {"projected_c": min(running_c, forecast_c), "confidence": 0.4, "mode": "pre_peak"}
+    return {"projected_c": max(running_c, forecast_c), "confidence": 0.4, "mode": "pre_peak"}
 
 
 def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | None = None, log=print) -> dict:
@@ -310,9 +378,17 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
         return out
     out["running_c"] = round(running_c, 2)
 
-    proj = _project_eod_max_c(running_c, cur_hour, trade.get("forecast_temp"))
+    peak_state = _extreme_tracking_state(obs, tz, now_utc, metric=metric)
+    if peak_state:
+        out["peak_locked"] = bool(peak_state.get("locked"))
+        out["minutes_since_extreme"] = peak_state.get("minutes_since_extreme")
+        out["obs_age_min"] = peak_state.get("obs_age_min")
+        out["cooling_c"] = peak_state.get("cooling_c")
+
+    proj = _project_eod_max_c(running_c, cur_hour, trade.get("forecast_temp"), metric=metric, peak_state=peak_state)
     out["projected_c"] = round(proj["projected_c"], 2)
     out["confidence"] = proj["confidence"]
+    out["projection_mode"] = proj.get("mode")
 
     in_bucket_now = _bucket_contains(running_c, bucket)
     in_bucket_proj = _bucket_contains(proj["projected_c"], bucket)
@@ -374,10 +450,11 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
             )
             return out
 
-    # Post-peak: only kill the trade if the running max sits clearly outside the
-    # held bucket by a full degree. Whole-degree market resolution makes 0.3-0.5°C
-    # boundary misses too noisy to force an exit.
-    if cur_hour >= EXIT_AFTER_HOUR and not in_bucket_now and edge_c_now <= -POST_PEAK_EXIT_BUFFER_C:
+    # Post-peak or peak-locked: only kill the trade if the running max sits
+    # clearly outside the held bucket by a full degree. Whole-degree market
+    # resolution makes 0.3-0.5°C boundary misses too noisy to force an exit.
+    exit_window_open = cur_hour >= EXIT_AFTER_HOUR or (peak_state and peak_state.get("locked") and cur_hour >= HALFHOUR_MIN_LOCAL_HOUR)
+    if exit_window_open and not in_bucket_now and edge_c_now <= -POST_PEAK_EXIT_BUFFER_C:
         out["action"] = "exit"
         out["reason"] = (
             f"post_peak_running_outside_bucket "
@@ -420,9 +497,11 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
         return out
 
     # ----- ADD rules -----
-    # Need to be inside peak window with running and projected max both sitting
-    # solidly in held bucket AND market price below add ceiling.
-    if cur_hour >= ADD_AFTER_HOUR and in_bucket_now and in_bucket_proj and edge_c_now >= EDGE_BUFFER_C and proj["confidence"] >= 0.7:
+    # Need to be inside the usual peak window, or have the intraday extreme
+    # already look peak-locked, with running and projected max both sitting
+    # solidly in the held bucket AND market price below add ceiling.
+    add_window_open = cur_hour >= ADD_AFTER_HOUR or (peak_state and peak_state.get("locked") and cur_hour >= HALFHOUR_MIN_LOCAL_HOUR)
+    if add_window_open and in_bucket_now and in_bucket_proj and edge_c_now >= EDGE_BUFFER_C and proj["confidence"] >= 0.7:
         if cur_price is None:
             out["reason"] = "add_blocked_no_price"
             return out
