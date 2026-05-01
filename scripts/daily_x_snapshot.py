@@ -205,6 +205,8 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], stats: 
         "",
         f"Balance: ${money(balance)}",
         f"24h P&L: ${money(pnl_24h, signed=True)}",
+        f"Today P&L: ${money(daily['pnl'], signed=True)}",
+        f"Resolved Today: {daily['count']}",
         f"Total P&L: ${money(total_pnl, signed=True) if total_pnl is not None else 'N/A'}",
         f"Open positions: {open_trades}",
     ]
