@@ -67,6 +67,7 @@ ADD_PRICE_FLOOR     = float(_cfg.get("late_price_floor", 0.20))
 EXIT_AFTER_HOUR     = int(_cfg.get("position_exit_after_hour", 16))   # post-peak local hour
 ADD_AFTER_HOUR      = int(_cfg.get("position_add_after_hour", 14))    # peak-window start
 PRE_PEAK_BREAKOUT_C = float(_cfg.get("position_pre_peak_breakout_c", 0.5))
+POST_PEAK_EXIT_BUFFER_C = float(_cfg.get("position_post_peak_exit_buffer_c", 1.0))
 HALFHOUR_START_HOUR = int(_cfg.get("position_halfhour_start_hour", ADD_AFTER_HOUR))
 REPRICING_GUARD_START_HOUR = int(_cfg.get("position_repricing_guard_start_hour", ADD_AFTER_HOUR))
 EASY_CORE_REPRICING_GUARD_START_HOUR = int(_cfg.get("position_easy_core_repricing_guard_start_hour", 12))
@@ -373,12 +374,15 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
             )
             return out
 
-    # Post-peak: if running max sits clearly outside held bucket, day is gone.
-    if cur_hour >= EXIT_AFTER_HOUR and not in_bucket_now and edge_c_now <= -EDGE_BUFFER_C:
+    # Post-peak: only kill the trade if the running max sits clearly outside the
+    # held bucket by a full degree. Whole-degree market resolution makes 0.3-0.5°C
+    # boundary misses too noisy to force an exit.
+    if cur_hour >= EXIT_AFTER_HOUR and not in_bucket_now and edge_c_now <= -POST_PEAK_EXIT_BUFFER_C:
         out["action"] = "exit"
         out["reason"] = (
             f"post_peak_running_outside_bucket "
-            f"(running={running_c:.2f}°C, bucket={out['bucket']}, edge={edge_c_now:.2f}°C)"
+            f"(running={running_c:.2f}°C, bucket={out['bucket']}, edge={edge_c_now:.2f}°C, "
+            f"buffer={POST_PEAK_EXIT_BUFFER_C:.2f}°C)"
         )
         return out
 

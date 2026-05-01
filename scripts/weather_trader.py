@@ -217,6 +217,8 @@ CONFIG_SCHEMA = {
                           "help": "Local hour after which averaging-in is allowed (14 = 2pm, start of typical peak window)."},
     "position_pre_peak_breakout_c": {"env": "SIMMER_WEATHER_POSITION_PRE_PEAK_BREAKOUT_C", "default": 0.5, "type": float,
                           "help": "Pre-peak: exit when running max already exceeds bucket upper edge by this many °C."},
+    "position_post_peak_exit_buffer_c": {"env": "SIMMER_WEATHER_POSITION_POST_PEAK_EXIT_BUFFER_C", "default": 1.0, "type": float,
+                          "help": "Post-peak: require the running max to sit at least this many °C outside the held bucket before force-exiting."},
     "position_halfhour_start_hour": {"env": "SIMMER_WEATHER_POSITION_HALFHOUR_START_HOUR", "default": 14, "type": int,
                           "help": "Local hour after which the position manager should also run on the half-hour for same-day positions."},
     "position_repricing_guard_start_hour": {"env": "SIMMER_WEATHER_POSITION_REPRICING_GUARD_START_HOUR", "default": 14, "type": int,
