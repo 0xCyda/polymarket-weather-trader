@@ -212,8 +212,13 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], stats: 
     ]
     if daily["count"]:
         parts.append(f"Closed today: {daily['count']} ({daily['wins']}W/{daily['losses']}L)")
-    parts.append(f"Today: {update_line}")
-    parts.append("Still paper. Realized and unrealized stay separate.")
+    parts.extend([
+        "",
+        "Summary of events:",
+        f"Performance: {money(daily['pnl'], signed=True)} on {daily['count']} resolved trade(s) ({daily['wins']}W/{daily['losses']}L).",
+        f"Changes: {update_line}",
+        "Still paper. Realized and unrealized stay separate.",
+    ])
     return "\n".join(parts)
 
 
