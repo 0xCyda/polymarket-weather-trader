@@ -818,18 +818,11 @@ function emptyState(icon, message) {
 function renderCards(d) {
   const realized = Number(d.portfolio.realized_pnl || 0);
   const unrealPnl = Number(d.portfolio.unrealized_pnl || 0);
-  const equity = realized + unrealPnl;
   const winRate = d.stats.win_rate;
   const missingMarks = Number(d.portfolio.missing_marks || 0);
-  const markedPositions = Number(d.portfolio.marked_positions || 0);
   document.getElementById('summary-cards').innerHTML = [
     metricCard('Balance', money(d.portfolio.balance), {
       tone: realized > 0 ? 'positive' : realized < 0 ? 'negative' : null,
-      sub: 'Realized P&L Baked In',
-    }),
-    metricCard('Total P&L', fmtPnl(equity), {
-      tone: equity > 0 ? 'positive' : equity < 0 ? 'negative' : null,
-      sub: missingMarks > 0 ? `Realized + ${markedPositions} Live Mark${markedPositions === 1 ? '' : 's'}` : 'Realized + Unrealized',
     }),
     metricCard('Unrealized', fmtPnl(unrealPnl), {
       tone: unrealPnl > 0 ? 'positive' : unrealPnl < 0 ? 'negative' : null,
