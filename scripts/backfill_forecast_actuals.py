@@ -25,12 +25,15 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from forecast_history import update_resolutions
-from paper_journal import fetch_historical_temp
+from paper_journal import fetch_historical_temp, _fetch_archive_actual_temp
 
 
 def _resolver(location: str, date_str: str, metric: str) -> float | None:
     """forecast_history's update_resolutions callback. Returns °F."""
-    return fetch_historical_temp(location, date_str, metric, unit="F")
+    actual = fetch_historical_temp(location, date_str, metric, unit="F")
+    if actual is not None:
+        return actual
+    return _fetch_archive_actual_temp(location, date_str, metric, unit="F")
 
 
 def main() -> int:
