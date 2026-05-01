@@ -2,6 +2,25 @@
 
 All notable changes to the Polymarket Weather Trader. Newest first.
 
+## 2026-05-01
+
+### Changed
+- Dashboard summary cards were trimmed so the old Total P&L tile and its redundant realized-P&L subtext are gone, leaving the balance card to carry the headline account state. (`dashboard.py`)
+- Post-peak position exits now require a full configurable degree outside the held bucket before force-closing, which stops noisy boundary misses from getting killed too early. (`position_manager.py`, `weather_trader.py`)
+
+### Fixed
+- The dashboard's “Today P&L” / “Resolved Today” stats now convert `resolved_at` into AWST before bucketing trades by day, so overnight UTC resolutions stop landing on the wrong date. (`dashboard.py`)
+- AIFS GRIB cache retention now prunes old run-keyed files after refresh/prewarm and keeps only the current run, the previous run, and the `latest_*` aliases instead of silently hoarding old downloads. (`aifs_forecast.py`)
+
+## 2026-04-30
+
+### Changed
+- Interactive AIFS reads are now cache-only whenever any readable cached run exists, so scan/dashboard lookups stop triggering surprise live downloads and just surface the freshest local run with a stale marker when needed. (`aifs_forecast.py`, `tests/test_aifs_stale_fallback.py`)
+
+### Fixed
+- AIFS latest-cache handling now deduplicates the run-keyed GRIBs behind the `latest_cf.grib2` / `latest_pf.grib2` aliases instead of copying duplicate blobs around disk. (`aifs_forecast.py`)
+- AIFS index fetch retries are now capped, with regression coverage, so bad remote responses stop spiraling into retry storms. (`aifs_forecast.py`, `tests/test_aifs_stale_fallback.py`)
+
 ## 2026-04-29
 
 ### Fixed
