@@ -105,7 +105,7 @@ def _save_entries(entries: list) -> None:
     HISTORY_FILE.write_text("\n".join(json.dumps(e, default=str) for e in entries) + "\n")
 
 
-def update_resolutions(fetch_actual_temp) -> int:
+def update_resolutions(fetch_actual_temp, save_every: int = 25) -> int:
     """
     Backfill actual_temp for forecasts whose target date has passed.
 
@@ -113,21 +113,34 @@ def update_resolutions(fetch_actual_temp) -> int:
     the observed temperature or None. Typical implementation uses METAR or
     NOAA historical data.
 
+    Duplicate forecast_history rows are common because we log repeated scans for
+    the same (location, date, metric). Cache resolver results per key so one
+    missing actual does not trigger the same slow network lookup over and over.
+    Also checkpoint progress during long backfills so an interrupted run still
+    preserves completed work.
+
     Returns number of entries updated.
     """
     entries = _load_entries()
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     updated = 0
+    cache: dict[tuple[str, str, str], float | None] = {}
+    dirty = False
     for entry in entries:
         if entry.get("actual_temp") is not None:
             continue
         target = entry.get("target_date", "")
         if not target or target >= today:
             continue  # Date hasn't passed yet
-        try:
-            actual = fetch_actual_temp(entry["location"], target, entry["metric"])
-        except Exception:
-            continue
+        key = (entry["location"], target, entry["metric"])
+        if key in cache:
+            actual = cache[key]
+        else:
+            try:
+                actual = fetch_actual_temp(*key)
+            except Exception:
+                actual = None
+            cache[key] = actual
         if actual is None:
             continue
         forecast = entry.get("forecast_temp")
@@ -135,7 +148,10 @@ def update_resolutions(fetch_actual_temp) -> int:
         entry["forecast_error"] = round(actual - forecast, 2) if forecast is not None else None
         entry["resolved_at"] = datetime.now(timezone.utc).isoformat()
         updated += 1
-    if updated:
+        dirty = True
+        if save_every and updated % save_every == 0:
+            _save_entries(entries)
+    if dirty:
         _save_entries(entries)
     return updated
 
