@@ -614,7 +614,7 @@ DASHBOARD_HTML = """
 
 <div class="layout-main">
   <div class="card">
-    <h2>Equity Curve</h2>
+    <h2>Balance Curve</h2>
     <div id="equity-chart" style="height:340px"></div>
   </div>
   <div class="card">
@@ -848,15 +848,17 @@ function renderChart(d) {
     const d = new Date(Number(y), Number(m) - 1, Number(day));
     return d.toLocaleDateString('en-AU', { timeZone: 'Australia/Perth', timeZoneName: 'short' }).replace(/\s+\w+$/, '');
   });
-  const y = d.timeseries.map(r => r.cumulative_pnl);
+  const y = d.timeseries.map(r => r.balance);
   const container = document.getElementById('equity-chart');
   if (!x.length) {
-    container.innerHTML = emptyState('📉', 'No equity data yet — trades will populate this chart');
+    container.innerHTML = emptyState('📉', 'No balance data yet — resolved trades will populate this chart');
     return;
   }
-  const lastPnl = y[y.length - 1] || 0;
-  const lineColor = lastPnl >= 0 ? '#34d399' : '#f87171';
-  const fillColor = lastPnl >= 0 ? 'rgba(52, 211, 153, 0.10)' : 'rgba(248, 113, 113, 0.10)';
+  const firstBalance = y[0] || 0;
+  const lastBalance = y[y.length - 1] || 0;
+  const lineColor = lastBalance >= firstBalance ? '#34d399' : '#f87171';
+  const fillColor = lastBalance >= firstBalance ? 'rgba(52, 211, 153, 0.10)' : 'rgba(248, 113, 113, 0.10)';
+  const baseline = Math.max(0, Math.min(...y) * 0.995);
   const data = [{
     x, y,
     type: 'scatter',
@@ -865,7 +867,7 @@ function renderChart(d) {
     fillcolor: fillColor,
     line: { color: lineColor, width: 2.5, shape: 'spline', smoothing: 0.6 },
     marker: { color: lineColor, size: 5, line: { color: '#0a1120', width: 1 } },
-    hovertemplate: '<b>%{x}</b><br>P&L: $%{y:.2f}<extra></extra>',
+    hovertemplate: '<b>%{x}</b><br>Balance: $%{y:.2f}<extra></extra>',
   }];
   const layout = {
     paper_bgcolor: 'rgba(0,0,0,0)',
@@ -884,6 +886,8 @@ function renderChart(d) {
       zerolinecolor: 'rgba(70, 95, 150, 0.25)',
       tickfont: { color: '#6e7d9f', family: 'JetBrains Mono', size: 10 },
       tickprefix: '$',
+      rangemode: 'tozero',
+      range: [baseline, Math.max(...y) * 1.005],
     },
     hoverlabel: {
       bgcolor: '#0a1120',
@@ -1602,21 +1606,26 @@ def _load_trades_jsonl(path: Path) -> list[dict]:
 
 
 def _build_timeseries(trades: list[dict]) -> list[dict]:
-    """Cumulative P&L over time from resolved trades — one row per date (latest value wins)."""
+    """Resolved-trade balance curve over time — one row per date (latest value wins)."""
     rows = []
     for t in trades:
         if t.get("status") == "resolved" and t.get("pnl") is not None:
             ts = t.get("resolved_at", "")[:10] if t.get("resolved_at") else t.get("entered_at", "")[:10]
             rows.append({"date": ts, "pnl": float(t["pnl"])})
-    # Sort by date ascending
     rows.sort(key=lambda r: r["date"])
-    # Aggregate: keep only the last (final cumulative) entry per date
     aggregated = {}
     cumulative = 0.0
+    starting_balance = 10000.0
     for r in rows:
         cumulative += r["pnl"]
-        aggregated[r["date"]] = round(cumulative, 4)
-    return [{"date": d, "cumulative_pnl": v} for d, v in aggregated.items()]
+        aggregated[r["date"]] = {
+            "cumulative_pnl": round(cumulative, 4),
+            "balance": round(starting_balance + cumulative, 4),
+        }
+    return [
+        {"date": d, "cumulative_pnl": values["cumulative_pnl"], "balance": values["balance"]}
+        for d, values in aggregated.items()
+    ]
 
 
 def _parse_sort_dt(value: str | None) -> datetime:
