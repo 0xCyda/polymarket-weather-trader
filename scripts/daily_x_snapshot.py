@@ -90,6 +90,7 @@ def load_daily_resolved() -> dict[str, Any]:
         "pnl": pnl,
         "largest_win": largest_win,
         "largest_loss": largest_loss,
+        "resolved": resolved,
     }
 
 
@@ -147,13 +148,13 @@ def normalize_update(subject: str) -> str:
 
 def build_update_line(subjects: list[str]) -> str:
     if not subjects:
-        return "No code changes shipped today, just operation and position management."
+        return "No code changes shipped today, just operation and position management. Looking pretty good."
     cleaned = [normalize_update(s) for s in subjects[:3]]
     if len(cleaned) == 1:
-        return cleaned[0] + "."
+        return f"Code changes shipped today: {cleaned[0]}."
     if len(cleaned) == 2:
-        return f"{cleaned[0]}; {cleaned[1]}."
-    return f"{cleaned[0]}; {cleaned[1]}; {cleaned[2]}."
+        return f"Code changes shipped today: {cleaned[0]}; {cleaned[1]}."
+    return f"Code changes shipped today: {cleaned[0]}; {cleaned[1]}; {cleaned[2]}."
 
 
 def summarize_positions(positions: list[dict[str, Any]], limit: int = 3) -> list[str]:
@@ -175,19 +176,25 @@ def summarize_positions(positions: list[dict[str, Any]], limit: int = 3) -> list
     return lines
 
 
-def build_daily_highlights(daily: dict[str, Any]) -> list[str]:
-    highlights: list[str] = []
-    largest_win = daily.get("largest_win")
-    largest_loss = daily.get("largest_loss")
-    if largest_win:
-        location = largest_win.get("location") or "Unknown"
-        target_date = largest_win.get("target_date") or "?"
-        highlights.append(f"Largest win: {location} {target_date} {money(float(largest_win.get('pnl') or 0), signed=True)}")
-    if largest_loss:
-        location = largest_loss.get("location") or "Unknown"
-        target_date = largest_loss.get("target_date") or "?"
-        highlights.append(f"Largest loss: {location} {target_date} {money(float(largest_loss.get('pnl') or 0), signed=True)}")
-    return highlights
+def top_daily_trades(daily: dict[str, Any], *, positive: bool, limit: int = 2) -> list[str]:
+    resolved = daily.get("resolved") or []
+    ranked = []
+    for trade in resolved:
+        pnl = float(trade.get("pnl") or 0)
+        if positive and pnl <= 0:
+            continue
+        if not positive and pnl >= 0:
+            continue
+        ranked.append(trade)
+    ranked.sort(key=lambda t: float(t.get("pnl") or 0), reverse=positive)
+
+    lines: list[str] = []
+    for trade in ranked[:limit]:
+        location = trade.get("location") or "Unknown"
+        target_date = trade.get("target_date") or "?"
+        pnl = float(trade.get("pnl") or 0)
+        lines.append(f"{location} {target_date} {money(pnl, signed=True)}")
+    return lines
 
 
 def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], stats: dict[str, Any], daily: dict[str, Any], update_line: str) -> str:
@@ -195,58 +202,48 @@ def build_x_post(title: str, day_number: int, portfolio: dict[str, Any], stats: 
         parts = [
             title,
             "",
-            "OVERVIEW",
-            "POLYMARKET WEATHER TRADER",
-            "A rules-based weather trading system built for Polymarket daily-temperature markets. It combines ensemble forecasts, live intraday observations, and hard risk controls to find mispriced buckets, size entries by confidence, and manage positions from entry to exit.",
+            f"Balance: ${money(portfolio.get('balance'))}",
+            f"Today P&L: ${money(daily['pnl'], signed=True)}",
+            f"Open positions: {portfolio.get('open_trades')}",
+            f"Current WR: {stats.get('win_rate') if stats.get('win_rate') is not None else 'N/A'}%",
             "",
-            "Data Sources",
-            "ECMWF AIFS ENS (18%)",
-            "ECMWF IFS 0.25° (24%)",
-            "NOAA GFS seamless (14%)",
-            "Météo-France ARPEGE (10%)",
-            "TWC / Wunderground intraday obs",
-            "METAR live airport feeds (US, D+0)",
+            "Getting the first day on the board. Still paper, but the machine is live and tracking every entry, exit, and miss.",
             "",
-            "Three Trading Modes",
-            "CORE: scans every 4 hours and takes the bucket with the strongest model edge vs market price",
-            "PUNT: takes cheap tail dislocations (≤14.9¢) with fixed small size",
-            "LATE: runs hourly and uses observed daily max at 3pm local for day-of entries",
-            "",
-            "Risk & Sizing",
-            "Per-mode daily budgets and max-position caps",
-            "Volatility targeting available (EWMA-based)",
-            "Laddered exits + dynamic profit multiplier",
-            "Optional daily-loss hard stop",
-            "",
-            f"Current Snapshot: Balance ${money(portfolio.get('balance'))}, Realized ${money(portfolio.get('realized_pnl'), signed=True)}, Unrealized ${money(portfolio.get('unrealized_pnl'), signed=True) if portfolio.get('unrealized_pnl') is not None else 'N/A'}, Win Rate {stats.get('win_rate') if stats.get('win_rate') is not None else 'N/A'}%.",
-            "From here it turns into daily snapshots, open risk, and real system changes.",
+            update_line,
         ]
         return "\n".join(parts)
 
-    total_pnl = portfolio.get("total_pnl")
     balance = portfolio.get("balance")
-    pnl_24h = portfolio.get("pnl_24h")
     open_trades = portfolio.get("open_trades")
+    current_wr = stats.get("win_rate") if stats.get("win_rate") is not None else "N/A"
+    wins_block = top_daily_trades(daily, positive=True)
+    losses_block = top_daily_trades(daily, positive=False)
     parts = [
         title,
         "",
         f"Balance: ${money(balance)}",
-        f"24h P&L: ${money(pnl_24h, signed=True)}",
         f"Today P&L: ${money(daily['pnl'], signed=True)}",
-        f"Resolved Today: {daily['count']}",
-        f"Total P&L: ${money(total_pnl, signed=True) if total_pnl is not None else 'N/A'}",
         f"Open positions: {open_trades}",
+        f"Closed today: {daily['count']} ({daily['wins']}W/{daily['losses']}L)",
+        f"Current WR: {current_wr}%",
+        "",
+        f"Performance: ${money(daily['pnl'], signed=True)} on {daily['count']} trade{'s' if daily['count'] != 1 else ''} ({daily['wins']}W/{daily['losses']}L).",
     ]
-    if daily["count"]:
-        parts.append(f"Closed today: {daily['count']} ({daily['wins']}W/{daily['losses']}L)")
-    highlights = build_daily_highlights(daily)
+    if wins_block:
+        parts.extend([
+            "",
+            "Largest wins:",
+            *wins_block,
+        ])
+    if losses_block:
+        parts.extend([
+            "",
+            "Largest losses:",
+            *losses_block,
+        ])
     parts.extend([
         "",
-        "Summary of events:",
-        f"Performance: {money(daily['pnl'], signed=True)} on {daily['count']} resolved trade(s) ({daily['wins']}W/{daily['losses']}L).",
-        *highlights,
-        f"Changes: {update_line}",
-        "Still paper. Realized and unrealized stay separate.",
+        update_line,
     ])
     return "\n".join(parts)
 
@@ -395,18 +392,20 @@ def save_snapshot(snapshot: dict[str, Any]) -> tuple[Path, Path, Path, Path]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate a daily X draft from paper-trading performance.")
-    parser.add_argument("--draft-only", action="store_true", help="Print only the markdown draft without save-path footer.")
+    parser.add_argument("--draft-only", action="store_true", help="Print only the main X draft text without report scaffolding.")
     args = parser.parse_args()
 
     snapshot = generate_snapshot()
     json_path, md_path, latest_json, latest_md = save_snapshot(snapshot)
+    if args.draft_only:
+        print(snapshot["x_post"].strip())
+        return 0
     print(snapshot["markdown"].strip())
-    if not args.draft_only:
-        print("")
-        print(f"Saved: {json_path}")
-        print(f"Saved: {md_path}")
-        print(f"Updated: {latest_json}")
-        print(f"Updated: {latest_md}")
+    print("")
+    print(f"Saved: {json_path}")
+    print(f"Saved: {md_path}")
+    print(f"Updated: {latest_json}")
+    print(f"Updated: {latest_md}")
     return 0
 
 
