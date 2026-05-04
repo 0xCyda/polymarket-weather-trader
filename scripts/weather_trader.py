@@ -261,12 +261,12 @@ CONFIG_SCHEMA = {
                           "help": "Running-temperature edge threshold (°C) for the exact CORE weak-price exit guard. More negative means the day is lagging the bucket badly enough to stop hoping."},
     "position_exact_core_weak_exit_start_hour": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_WEAK_EXIT_START_HOUR", "default": 10, "type": int,
                           "help": "Local hour after which the exact CORE weak-price guard can fire."},
-    "position_exact_core_breakeven_arm_mult": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_BREAKEVEN_ARM_MULT", "default": 2.0, "type": float,
-                          "help": "Arm the exact-CORE breakeven stop once current/seen price reaches this multiple of entry price."},
-    "position_exact_core_breakeven_floor_mult": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_BREAKEVEN_FLOOR_MULT", "default": 1.05, "type": float,
-                          "help": "Once armed, exact-CORE trades exit if price falls back to entry * this multiplier or lower."},
-    "position_exact_core_breakeven_start_hour": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_BREAKEVEN_START_HOUR", "default": 10, "type": int,
-                          "help": "Local hour after which the exact-CORE breakeven stop is allowed to fire."},
+    "position_exact_core_trail_arm_mult": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_TRAIL_ARM_MULT", "default": 2.0, "type": float,
+                          "help": "Arm the exact-CORE trailing stop once current/seen price reaches this multiple of entry price."},
+    "position_exact_core_trail_drop_frac": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_TRAIL_DROP_FRAC", "default": 0.30, "type": float,
+                          "help": "Once armed, exact-CORE trades exit if price falls this fraction or more from the best seen manager price."},
+    "position_exact_core_trail_start_hour": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_TRAIL_START_HOUR", "default": 10, "type": int,
+                          "help": "Local hour after which the exact-CORE trailing stop is allowed to fire."},
 }
 
 # Backwards-compatible env var aliases (old name -> new name)

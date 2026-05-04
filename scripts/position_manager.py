@@ -85,9 +85,9 @@ EXACT_CORE_WEAK_PRICE_FLOOR = float(_cfg.get("position_exact_core_weak_price_flo
 EXACT_CORE_WEAK_ENTRY_FRAC = float(_cfg.get("position_exact_core_weak_entry_frac", 0.50))
 EXACT_CORE_WEAK_EDGE_C = float(_cfg.get("position_exact_core_weak_edge_c", -1.5))
 EXACT_CORE_WEAK_EXIT_START_HOUR = int(_cfg.get("position_exact_core_weak_exit_start_hour", 10))
-EXACT_CORE_BREAKEVEN_ARM_MULT = float(_cfg.get("position_exact_core_breakeven_arm_mult", 2.0))
-EXACT_CORE_BREAKEVEN_FLOOR_MULT = float(_cfg.get("position_exact_core_breakeven_floor_mult", 1.05))
-EXACT_CORE_BREAKEVEN_START_HOUR = int(_cfg.get("position_exact_core_breakeven_start_hour", 10))
+EXACT_CORE_TRAIL_ARM_MULT = float(_cfg.get("position_exact_core_trail_arm_mult", 2.0))
+EXACT_CORE_TRAIL_DROP_FRAC = float(_cfg.get("position_exact_core_trail_drop_frac", 0.30))
+EXACT_CORE_TRAIL_START_HOUR = int(_cfg.get("position_exact_core_trail_start_hour", 10))
 LATE_PROJECTED_EXIT_COOLDOWN_MIN = 45.0
 
 ACTIONS_LOG = JOURNAL_FILE.parent / "manager_actions.jsonl"
@@ -440,31 +440,33 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
         entry_price = 0.0
     bucket_kind = _bucket_kind(bucket)
 
-    # Exact-degree CORE breakeven stop: once the trade has proven itself by
-    # trading up to a healthy multiple of entry, don't let it round-trip back
-    # into a loser.
+    # Exact-degree CORE trailing stop: once the trade has proven itself by
+    # trading up to a healthy multiple of entry, protect a chunk of the move
+    # instead of letting it fully round-trip.
     if (
         cur_price is not None
         and strategy == "core"
         and bucket_kind == "exact"
-        and cur_hour >= EXACT_CORE_BREAKEVEN_START_HOUR
+        and cur_hour >= EXACT_CORE_TRAIL_START_HOUR
         and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN)
         and entry_price > 0
     ):
         peak_seen = _peak_logged_price(str(trade.get("trade_id") or ""), before_ts=now_utc)
         if peak_seen is not None:
             out["peak_seen_price"] = round(peak_seen, 4)
-        arm_price = entry_price * EXACT_CORE_BREAKEVEN_ARM_MULT
-        floor_price = entry_price * EXACT_CORE_BREAKEVEN_FLOOR_MULT
-        if peak_seen is not None and peak_seen >= arm_price and cur_price <= floor_price:
-            out["action"] = "exit"
-            out["reason"] = (
-                f"exact_core_breakeven_stop "
-                f"(peak=${peak_seen:.3f} >= arm=${arm_price:.3f}, "
-                f"price=${cur_price:.3f} <= floor=${floor_price:.3f}, "
-                f"entry=${entry_price:.3f})"
-            )
-            return out
+        arm_price = entry_price * EXACT_CORE_TRAIL_ARM_MULT
+        trail_floor = peak_seen * (1.0 - EXACT_CORE_TRAIL_DROP_FRAC) if peak_seen is not None else None
+        if peak_seen is not None and peak_seen >= arm_price and trail_floor is not None:
+            out["trail_floor_price"] = round(trail_floor, 4)
+            if cur_price <= trail_floor:
+                out["action"] = "exit"
+                out["reason"] = (
+                    f"exact_core_trailing_stop "
+                    f"(peak=${peak_seen:.3f} >= arm=${arm_price:.3f}, "
+                    f"price=${cur_price:.3f} <= trail=${trail_floor:.3f}, "
+                    f"drop={EXACT_CORE_TRAIL_DROP_FRAC:.0%}, entry=${entry_price:.3f})"
+                )
+                return out
 
     # Exact-degree CORE rescue hatch: when the market has already cheapened the
     # ticket hard and the running temperature is still well away from the held
