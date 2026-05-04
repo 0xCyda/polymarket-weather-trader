@@ -2,6 +2,15 @@
 
 All notable changes to the Polymarket Weather Trader. Newest first.
 
+## 2026-05-05
+
+### Changed
+- Pre-peak breakout exits now default to a 1.5°C overshoot instead of 0.5°C, so PM stops killing same-day winners on shallow 1-degree breakouts that whole-degree markets can still recover from. (`position_manager.py`, `weather_trader.py`)
+- Projected-outside-bucket exits now require the projected EOD temperature to sit a full 1.0°C outside the held bucket before force-closing, instead of firing on tiny 0.5°C misses. Exit reasons now log the active projected buffer for easier audit reads. (`position_manager.py`, `weather_trader.py`)
+
+### Added
+- Added `position_projected_exit_buffer_c` / `SIMMER_WEATHER_POSITION_PROJECTED_EXIT_BUFFER_C` so projected-exit strictness is configurable instead of hard-coded into PM logic. (`position_manager.py`, `weather_trader.py`)
+
 ## 2026-05-01
 
 ### Changed
