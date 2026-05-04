@@ -66,8 +66,9 @@ ADD_PRICE_CEILING   = float(_cfg.get("late_add_price_ceiling", 0.85))
 ADD_PRICE_FLOOR     = float(_cfg.get("late_price_floor", 0.20))
 EXIT_AFTER_HOUR     = int(_cfg.get("position_exit_after_hour", 16))   # post-peak local hour
 ADD_AFTER_HOUR      = int(_cfg.get("position_add_after_hour", 14))    # peak-window start
-PRE_PEAK_BREAKOUT_C = float(_cfg.get("position_pre_peak_breakout_c", 0.5))
+PRE_PEAK_BREAKOUT_C = float(_cfg.get("position_pre_peak_breakout_c", 1.5))
 POST_PEAK_EXIT_BUFFER_C = float(_cfg.get("position_post_peak_exit_buffer_c", 1.0))
+PROJECTED_EXIT_BUFFER_C = float(_cfg.get("position_projected_exit_buffer_c", 1.0))
 HALFHOUR_START_HOUR = int(_cfg.get("position_halfhour_start_hour", ADD_AFTER_HOUR))
 HALFHOUR_MIN_LOCAL_HOUR = int(_cfg.get("position_halfhour_min_local_hour", max(12, ADD_AFTER_HOUR - 1)))
 HALFHOUR_MAX_LOCAL_HOUR = int(_cfg.get("position_halfhour_max_local_hour", EXIT_AFTER_HOUR + 3))
@@ -559,23 +560,25 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
         return out
 
     # Forecast/obs drift: once the day is mature enough to trust the projection,
-    # exit if the projected EOD max sits in a different bucket than the one held.
-    # This was the Warsaw failure mode: running was still barely in 13°C, but the
-    # projected max had moved toward 14°C, so adding was backwards.
-    if proj["confidence"] >= 0.7 and not in_bucket_proj:
+    # only exit if the projected EOD max sits meaningfully outside the held
+    # bucket. Whole-degree markets are too noisy for 0.5°C projected misses.
+    projected_edge_c = _edge_distance_c(proj["projected_c"], bucket)
+    if proj["confidence"] >= 0.7 and projected_edge_c <= -PROJECTED_EXIT_BUFFER_C:
         strategy = (trade.get("strategy") or "").lower()
         if strategy == "late" and age_min is not None and age_min < LATE_PROJECTED_EXIT_COOLDOWN_MIN:
             out["reason"] = (
                 f"late_cooldown_{age_min:.1f}m_projected_outside_bucket "
                 f"(running={running_c:.2f}°C, projected={proj['projected_c']:.2f}°C, "
-                f"bucket={out['bucket']}, confidence={proj['confidence']:.2f})"
+                f"bucket={out['bucket']}, confidence={proj['confidence']:.2f}, "
+                f"buffer={PROJECTED_EXIT_BUFFER_C:.2f}°C)"
             )
             return out
         out["action"] = "exit"
         out["reason"] = (
             f"projected_outside_bucket "
             f"(running={running_c:.2f}°C, projected={proj['projected_c']:.2f}°C, "
-            f"bucket={out['bucket']}, confidence={proj['confidence']:.2f})"
+            f"bucket={out['bucket']}, confidence={proj['confidence']:.2f}, "
+            f"buffer={PROJECTED_EXIT_BUFFER_C:.2f}°C)"
         )
         return out
 
