@@ -140,6 +140,60 @@ class TestCorpsePriceGuard(unittest.TestCase):
         self.assertEqual(decision["reason"], "hold_no_signal")
 
 
+class TestExactCoreBreakevenStop(unittest.TestCase):
+    @patch.object(pm, "_peak_logged_price", return_value=0.425)
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=16.0)
+    def test_exact_core_positions_exit_at_breakeven_after_being_armed(self, *_mocks):
+        trade = {
+            "trade_id": "paris-exact",
+            "market_id": "m-paris",
+            "location": "Paris",
+            "target_date": "2026-05-04",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-05-03T05:30:58+00:00",
+            "question": "Will the highest temperature in Paris be 17°C on May 4?",
+            "forecast_temp": 62.6,
+            "metric": "high",
+            "bucket": "17°C",
+            "entry_price": 0.155,
+        }
+        market = {"id": "m-paris", "external_price_yes": 0.16}
+        now_utc = real_datetime(2026, 5, 4, 8, 19, 0, tzinfo=timezone.utc)  # 10:19 local
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertIn("exact_core_breakeven_stop", decision["reason"])
+
+    @patch.object(pm, "_peak_logged_price", return_value=0.29)
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=16.0)
+    def test_exact_core_positions_do_not_exit_before_breakeven_arm(self, *_mocks):
+        trade = {
+            "trade_id": "paris-exact",
+            "market_id": "m-paris",
+            "location": "Paris",
+            "target_date": "2026-05-04",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-05-03T05:30:58+00:00",
+            "question": "Will the highest temperature in Paris be 17°C on May 4?",
+            "forecast_temp": 62.6,
+            "metric": "high",
+            "bucket": "17°C",
+            "entry_price": 0.155,
+        }
+        market = {"id": "m-paris", "external_price_yes": 0.16}
+        now_utc = real_datetime(2026, 5, 4, 8, 19, 0, tzinfo=timezone.utc)
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "hold")
+        self.assertEqual(decision["reason"], "hold_no_signal")
+
+
 class TestExactCoreWeakPriceGuard(unittest.TestCase):
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
     @patch.object(pm, "_running_extreme", return_value=30.0)
@@ -166,6 +220,7 @@ class TestExactCoreWeakPriceGuard(unittest.TestCase):
         self.assertEqual(decision["action"], "exit")
         self.assertIn("exact_core_weak_price_guard", decision["reason"])
 
+    @patch.object(pm, "_peak_logged_price", return_value=0.425)
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
     @patch.object(pm, "_running_extreme", return_value=30.0)
     def test_range_bucket_does_not_trigger_exact_core_weak_price_guard(self, *_mocks):
