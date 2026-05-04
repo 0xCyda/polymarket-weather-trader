@@ -1663,6 +1663,32 @@ def discover_and_import_weather_markets(log=print):
 # Simmer API - Trading
 # =============================================================================
 
+def _is_polymarket_weather_market(market: dict) -> bool:
+    """Return True only for genuine Polymarket weather markets.
+
+    Simmer's weather feed can include imported Kalshi fast-daily contracts.
+    Those look similar enough to slip through the weather scan, but they are a
+    different market structure and should never be traded by this bot.
+    """
+    if not isinstance(market, dict):
+        return False
+
+    source = str(market.get("import_source") or "").strip().lower()
+    tags = {
+        str(tag).strip().lower()
+        for tag in (market.get("tags") or [])
+        if tag is not None
+    }
+
+    if source == "kalshi" or "kalshi" in tags:
+        return False
+    if source == "polymarket" or "polymarket" in tags:
+        return True
+    if market.get("polymarket_token_id") or market.get("polymarket_no_token_id"):
+        return True
+    return False
+
+
 def fetch_weather_markets():
     """Fetch weather-tagged markets from Simmer API.
 
@@ -1670,6 +1696,9 @@ def fetch_weather_markets():
     The 100-limit default silently dropped most of them and left whole cities
     (e.g. Buenos Aires) invisible to the scan. Pull up to Simmer's hard cap
     (1000 per request) so every ACTIVE_LOCATIONS city with live markets gets seen.
+
+    Simmer also mixes in imported Kalshi weather contracts under the same
+    generic weather tag. Those are not Polymarket ladders and must be excluded.
     """
     try:
         result = simmer_call(
@@ -1677,7 +1706,8 @@ def fetch_weather_markets():
             params={"tags": "weather", "status": "active", "limit": 1000},
             _label="markets",
         )
-        return result.get("markets", [])
+        markets = result.get("markets", [])
+        return [m for m in markets if _is_polymarket_weather_market(m)]
     except Exception:
         print("  Failed to fetch markets from Simmer API")
         return []

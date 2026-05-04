@@ -10,6 +10,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 # Isolate imports: stub simmer_sdk.skill so the main module can import without the real SDK
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -60,6 +61,8 @@ from weather_trader import (
     compute_dynamic_exit,
     calculate_ewma_vol,
     apply_vol_targeting,
+    fetch_weather_markets,
+    _is_polymarket_weather_market,
 )
 
 
@@ -148,6 +151,49 @@ class TestParseMarketBucket(unittest.TestCase):
     def test_non_dict_returns_none(self):
         bucket, label = parse_market_bucket(None)
         self.assertIsNone(bucket)
+
+
+class TestFetchWeatherMarkets(unittest.TestCase):
+    def test_filters_out_kalshi_imports(self):
+        kalshi = {
+            "id": "kalshi-1",
+            "question": "Will the high temp in NYC be <70° on May 4, 2026 - 69° or below?",
+            "import_source": "kalshi",
+            "tags": ["kalshi", "sdk-import", "weather", "fast"],
+        }
+        polymarket = {
+            "id": "pm-1",
+            "question": "Will the highest temperature in Miami be between 76-77°F on May 5?",
+            "import_source": "polymarket",
+            "tags": ["polymarket", "auto-import", "weather", "daily-temperature"],
+            "polymarket_token_id": "tok-1",
+        }
+
+        self.assertFalse(_is_polymarket_weather_market(kalshi))
+        self.assertTrue(_is_polymarket_weather_market(polymarket))
+
+    @patch("weather_trader.get_client")
+    @patch("weather_trader.simmer_call")
+    def test_fetch_weather_markets_returns_only_polymarket(self, mock_simmer_call, _mock_get_client):
+        mock_simmer_call.return_value = {
+            "markets": [
+                {
+                    "id": "kalshi-1",
+                    "import_source": "kalshi",
+                    "tags": ["kalshi", "weather", "fast"],
+                },
+                {
+                    "id": "pm-1",
+                    "import_source": "polymarket",
+                    "tags": ["polymarket", "weather"],
+                    "polymarket_token_id": "tok-1",
+                },
+            ]
+        }
+
+        markets = fetch_weather_markets()
+
+        self.assertEqual([m["id"] for m in markets], ["pm-1"])
 
 
 class TestCelsiusConversion(unittest.TestCase):
