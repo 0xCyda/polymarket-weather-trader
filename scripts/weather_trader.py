@@ -245,6 +245,22 @@ CONFIG_SCHEMA = {
                           "help": "Weather support must weaken below this edge distance (°C), or the projection must already have left the bucket, before the repricing guard can fire."},
     "position_repricing_cooldown_min": {"env": "SIMMER_WEATHER_POSITION_REPRICING_COOLDOWN_MIN", "default": 45.0, "type": float,
                           "help": "Minimum age in minutes before the repricing guard is allowed to exit a position."},
+    "core_exact_price_floor": {"env": "SIMMER_WEATHER_CORE_EXACT_PRICE_FLOOR", "default": 0.25, "type": float,
+                          "help": "Cheap exact-degree CORE buckets below this price need stronger gates before entry. Keeps the bot out of the recent 15-25¢ exact-bucket loss cluster unless the setup is unusually clean."},
+    "core_exact_min_confidence": {"env": "SIMMER_WEATHER_CORE_EXACT_MIN_CONFIDENCE", "default": 0.65, "type": float,
+                          "help": "Minimum bucket confidence required for cheap exact-degree CORE entries below core_exact_price_floor."},
+    "core_exact_min_edge": {"env": "SIMMER_WEATHER_CORE_EXACT_MIN_EDGE", "default": 0.35, "type": float,
+                          "help": "Minimum edge required for cheap exact-degree CORE entries below core_exact_price_floor."},
+    "core_exact_max_spread": {"env": "SIMMER_WEATHER_CORE_EXACT_MAX_SPREAD", "default": 3.5, "type": float,
+                          "help": "Maximum ensemble spread allowed for cheap exact-degree CORE entries below core_exact_price_floor."},
+    "position_exact_core_weak_price_floor": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_WEAK_PRICE_FLOOR", "default": 0.08, "type": float,
+                          "help": "Earlier PM escape hatch for exact CORE trades: if price sinks to this floor and weather support is weak, exit before the generic corpse floor."},
+    "position_exact_core_weak_entry_frac": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_WEAK_ENTRY_FRAC", "default": 0.50, "type": float,
+                          "help": "Exact CORE weak-price guard also requires current price <= entry_price * this fraction."},
+    "position_exact_core_weak_edge_c": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_WEAK_EDGE_C", "default": -1.5, "type": float,
+                          "help": "Running-temperature edge threshold (°C) for the exact CORE weak-price exit guard. More negative means the day is lagging the bucket badly enough to stop hoping."},
+    "position_exact_core_weak_exit_start_hour": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_WEAK_EXIT_START_HOUR", "default": 10, "type": int,
+                          "help": "Local hour after which the exact CORE weak-price guard can fire."},
 }
 
 # Backwards-compatible env var aliases (old name -> new name)
@@ -437,6 +453,10 @@ PUNT_MAX_POSITION_USD = _config["punt_max_position_usd"]
 PUNT_PRICE_CEILING = _config["punt_price_ceiling"]
 PUNT_MIN_EDGE = _config["punt_min_edge"]
 PUNT_MIN_CONFIDENCE = _config["punt_min_confidence"]
+CORE_EXACT_PRICE_FLOOR = float(_config.get("core_exact_price_floor", 0.25))
+CORE_EXACT_MIN_CONFIDENCE = float(_config.get("core_exact_min_confidence", 0.65))
+CORE_EXACT_MIN_EDGE = float(_config.get("core_exact_min_edge", 0.35))
+CORE_EXACT_MAX_SPREAD = float(_config.get("core_exact_max_spread", 3.5))
 PUNT_DAILY_BUDGET_USD = _config["punt_daily_budget_usd"]
 
 # Supported locations (matching Polymarket resolution sources)
@@ -1092,6 +1112,46 @@ def _bucket_probability(lo_f: float, hi_f: float, mean_f: float, spread_f: float
     else:
         p_hi = _phi((hi_f - mean_f) / sigma)
     return max(0.0, min(1.0, p_hi - p_lo))
+
+
+def _bucket_kind(bucket: tuple | None) -> str:
+    if not bucket:
+        return "unknown"
+    lo, hi, _unit = bucket
+    if lo == -999 or hi == 999:
+        return "binary"
+    if lo == hi:
+        return "exact"
+    return "range"
+
+
+def _core_exact_bucket_allowed(rb: dict, signal_strength: str, spread: float | None) -> tuple[bool, str | None]:
+    """Gate cheap exact-degree CORE entries harder than ranges/binaries.
+
+    The recent loss cluster came from exact buckets in the ~15-25¢ zone. Those
+    can still trade, but only when the forecast is unusually clean.
+    """
+    if _bucket_kind(rb.get("bucket")) != "exact":
+        return True, None
+    price = float(rb.get("price") or 0.0)
+    if price >= CORE_EXACT_PRICE_FLOOR:
+        return True, None
+
+    confidence = float(rb.get("confidence") or 0.0)
+    edge = float(rb.get("edge") or 0.0)
+    failures = []
+    if signal_strength != "strong":
+        failures.append(f"signal={signal_strength}")
+    if confidence < CORE_EXACT_MIN_CONFIDENCE:
+        failures.append(f"conf={confidence:.2f}<{CORE_EXACT_MIN_CONFIDENCE:.2f}")
+    if edge < CORE_EXACT_MIN_EDGE:
+        failures.append(f"edge={edge:.2f}<{CORE_EXACT_MIN_EDGE:.2f}")
+    if spread is None or spread > CORE_EXACT_MAX_SPREAD:
+        actual = "na" if spread is None else f"{spread:.1f}"
+        failures.append(f"spread={actual}>{CORE_EXACT_MAX_SPREAD:.1f}")
+    if failures:
+        return False, "cheap_exact_guard(" + ", ".join(failures) + ")"
+    return True, None
 
 
 def rank_event_buckets_by_edge(event_markets: list, forecast_f: float,
@@ -2327,6 +2387,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         CORE_PRICE_FLOOR = PUNT_PRICE_CEILING
         matching_market = None
         matched_rb = None
+        exact_guard_reason = None
         for rb in ranked_buckets:
             p = rb["price"]
             # Skip extreme / off-book prices, but keep walking the ranked list
@@ -2338,6 +2399,11 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             # List is sorted by edge desc — once below MIN_EDGE, nothing better remains
             if rb["edge"] < MIN_EDGE:
                 break
+            exact_ok, exact_reason = _core_exact_bucket_allowed(rb, signal_strength, spread)
+            if not exact_ok:
+                if exact_guard_reason is None:
+                    exact_guard_reason = exact_reason
+                continue
             matching_market = rb["market"]
             matched_rb = rb
             break
@@ -2392,7 +2458,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 _price = top_rb.get("price") or 0.0
                 _conf = top_rb.get("confidence") or 0.0
                 _edge = top_rb.get("edge") or 0.0
-                if _price < MIN_TICK_SIZE or _price > (1 - MIN_TICK_SIZE):
+                if exact_guard_reason and _bucket_kind(top_rb.get("bucket")) == "exact" and _price < CORE_EXACT_PRICE_FLOOR:
+                    _why = exact_guard_reason
+                elif _price < MIN_TICK_SIZE or _price > (1 - MIN_TICK_SIZE):
                     _why = f"price extreme ({_price:.3f})"
                 else:
                     _why = f"edge {_edge:+.2%} < {MIN_EDGE:.0%}"
@@ -2423,7 +2491,10 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 best_edge = best_rb.get("edge")
                 best_mid = best_rb["market"].get("id")
                 # Classify: extreme price vs edge below MIN_EDGE
-                if best_price is not None and (best_price < MIN_TICK_SIZE or best_price > (1 - MIN_TICK_SIZE)):
+                if exact_guard_reason and _bucket_kind(best_rb.get("bucket")) == "exact" and best_price is not None and best_price < CORE_EXACT_PRICE_FLOOR:
+                    reason = "no_bucket_exact_guard"
+                    threshold, actual = CORE_EXACT_MIN_EDGE, best_edge
+                elif best_price is not None and (best_price < MIN_TICK_SIZE or best_price > (1 - MIN_TICK_SIZE)):
                     reason = "no_bucket_price_extreme"
                     threshold, actual = None, best_price
                 else:

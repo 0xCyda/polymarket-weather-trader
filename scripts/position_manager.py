@@ -81,6 +81,10 @@ CORPSE_ENTRY_FRAC = float(_cfg.get("position_corpse_entry_frac", 0.35))
 EASY_CORE_CORPSE_PRICE_FLOOR = float(_cfg.get("position_easy_core_corpse_price_floor", 0.07))
 REPRICING_WEATHER_EDGE_C = float(_cfg.get("position_repricing_weather_edge_c", 0.20))
 REPRICING_COOLDOWN_MIN = float(_cfg.get("position_repricing_cooldown_min", 45.0))
+EXACT_CORE_WEAK_PRICE_FLOOR = float(_cfg.get("position_exact_core_weak_price_floor", 0.08))
+EXACT_CORE_WEAK_ENTRY_FRAC = float(_cfg.get("position_exact_core_weak_entry_frac", 0.50))
+EXACT_CORE_WEAK_EDGE_C = float(_cfg.get("position_exact_core_weak_edge_c", -1.5))
+EXACT_CORE_WEAK_EXIT_START_HOUR = int(_cfg.get("position_exact_core_weak_exit_start_hour", 10))
 LATE_PROJECTED_EXIT_COOLDOWN_MIN = 45.0
 
 ACTIONS_LOG = JOURNAL_FILE.parent / "manager_actions.jsonl"
@@ -125,6 +129,17 @@ def _trade_age_minutes(trade: dict, now_utc: datetime | None = None) -> float | 
         return None
     now_utc = now_utc or datetime.now(timezone.utc)
     return max(0.0, (now_utc - entered).total_seconds() / 60.0)
+
+
+def _bucket_kind(bucket: tuple | None) -> str:
+    if not bucket:
+        return "unknown"
+    lo, hi, _unit = bucket
+    if lo == -999 or hi == 999:
+        return "binary"
+    if lo == hi:
+        return "exact"
+    return "range"
 
 
 def _market_price_yes(market: dict | None) -> float | None:
@@ -404,16 +419,41 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
             out["price_drop_frac"] = round(max(0.0, 1.0 - (cur_price / prev_price)), 4) if prev_price > 0 else None
 
     # ----- EXIT rules -----
+    try:
+        entry_price = float(trade.get("entry_price") or 0)
+    except Exception:
+        entry_price = 0.0
+    bucket_kind = _bucket_kind(bucket)
+
+    # Exact-degree CORE rescue hatch: when the market has already cheapened the
+    # ticket hard and the running temperature is still well away from the held
+    # bucket, stop waiting for the generic corpse floor.
+    if (
+        cur_price is not None
+        and strategy == "core"
+        and bucket_kind == "exact"
+        and cur_hour >= EXACT_CORE_WEAK_EXIT_START_HOUR
+        and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN)
+        and cur_price <= EXACT_CORE_WEAK_PRICE_FLOOR
+        and (entry_price <= 0 or cur_price <= entry_price * EXACT_CORE_WEAK_ENTRY_FRAC)
+        and edge_c_now <= EXACT_CORE_WEAK_EDGE_C
+    ):
+        out["action"] = "exit"
+        out["reason"] = (
+            f"exact_core_weak_price_guard "
+            f"(price=${cur_price:.3f} <= floor=${EXACT_CORE_WEAK_PRICE_FLOOR:.3f}, "
+            f"entry=${entry_price:.3f}, entry_frac={EXACT_CORE_WEAK_ENTRY_FRAC:.2f}, "
+            f"running_edge={edge_c_now:.2f}°C <= {EXACT_CORE_WEAK_EDGE_C:.2f}°C, "
+            f"running={running_c:.2f}°C, projected={proj['projected_c']:.2f}°C)"
+        )
+        return out
+
     # Emergency market-implied stop: if the same-day position is mature and
     # Polymarket has repriced it to a corpse probability, get out even before
     # the peak-hour weather gates. This catches the Buenos Aires / Sao Paulo
     # failure mode where the PM check saw ~4¢ prices but held until the next
     # hourly weather breakout exit at a worse fill.
     if cur_price is not None and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN):
-        try:
-            entry_price = float(trade.get("entry_price") or 0)
-        except Exception:
-            entry_price = 0.0
         effective_corpse_floor = CORPSE_PRICE_FLOOR
         if strategy == "core" and tier == "easy":
             effective_corpse_floor = max(CORPSE_PRICE_FLOOR, EASY_CORE_CORPSE_PRICE_FLOOR)

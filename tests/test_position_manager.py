@@ -140,6 +140,58 @@ class TestCorpsePriceGuard(unittest.TestCase):
         self.assertEqual(decision["reason"], "hold_no_signal")
 
 
+class TestExactCoreWeakPriceGuard(unittest.TestCase):
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=30.0)
+    def test_exact_core_positions_exit_before_generic_corpse_floor_when_weather_lags(self, *_mocks):
+        trade = {
+            "trade_id": "singapore-exact",
+            "market_id": "m-sg",
+            "location": "Singapore",
+            "target_date": "2026-05-04",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-05-03T13:41:14+00:00",
+            "question": "Will the highest temperature in Singapore be 33°C on May 4?",
+            "forecast_temp": 91.4,
+            "metric": "high",
+            "bucket": "33°C",
+            "entry_price": 0.175,
+        }
+        market = {"id": "m-sg", "external_price_yes": 0.075}
+        now_utc = real_datetime(2026, 5, 4, 2, 19, 0, tzinfo=timezone.utc)  # 10:19 local
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertIn("exact_core_weak_price_guard", decision["reason"])
+
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=30.0)
+    def test_range_bucket_does_not_trigger_exact_core_weak_price_guard(self, *_mocks):
+        trade = {
+            "trade_id": "range-not-exact",
+            "market_id": "m-range",
+            "location": "Singapore",
+            "target_date": "2026-05-04",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-05-03T13:41:14+00:00",
+            "question": "Will the highest temperature in Singapore be 32-33°C on May 4?",
+            "forecast_temp": 91.4,
+            "metric": "high",
+            "bucket": "32-33°C",
+            "entry_price": 0.175,
+        }
+        market = {"id": "m-range", "external_price_yes": 0.075}
+        now_utc = real_datetime(2026, 5, 4, 2, 19, 0, tzinfo=timezone.utc)
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "hold")
+        self.assertEqual(decision["reason"], "hold_no_signal")
+
+
 class TestRepricingGuard(unittest.TestCase):
     @patch.object(pm, "city_tier", return_value="easy")
     @patch.object(pm, "_last_logged_price", return_value=0.20)
