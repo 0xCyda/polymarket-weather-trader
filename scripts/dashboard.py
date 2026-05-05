@@ -1102,7 +1102,7 @@ function renderResolved(d) {
   // Accept state object or bare array (for re-render on page change)
   const all = Array.isArray(d) ? d : (d && d.resolved) || [];
   if (!all.length) {
-    container.innerHTML = `<tr><td colspan="10">${emptyState('✅', 'No resolved trades yet')}</td></tr>`;
+    container.innerHTML = `<tr><td colspan="12">${emptyState('✅', 'No resolved trades yet')}</td></tr>`;
     return;
   }
 
@@ -1132,11 +1132,13 @@ function renderResolved(d) {
   const start = page * RESOLVED_PAGE_SIZE;
   const slice = sorted.slice(start, start + RESOLVED_PAGE_SIZE);
 
-  const headers = ['Location', 'Strategy', 'Outcome', 'Forecast', 'Actual', 'Entry', 'Exit', 'P&L', 'Entered', 'Resolved'];
+  const headers = ['Location', 'Strategy', 'Outcome', 'Forecast', 'Actual', 'Shares', 'Size ($)', 'Entry', 'Exit', 'P&L', 'Entered', 'Resolved'];
   const rows = slice.map(t => {
     const exit = Number(t.exit_price || 0);
     const entry = Number(t.entry_price || 0);
     const shares = Number(t.shares || 0);
+    const rawCost = Number(t.cost);
+    const cost = Number.isFinite(rawCost) && rawCost > 0 ? rawCost : entry * shares;
     const pnl = Number(t.pnl || 0);
     const outcome = t.outcome ? t.outcome.toUpperCase() : (exit > 0.5 ? 'YES' : 'NO');
     const enteredDate = fmtAwstTimestamp(t.entered_at);
@@ -1175,6 +1177,8 @@ function renderResolved(d) {
       `<div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:nowrap;white-space:nowrap">${positionBadge(outcome)}${pmExitBadge(t.resolution_source, pnl, t.exit_reason)}</div>`,
       forecastCell,
       actualCell,
+      `<span class="mono">${shares.toFixed(1)}</span>`,
+      `<span class="mono">$${cost.toFixed(2)}</span>`,
       `<span class="mono">$${entry.toFixed(3)}</span>`,
       `<span class="mono">$${exit.toFixed(3)}</span>`,
       winBadge(pnl),
@@ -2442,6 +2446,7 @@ def api_state():
                 "entry_price": float(t.get("entry_price") or 0),
                 "exit_price": float(t.get("exit_price") or 0),
                 "shares": float(t.get("shares") or 0),
+                "cost": float(t.get("cost") or 0),
                 "pnl": float(t.get("pnl") or 0),
                 "outcome": t.get("outcome", ""),
                 "target_date": t.get("target_date", ""),

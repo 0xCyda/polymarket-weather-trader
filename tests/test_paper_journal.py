@@ -85,5 +85,36 @@ class TestPaperTradeDedupe(unittest.TestCase):
                 self.assertTrue(pj.has_logged_trade("m1", strategy="punt"))
 
 
+class TestBackfillActualTemps(unittest.TestCase):
+    def test_upgrades_open_meteo_actual_when_polymarket_resolves_later(self):
+        with tempfile.TemporaryDirectory() as td:
+            journal = Path(td) / "paper_trades.jsonl"
+            lock = journal.with_suffix(".lock")
+            trade = {
+                "trade_id": "paper_sao",
+                "status": "resolved",
+                "resolution_source": "early_exit_position_manager",
+                "audit_source": "open_meteo_archive",
+                "location": "Sao Paulo",
+                "target_date": "2026-05-04",
+                "metric": "high",
+                "actual_temp": 77.7,
+            }
+            with (
+                patch.object(pj, "JOURNAL_FILE", journal),
+                patch.object(pj, "_LOCK_FILE", lock),
+                patch.object(pj, "_is_past_target_date_for_location", return_value=True),
+                patch.object(pj, "fetch_historical_temp", return_value=80.6),
+            ):
+                pj._save_trades([trade])
+
+                patched = pj.backfill_actual_temps()
+                saved = pj._load_trades()
+
+            self.assertEqual(len(patched), 1)
+            self.assertEqual(saved[0]["actual_temp"], 80.6)
+            self.assertEqual(saved[0]["audit_source"], "polymarket_cache")
+
+
 if __name__ == "__main__":
     unittest.main()

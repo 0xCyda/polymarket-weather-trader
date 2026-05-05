@@ -1122,12 +1122,14 @@ def manual_resolve(trade_id: str, outcome: str) -> dict | None:
 
 
 def backfill_actual_temps() -> list:
-    """Walk the journal, fill in actual_temp on resolved rows that lack it.
+    """Walk the journal, fill in actual_temp on resolved rows that need repair.
 
     Useful when:
       * manual_resolve was called before this function existed
       * Simmer-path resolution succeeded but fetch_historical_temp failed at
         the time (Polymarket / Gamma not yet indexed, transient errors)
+      * a temporary Open-Meteo fallback needs to be upgraded once Polymarket
+        has an authoritative YES bucket
 
     Returns the list of trades that got patched.
     """
@@ -1136,18 +1138,25 @@ def backfill_actual_temps() -> list:
     for t in trades:
         if t.get("status") != "resolved":
             continue
-        # TP/SL exits should stay blank until the market's weather day is actually over.
-        # Once the target date is in the past for that city, backfilling actuals is valid.
-        if (
-            t.get("resolution_source") == "early_exit_position_manager"
-            and not _is_past_target_date_for_location(t.get("target_date", ""), t.get("location", ""))
-        ):
-            continue
-        if t.get("actual_temp") is not None:
-            continue
         loc = t.get("location") or ""
         date = t.get("target_date") or ""
         metric = t.get("metric", "high")
+        current_actual = t.get("actual_temp")
+        current_source = t.get("audit_source") or t.get("resolution_source") or ""
+        needs_authoritative_upgrade = (
+            current_actual is not None and current_source == "open_meteo_archive"
+        )
+        # TP/SL exits should stay blank until the market's weather day is actually over.
+        # Once the target date is in the past for that city, archive-based backfilling is valid.
+        # Authoritative Polymarket upgrades are safe immediately.
+        if (
+            t.get("resolution_source") == "early_exit_position_manager"
+            and not needs_authoritative_upgrade
+            and not _is_past_target_date_for_location(t.get("target_date", ""), t.get("location", ""))
+        ):
+            continue
+        if current_actual is not None and not needs_authoritative_upgrade:
+            continue
         actual = None
         try:
             actual = fetch_historical_temp(loc, date, metric, unit="F")
@@ -1160,8 +1169,10 @@ def backfill_actual_temps() -> list:
                     actual = fb.get("actual_temp")
             except Exception:
                 pass
-        if actual is not None:
+        if actual is not None and actual != current_actual:
             t["actual_temp"] = actual
+            if needs_authoritative_upgrade and t.get("audit_source") == "open_meteo_archive":
+                t["audit_source"] = "polymarket_cache"
             patched.append(t)
     if patched:
         _save_trades(trades)
