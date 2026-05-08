@@ -255,6 +255,14 @@ CONFIG_SCHEMA = {
                           "help": "Minimum edge required for cheap exact-degree CORE entries below core_exact_price_floor."},
     "core_exact_max_spread": {"env": "SIMMER_WEATHER_CORE_EXACT_MAX_SPREAD", "default": 3.5, "type": float,
                           "help": "Maximum ensemble spread allowed for cheap exact-degree CORE entries below core_exact_price_floor."},
+    "core_low_edge_exact_carveout_enabled": {"env": "SIMMER_WEATHER_CORE_LOW_EDGE_EXACT_CARVEOUT_ENABLED", "default": False, "type": bool,
+                          "help": "Enable a narrow CORE carve-out for strong exact buckets in the 30-39¢ band even when edge is below min_edge."},
+    "core_low_edge_exact_carveout_min_edge": {"env": "SIMMER_WEATHER_CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_EDGE", "default": 0.05, "type": float,
+                          "help": "Minimum edge for the low-edge exact CORE carve-out."},
+    "core_low_edge_exact_carveout_min_price": {"env": "SIMMER_WEATHER_CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_PRICE", "default": 0.30, "type": float,
+                          "help": "Minimum price for the low-edge exact CORE carve-out."},
+    "core_low_edge_exact_carveout_max_price": {"env": "SIMMER_WEATHER_CORE_LOW_EDGE_EXACT_CARVEOUT_MAX_PRICE", "default": 0.40, "type": float,
+                          "help": "Exclusive max price for the low-edge exact CORE carve-out."},
     "position_exact_core_weak_price_floor": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_WEAK_PRICE_FLOOR", "default": 0.08, "type": float,
                           "help": "Earlier PM escape hatch for exact CORE trades: if price sinks to this floor and weather support is weak, exit before the generic corpse floor."},
     "position_exact_core_weak_entry_frac": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_WEAK_ENTRY_FRAC", "default": 0.50, "type": float,
@@ -465,6 +473,10 @@ CORE_EXACT_PRICE_FLOOR = float(_config.get("core_exact_price_floor", 0.25))
 CORE_EXACT_MIN_CONFIDENCE = float(_config.get("core_exact_min_confidence", 0.65))
 CORE_EXACT_MIN_EDGE = float(_config.get("core_exact_min_edge", 0.35))
 CORE_EXACT_MAX_SPREAD = float(_config.get("core_exact_max_spread", 3.5))
+CORE_LOW_EDGE_EXACT_CARVEOUT_ENABLED = bool(_config.get("core_low_edge_exact_carveout_enabled", False))
+CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_EDGE = float(_config.get("core_low_edge_exact_carveout_min_edge", 0.05))
+CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_PRICE = float(_config.get("core_low_edge_exact_carveout_min_price", 0.30))
+CORE_LOW_EDGE_EXACT_CARVEOUT_MAX_PRICE = float(_config.get("core_low_edge_exact_carveout_max_price", 0.40))
 PUNT_DAILY_BUDGET_USD = _config["punt_daily_budget_usd"]
 
 # Supported locations (matching Polymarket resolution sources)
@@ -1159,6 +1171,28 @@ def _core_exact_bucket_allowed(rb: dict, signal_strength: str, spread: float | N
         failures.append(f"spread={actual}>{CORE_EXACT_MAX_SPREAD:.1f}")
     if failures:
         return False, "cheap_exact_guard(" + ", ".join(failures) + ")"
+    return True, None
+
+
+def _core_low_edge_exact_carveout_allowed(rb: dict, signal_strength: str) -> tuple[bool, str | None]:
+    """Allow a narrow exact-bucket CORE exception below the normal edge floor."""
+    if not CORE_LOW_EDGE_EXACT_CARVEOUT_ENABLED:
+        return False, "disabled"
+    if _bucket_kind(rb.get("bucket")) != "exact":
+        return False, "not_exact"
+    if signal_strength != "strong":
+        return False, f"signal={signal_strength}"
+
+    price = float(rb.get("price") or 0.0)
+    edge = float(rb.get("edge") or 0.0)
+    if price < CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_PRICE:
+        return False, f"price={price:.2f}<{CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_PRICE:.2f}"
+    if price >= CORE_LOW_EDGE_EXACT_CARVEOUT_MAX_PRICE:
+        return False, f"price={price:.2f}>={CORE_LOW_EDGE_EXACT_CARVEOUT_MAX_PRICE:.2f}"
+    if edge >= MIN_EDGE:
+        return False, f"edge={edge:.2f}>=min_edge"
+    if edge < CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_EDGE:
+        return False, f"edge={edge:.2f}<{CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_EDGE:.2f}"
     return True, None
 
 
@@ -2024,8 +2058,8 @@ def check_exit_opportunities(dry_run: bool = False, use_safeguards: bool = True)
 
     weather_positions = []
     for pos in positions:
-        question = pos.get("question", "").lower()
-        sources = pos.get("sources", [])
+        question = str(pos.get("question") or "").lower()
+        sources = pos.get("sources") or []
         # Check if from weather skill OR has weather keywords
         if TRADE_SOURCE in sources or any(kw in question for kw in ["temperature", "°f", "highest temp"]):
             weather_positions.append(pos)
@@ -2426,6 +2460,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         matching_market = None
         matched_rb = None
         exact_guard_reason = None
+        carveout_match = False
         for rb in ranked_buckets:
             p = rb["price"]
             # Skip extreme / off-book prices, but keep walking the ranked list
@@ -2434,16 +2469,23 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             # CORE doesn't trade below the punt ceiling — let PUNT take those
             if p <= CORE_PRICE_FLOOR:
                 continue
-            # List is sorted by edge desc — once below MIN_EDGE, nothing better remains
-            if rb["edge"] < MIN_EDGE:
-                break
             exact_ok, exact_reason = _core_exact_bucket_allowed(rb, signal_strength, spread)
             if not exact_ok:
                 if exact_guard_reason is None:
                     exact_guard_reason = exact_reason
                 continue
-            matching_market = rb["market"]
-            matched_rb = rb
+            if rb["edge"] >= MIN_EDGE:
+                matching_market = rb["market"]
+                matched_rb = rb
+                break
+            carveout_ok, _carveout_reason = _core_low_edge_exact_carveout_allowed(rb, signal_strength)
+            if carveout_ok:
+                matching_market = rb["market"]
+                matched_rb = rb
+                carveout_match = True
+                break
+            # List is sorted by edge desc — once the top surviving bucket is below
+            # MIN_EDGE and misses the carve-out, lower-ranked buckets won't rescue CORE.
             break
 
         # Punt scan: find deep tail-priced mispricings in this event.
@@ -2535,6 +2577,16 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 elif best_price is not None and (best_price < MIN_TICK_SIZE or best_price > (1 - MIN_TICK_SIZE)):
                     reason = "no_bucket_price_extreme"
                     threshold, actual = None, best_price
+                elif (
+                    _bucket_kind(best_rb.get("bucket")) == "exact"
+                    and signal_strength == "strong"
+                    and best_price is not None
+                    and CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_PRICE <= best_price < CORE_LOW_EDGE_EXACT_CARVEOUT_MAX_PRICE
+                    and best_edge is not None
+                    and best_edge < MIN_EDGE
+                ):
+                    reason = "no_bucket_low_edge_exact_carveout"
+                    threshold, actual = CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_EDGE, best_edge
                 else:
                     reason = "no_bucket_low_edge"
                     threshold, actual = MIN_EDGE, best_edge
@@ -2688,13 +2740,15 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
         # Primary entry gate: edge (confidence - price). Price ceiling is a
         # loose sanity cap only — avoids buckets priced near resolution.
         edge = confidence - price
-        if edge < MIN_EDGE:
+        if edge < MIN_EDGE and not carveout_match:
             log(f"  ⏸️  Edge {edge:+.2f} below min {MIN_EDGE:+.2f} (price ${price:.2f}, conf {confidence:.2f}) - skip")
             skip_reasons.append(f"edge<{MIN_EDGE:+.2f}")
             _log_skip("low_edge", location, date_str, metric, market_id=market_id,
                       price=price, confidence=confidence, edge=edge, spread=spread,
                       signal_strength=signal_strength, threshold=MIN_EDGE, actual=edge)
             continue
+        if carveout_match:
+            log(f"  ✅ Low-edge exact carveout active: edge {edge:+.2f}, price ${price:.2f}")
         if price >= ENTRY_THRESHOLD:
             log(f"  ⏸️  Price ${price:.2f} above ceiling ${ENTRY_THRESHOLD:.2f} - skip")
             skip_reasons.append("price above ceiling")
@@ -2723,6 +2777,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             "model_temps": forecasts.get("model_temps") if forecasts else None,
             "bucket_label": bucket_label,
             "matched_rb": matched_rb,
+            "core_low_edge_exact_carveout": carveout_match,
         })
         opportunities_found += 1
 
@@ -2857,13 +2912,17 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             "spread": spread,
             "signal_strength": signal_strength,
             "model_temps": candidate_model_temps,
+            "core_low_edge_exact_carveout": bool(c.get("core_low_edge_exact_carveout")),
         }
         if vol_meta:
             signal["vol_targeting"] = vol_meta
 
         result = execute_trade(
             market_id, "yes", position_size,
-            reasoning=f"Ensemble {display_temp} → bucket {outcome_name} underpriced at {price:.0%}",
+            reasoning=(
+                f"Ensemble {display_temp} → bucket {outcome_name} underpriced at {price:.0%}"
+                + (" [low-edge exact carveout]" if c.get("core_low_edge_exact_carveout") else "")
+            ),
             signal_data=signal,
         )
 
@@ -2911,6 +2970,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                         confidence=confidence,
                         polymarket_token_id=matching_market.get("polymarket_token_id"),
                         polymarket_no_token_id=matching_market.get("polymarket_no_token_id"),
+                        core_low_edge_exact_carveout=bool(c.get("core_low_edge_exact_carveout")),
                     )
                 except Exception:
                     pass
@@ -3215,6 +3275,14 @@ if __name__ == "__main__":
             globals()["PUNT_PRICE_CEILING"] = _config["punt_price_ceiling"]
             globals()["PUNT_MIN_EDGE"] = _config["punt_min_edge"]
             globals()["PUNT_MIN_CONFIDENCE"] = _config["punt_min_confidence"]
+            globals()["CORE_EXACT_PRICE_FLOOR"] = float(_config.get("core_exact_price_floor", 0.25))
+            globals()["CORE_EXACT_MIN_CONFIDENCE"] = float(_config.get("core_exact_min_confidence", 0.65))
+            globals()["CORE_EXACT_MIN_EDGE"] = float(_config.get("core_exact_min_edge", 0.35))
+            globals()["CORE_EXACT_MAX_SPREAD"] = float(_config.get("core_exact_max_spread", 3.5))
+            globals()["CORE_LOW_EDGE_EXACT_CARVEOUT_ENABLED"] = bool(_config.get("core_low_edge_exact_carveout_enabled", False))
+            globals()["CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_EDGE"] = float(_config.get("core_low_edge_exact_carveout_min_edge", 0.05))
+            globals()["CORE_LOW_EDGE_EXACT_CARVEOUT_MIN_PRICE"] = float(_config.get("core_low_edge_exact_carveout_min_price", 0.30))
+            globals()["CORE_LOW_EDGE_EXACT_CARVEOUT_MAX_PRICE"] = float(_config.get("core_low_edge_exact_carveout_max_price", 0.40))
             globals()["PUNT_DAILY_BUDGET_USD"] = _config["punt_daily_budget_usd"]
             _locations_str = _config["locations"]
             globals()["ACTIVE_LOCATIONS"] = [loc.strip().upper() for loc in _locations_str.split(",") if loc.strip()]

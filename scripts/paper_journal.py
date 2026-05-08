@@ -234,6 +234,7 @@ def log_paper_trade(
     confidence: float | None = None,  # numeric confidence at entry (for calibration)
     polymarket_token_id: str | None = None,   # CLOB YES token; lets dashboard skip Simmer for live prices
     polymarket_no_token_id: str | None = None,
+    core_low_edge_exact_carveout: bool = False,
 ) -> str:
     """
     Log a new paper trade. Returns the trade_id.
@@ -261,6 +262,7 @@ def log_paper_trade(
         "confidence": confidence,
         "polymarket_token_id": polymarket_token_id,
         "polymarket_no_token_id": polymarket_no_token_id,
+        "core_low_edge_exact_carveout": bool(core_low_edge_exact_carveout),
         "status": "open",
         "outcome": None,
         "exit_price": None,

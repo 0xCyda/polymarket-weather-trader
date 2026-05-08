@@ -72,6 +72,34 @@ def _coerce_price(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
 
+
+def _core_low_edge_exact_carveout_config() -> dict[str, float | bool]:
+    config: dict[str, Any] = {}
+    if CONFIG_FILE.exists():
+        try:
+            config = json.loads(CONFIG_FILE.read_text())
+        except Exception:
+            config = {}
+    return {
+        "enabled": bool(config.get("core_low_edge_exact_carveout_enabled", False)),
+        "min_edge": float(config.get("core_low_edge_exact_carveout_min_edge", 0.05)),
+        "min_price": float(config.get("core_low_edge_exact_carveout_min_price", 0.30)),
+        "max_price": float(config.get("core_low_edge_exact_carveout_max_price", 0.40)),
+    }
+
+
+def _looks_like_exact_bucket(bucket_label: str) -> bool:
+    label = (bucket_label or "").strip().lower()
+    if not label or "°" not in label:
+        return False
+    if " or below" in label or " or above" in label or "-" in label:
+        return False
+    return True
+
+
+def _trade_has_core_low_edge_exact_carveout(trade: dict) -> bool:
+    return trade.get("core_low_edge_exact_carveout") is True or str(trade.get("strategy") or "").lower() == "carveout"
+
 DASHBOARD_HTML = """
 <!doctype html>
 <html>
@@ -468,6 +496,7 @@ DASHBOARD_HTML = """
     .badge-loss      { background: rgba(248, 113, 113, 0.15); color: var(--accent-red); }
     .badge-neutral   { background: rgba(120, 130, 160, 0.15); color: var(--text-secondary); }
     .badge-strategy-core { background: rgba(96, 165, 250, 0.14); color: var(--accent-blue); border-color: rgba(96, 165, 250, 0.25); }
+    .badge-strategy-carveout { background: rgba(251, 191, 36, 0.14); color: var(--accent-amber); border-color: rgba(251, 191, 36, 0.30); }
     .badge-strategy-punt { background: rgba(167, 139, 250, 0.14); color: var(--accent-violet); border-color: rgba(167, 139, 250, 0.25); }
     .badge-strategy-late { background: rgba(251, 191, 36, 0.14); color: #fcd34d; border-color: rgba(251, 191, 36, 0.30); }
     .badge-source-simmer    { background: rgba(96, 165, 250, 0.12); color: var(--accent-blue); }
@@ -779,8 +808,11 @@ function shouldShowActualTemp(t) {
   return t.actual_temp != null;
 }
 
-function strategyBadge(strat) {
+function strategyBadge(strat, carveout) {
   const s = (strat || 'core').toLowerCase();
+  if (carveout || s === 'carveout') {
+    return '<span class="badge badge-strategy-carveout" title="Low-edge exact carveout">CARVE</span>';
+  }
   let cls, label;
   if (s === 'punt')              { cls = 'badge-strategy-punt'; label = '🎯 PUNT'; }
   else if (s === 'late_add')     { cls = 'badge-strategy-late'; label = 'LATE+'; }
@@ -964,7 +996,7 @@ function renderPositions(d) {
       : truncQ;
     return [
       marketCell,
-      strategyBadge(p.strategy),
+      strategyBadge(p.strategy, p.core_low_edge_exact_carveout),
       positionBadge(side),
       `<span class="mono">${(p.shares || 0).toFixed(1)}</span>`,
       `<span class="mono">${fmtPrice(p.entry_price, 3)}</span>`,
@@ -1173,7 +1205,7 @@ function renderResolved(d) {
 
     return [
       locCell,
-      strategyBadge(t.strategy),
+      strategyBadge(t.strategy, t.core_low_edge_exact_carveout),
       `<div style="display:inline-flex;gap:6px;align-items:center;flex-wrap:nowrap;white-space:nowrap">${positionBadge(outcome)}${pmExitBadge(t.resolution_source, pnl, t.exit_reason)}</div>`,
       forecastCell,
       actualCell,
@@ -1364,7 +1396,7 @@ function renderConfig() {
           <div class="overview-cell">
             <h4>Observability</h4>
             <ul>
-              <li>Paper trade journal with strategy tags (CORE / PUNT / LATE)</li>
+              <li>Paper trade journal with strategy tags (CORE / CARVE / PUNT / LATE)</li>
               <li>Forecast-accuracy history for post-hoc model scoring</li>
               <li>Skipped-trade log for funnel analysis</li>
               <li>4-hourly Discord scan report to #polymarket</li>
@@ -1943,8 +1975,11 @@ def _parse_signals_from_history() -> list[dict]:
     except Exception:
         pass
 
-    # Build skip-reason index keyed by (location, date, metric) → set of reasons in window
-    skip_index: dict[tuple, set] = {}
+    # Build skip-reason index keyed by (location, date, metric) → latest reason in window.
+    # Old behavior unioned every reason seen recently, which let stale failures like
+    # PRICE EXTREME override the current scan even after the best bucket changed.
+    skip_index: dict[tuple, str] = {}
+    skip_index_ts: dict[tuple, datetime] = {}
     try:
         if SKIP_LOG.exists():
             with SKIP_LOG.open() as fh:
@@ -1969,14 +2004,24 @@ def _parse_signals_from_history() -> list[dict]:
                     reason = (s.get("reason") or "").split(":")[0]
                     if not reason or not all(sk):
                         continue
-                    skip_index.setdefault(sk, set()).add(reason)
+                    prev_ts = skip_index_ts.get(sk)
+                    if prev_ts is None or ts >= prev_ts:
+                        skip_index[sk] = reason
+                        skip_index_ts[sk] = ts
     except Exception:
         pass
 
-    def _badge_for(loc: str, date: str, metric: str) -> tuple[str, str]:
-        """Return (label, color_class) for a signal's status badge.
-        Color classes mirror existing dashboard CSS conventions: positive (green),
-        negative (red), neutral (gray), info (blue), warning (amber)."""
+    def _badge_for(entry: dict) -> tuple[str, str]:
+        """Return (label, color_class) for a signal row.
+
+        Forecast history rows are city/date snapshots, not bucket-specific candidate rows.
+        They do not carry a market_id, so attaching a skip reason to them can lie about
+        which bucket was actually skipped. Only surface skip badges when the row itself
+        identifies a concrete market; otherwise keep it at EVAL unless there is a trade.
+        """
+        loc = entry.get("location", "")
+        date = entry.get("target_date", "")
+        metric = entry.get("metric", "")
         tk = (loc, date, metric)
         trade = trade_index.get(tk)
         if trade:
@@ -1991,30 +2036,36 @@ def _parse_signals_from_history() -> list[dict]:
                 return (f"LOSS · {strategy} ${pnl:.0f}", "negative")
             return (f"{status or 'TRADED'} · {strategy}", "info")
 
-        reasons = skip_index.get(tk, set())
-        if not reasons:
+        if not entry.get("market_id"):
             return ("EVAL", "neutral")
-        # Precedence: D+0 (handed to LATE) > safeguards > price gates > bucket-math > stale
-        if "d0_core_skip" in reasons:
+
+        reason = skip_index.get(tk)
+        if not reason:
+            return ("EVAL", "neutral")
+        # Use the latest skip reason for this city/date/metric. Older dashboard logic
+        # merged every recent reason into a set, which made stale causes stick around.
+        if reason == "d0_core_skip":
             return ("D+0 → LATE", "info")
-        if "safeguard" in reasons:
+        if reason == "safeguard":
             return ("SAFEGUARD", "warning")
-        if "high_spread" in reasons:
+        if reason == "high_spread":
             return ("HIGH SPREAD", "warning")
-        if "already_held" in reasons or "same_event_open" in reasons:
+        if reason in {"already_held", "same_event_open"}:
             return ("ALREADY HELD", "neutral")
-        if "price_ceiling" in reasons or "no_bucket_price_extreme" in reasons:
+        if reason in {"price_ceiling", "no_bucket_price_extreme"}:
             return ("PRICE EXTREME", "neutral")
-        if "no_bucket_low_edge" in reasons:
+        if reason == "no_bucket_low_edge":
             return ("LOW EDGE", "neutral")
-        if "no_bucket_parseable" in reasons:
+        if reason == "no_bucket_exact_guard":
+            return ("EXACT GUARD", "neutral")
+        if reason == "no_bucket_parseable":
             return ("NO BUCKET", "neutral")
-        if "stale_event" in reasons:
+        if reason == "stale_event":
             return ("STALE", "neutral")
-        if "punt_safeguard" in reasons:
+        if reason == "punt_safeguard":
             return ("PUNT SAFEGUARD", "warning")
-        # Fallback: surface the first reason verbatim
-        return (next(iter(reasons)).upper().replace("_", " "), "neutral")
+        # Fallback: surface the latest reason verbatim
+        return (reason.upper().replace("_", " "), "neutral")
 
     signals = []
     for entry in by_key.values():
@@ -2026,7 +2077,7 @@ def _parse_signals_from_history() -> list[dict]:
         models = entry.get("models_used", "")
         agree = entry.get("agreement_pct", "")
         spread = entry.get("spread", "")
-        badge_label, badge_color = _badge_for(loc, date, metric)
+        badge_label, badge_color = _badge_for(entry)
         signals.append({
             "location": loc,
             "date": date,
@@ -2377,6 +2428,11 @@ def api_state():
     resolved = [t for t in trades if t.get("status") == "resolved"]
     open_trades = [t for t in trades if t.get("status") == "open"]
     simmer_pos = _get_simmer_positions()
+    open_trade_carveout = {
+        str(t.get("market_id") or t.get("id") or ""): _trade_has_core_low_edge_exact_carveout(t)
+        for t in open_trades
+        if str(t.get("market_id") or t.get("id") or "")
+    }
 
     if simmer_pos:
         positions = []
@@ -2400,6 +2456,7 @@ def api_state():
                 "location": loc,
                 "strategy": p.get("strategy") or "core",
                 "market_id": p.get("market_id") or p.get("id") or "",
+                "core_low_edge_exact_carveout": bool(open_trade_carveout.get(str(p.get("market_id") or p.get("id") or ""), False)),
                 "price_source": price_source,
                 "mark_status": "live" if upnl is not None else "missing",
                 "price_error": "" if upnl is not None else "live_price_unavailable",
@@ -2423,6 +2480,7 @@ def api_state():
                 "location": loc,
                 "strategy": p.get("strategy") or "core",
                 "market_id": p.get("market_id", ""),
+                "core_low_edge_exact_carveout": _trade_has_core_low_edge_exact_carveout(p),
                 "price_source": p.get("price_source"),
                 "mark_status": p.get("mark_status") or ("live" if p.get("upnl") is not None else "missing"),
                 "price_error": p.get("price_error") or "",
@@ -2456,6 +2514,7 @@ def api_state():
                 "resolution_source": t.get("resolution_source", ""),
                 "exit_reason": t.get("exit_reason", ""),
                 "strategy": t.get("strategy") or "core",
+                "core_low_edge_exact_carveout": _trade_has_core_low_edge_exact_carveout(t),
                 "forecast_temp": t.get("forecast_temp"),
                 "actual_temp": t.get("actual_temp"),
                 "bucket": t.get("bucket", ""),

@@ -3,5 +3,9 @@
   "discovery_cache_minutes": 180,
   "entry_threshold": 0.55,
   "slippage_max": 0.2,
-  "late_price_ceiling": 0.9
+  "late_price_ceiling": 0.9,
+  "core_low_edge_exact_carveout_enabled": true,
+  "core_low_edge_exact_carveout_min_edge": 0.05,
+  "core_low_edge_exact_carveout_min_price": 0.3,
+  "core_low_edge_exact_carveout_max_price": 0.4
 }

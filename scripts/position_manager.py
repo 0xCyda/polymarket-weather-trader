@@ -146,6 +146,13 @@ def _bucket_kind(bucket: tuple | None) -> str:
     return "range"
 
 
+def _is_exact_core_sl_eligible(trade: dict, bucket_kind: str) -> bool:
+    if bucket_kind != "exact":
+        return False
+    strategy = str(trade.get("strategy") or "").lower()
+    return strategy in {"core", "carveout"} or trade.get("core_low_edge_exact_carveout") is True
+
+
 def _market_price_yes(market: dict | None) -> float | None:
     try:
         price = (market or {}).get("external_price_yes")
@@ -441,13 +448,12 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
         entry_price = 0.0
     bucket_kind = _bucket_kind(bucket)
 
-    # Exact-degree CORE trailing stop: once the trade has proven itself by
-    # trading up to a healthy multiple of entry, protect a chunk of the move
-    # instead of letting it fully round-trip.
+    # Exact-degree CORE trailing stop, including low-edge carveout entries: once
+    # the trade has proven itself by trading up to a healthy multiple of entry,
+    # protect a chunk of the move instead of letting it fully round-trip.
     if (
         cur_price is not None
-        and strategy == "core"
-        and bucket_kind == "exact"
+        and _is_exact_core_sl_eligible(trade, bucket_kind)
         and cur_hour >= EXACT_CORE_TRAIL_START_HOUR
         and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN)
         and entry_price > 0
@@ -469,13 +475,13 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
                 )
                 return out
 
-    # Exact-degree CORE rescue hatch: when the market has already cheapened the
-    # ticket hard and the running temperature is still well away from the held
-    # bucket, stop waiting for the generic corpse floor.
+    # Exact-degree CORE rescue hatch for the same exact-book, including carveout
+    # entries: when the market has already cheapened the ticket hard and the
+    # running temperature is still well away from the held bucket, stop waiting
+    # for the generic corpse floor.
     if (
         cur_price is not None
-        and strategy == "core"
-        and bucket_kind == "exact"
+        and _is_exact_core_sl_eligible(trade, bucket_kind)
         and cur_hour >= EXACT_CORE_WEAK_EXIT_START_HOUR
         and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN)
         and cur_price <= EXACT_CORE_WEAK_PRICE_FLOOR
