@@ -319,3 +319,13 @@
 {"ts": "2026-05-08T13:11:38.172211+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Lucknow", "date": "2027-05-01", "metric": "high", "signal": "no_data"}
 {"ts": "2026-05-08T13:11:45.309661+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
 {"ts": "2026-05-09T04:42:16.898864+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
+{"ts": "2026-05-09T05:03:20.216348+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
+{"ts": "2026-05-09T06:32:27.651465+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
+{"ts": "2026-05-09T08:25:20.491257+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
+{"ts": "2026-05-09T08:28:27.787830+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
+{"ts": "2026-05-09T08:35:29.569606+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
+{"ts": "2026-05-09T08:35:48.132926+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}
+{"ts": "2026-05-09T08:45:35.093605+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
+{"ts": "2026-05-09T09:08:06.788561+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
+{"ts": "2026-05-09T13:25:23.444731+00:00", "kind": "no_forecast", "msg": "unknown", "location": "Denver", "date": "2027-04-18", "metric": "high", "signal": "no_data"}
+{"ts": "2026-05-09T14:52:30.874336+00:00", "kind": "api_error", "msg": "some other error", "label": "broken", "fn": "broken"}

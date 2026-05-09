@@ -1,0 +1,54 @@
+scope,city,resolved,wins,losses,pushes,win_rate,pnl,current_tier,suggested_tier,suggested_change
+all_resolved,WARSAW,8,3,5,0,37.5,-138.27,easy,hard,easy->hard
+all_resolved,WELLINGTON,8,4,4,0,50.0,98.46,medium,hard,medium->hard
+all_resolved,MUNICH,7,2,5,0,28.6,-636.05,easy,hard,easy->hard
+all_resolved,MILAN,6,3,2,1,60.0,279.79,easy,medium,easy->medium
+all_resolved,SINGAPORE,6,2,4,0,33.3,-646.27,medium,hard,medium->hard
+all_resolved,PARIS,5,2,3,0,40.0,-137.96,medium,hard,medium->hard
+all_resolved,SHANGHAI,5,1,4,0,20.0,-359.17,hard,hard,
+all_resolved,TORONTO,5,3,1,1,75.0,430.46,medium,easy,medium->easy
+all_resolved,ANKARA,4,1,3,0,25.0,174.34,medium,hard,medium->hard
+all_resolved,CHONGQING,4,3,1,0,75.0,191.88,medium,easy,medium->easy
+all_resolved,HONG KONG,4,3,1,0,75.0,1168.71,medium,easy,medium->easy
+all_resolved,NYC,4,2,2,0,50.0,65.41,medium,hard,medium->hard
+all_resolved,SEOUL,4,3,1,0,75.0,548.88,medium,easy,medium->easy
+all_resolved,BEIJING,3,1,2,0,33.3,-168.77,hard,,
+all_resolved,BUENOS AIRES,3,1,1,1,50.0,226.84,medium,,
+all_resolved,CHICAGO,3,2,0,1,100.0,220.82,medium,,
+all_resolved,HOUSTON,3,2,1,0,66.7,692.29,easy,,
+all_resolved,LOS ANGELES,3,2,0,1,100.0,41.18,easy,,
+all_resolved,SAO PAULO,3,2,1,0,66.7,385.1,medium,,
+all_resolved,SHENZHEN,3,1,2,0,33.3,-380.36,medium,,
+all_resolved,TOKYO,3,2,1,0,66.7,415.02,hard,,
+all_resolved,AUSTIN,2,1,1,0,50.0,61.9,medium,,
+all_resolved,CHENGDU,2,1,1,0,50.0,-193.96,easy,,
+all_resolved,LONDON,2,1,0,1,100.0,19.51,medium,,
+all_resolved,LUCKNOW,1,0,1,0,0.0,-200.0,medium,,
+all_resolved,SAN FRANCISCO,1,1,0,0,100.0,427.17,easy,,
+all_resolved,SEATTLE,1,1,0,0,100.0,360.94,medium,,
+all_resolved,TEL AVIV,1,1,0,0,100.0,12.99,easy,,
+all_resolved,WUHAN,1,1,0,0,100.0,36.45,hard,,
+core_only,WARSAW,6,2,4,0,33.3,-193.21,easy,hard,easy->hard
+core_only,WELLINGTON,6,3,3,0,50.0,-39.71,medium,hard,medium->hard
+core_only,MILAN,5,3,2,0,60.0,279.79,easy,medium,easy->medium
+core_only,MUNICH,5,1,4,0,20.0,-678.4,easy,hard,easy->hard
+core_only,PARIS,5,2,3,0,40.0,-137.96,medium,hard,medium->hard
+core_only,HONG KONG,4,3,1,0,75.0,1168.71,medium,easy,medium->easy
+core_only,SEOUL,4,3,1,0,75.0,548.88,medium,easy,medium->easy
+core_only,SHANGHAI,4,0,4,0,0.0,-373.8,hard,hard,
+core_only,SINGAPORE,4,0,4,0,0.0,-672.8,medium,hard,medium->hard
+core_only,TORONTO,4,3,1,0,75.0,430.46,medium,easy,medium->easy
+core_only,ANKARA,3,1,2,0,33.3,177.29,medium,,
+core_only,SAO PAULO,3,2,1,0,66.7,385.1,medium,,
+core_only,TOKYO,3,2,1,0,66.7,415.02,hard,,
+core_only,BEIJING,2,1,1,0,50.0,-43.9,hard,,
+core_only,BUENOS AIRES,2,1,1,0,50.0,226.84,medium,,
+core_only,NYC,2,1,1,0,50.0,-100.0,medium,,
+core_only,SHENZHEN,2,0,2,0,0.0,-399.33,medium,,
+core_only,AUSTIN,1,1,0,0,100.0,286.9,medium,,
+core_only,CHENGDU,1,0,1,0,0.0,-200.0,easy,,
+core_only,CHICAGO,1,1,0,0,100.0,196.12,medium,,
+core_only,CHONGQING,1,0,1,0,0.0,-151.35,medium,,
+core_only,HOUSTON,1,1,0,0,100.0,422.89,easy,,
+core_only,LOS ANGELES,1,0,0,1,,0.0,easy,,
+core_only,LUCKNOW,1,0,1,0,0.0,-200.0,medium,,

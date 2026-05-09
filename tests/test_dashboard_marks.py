@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -67,6 +68,133 @@ class TestDashboardMarks(unittest.TestCase):
         self.assertEqual(stats["unrealized_pnl"], 10.0)
         self.assertEqual(stats["marked_positions"], 2)
         self.assertEqual(stats["missing_marks"], 1)
+
+    @patch.object(dashboard, "datetime")
+    @patch.object(dashboard, "_load_trades_jsonl", return_value=[
+        {
+            "status": "resolved",
+            "pnl": 12.0,
+            "resolved_at": "2026-05-09T01:00:00+00:00",
+        },
+        {
+            "status": "open",
+            "realized_pnl": 8.5,
+            "partial_exits": [
+                {"ts": "2026-05-09T05:50:20+00:00", "pnl": 8.5, "shares": 75.0, "price": 0.39, "reason": "take_profit_1p9x_75pct"}
+            ],
+        },
+    ])
+    def test_get_stats_counts_partial_take_profit_in_total_and_today_pnl(self, _mock_load, mock_datetime):
+        mock_datetime.now.return_value = datetime(2026, 5, 9, 15, 0, tzinfo=ZoneInfo("Australia/Perth"))
+        mock_datetime.fromisoformat.side_effect = datetime.fromisoformat
+        mock_datetime.strptime.side_effect = datetime.strptime
+
+        stats = dashboard._get_stats()
+
+        self.assertEqual(stats["resolved_trades"], 1)
+        self.assertEqual(stats["today_trades"], 2)
+        self.assertEqual(stats["today_pnl"], 20.5)
+        self.assertEqual(stats["total_pnl"], 20.5)
+
+    @patch.object(dashboard, "_load_trades_jsonl")
+    @patch.object(dashboard, "_get_simmer_positions", return_value=None)
+    @patch.object(dashboard, "_enrich_positions", return_value=[])
+    @patch.object(dashboard, "_get_portfolio_stats", return_value={})
+    @patch.object(dashboard, "_get_stats", return_value={})
+    @patch.object(dashboard, "_build_timeseries", return_value=[])
+    @patch.object(dashboard, "_parse_signals_from_history", return_value=[])
+    @patch.object(dashboard, "_get_last_scan_time", return_value=None)
+    @patch.object(dashboard, "_get_config", return_value={})
+    def test_api_state_merges_partial_take_profit_back_into_resolved_history(
+        self,
+        _mock_config,
+        _mock_last_scan,
+        _mock_signals,
+        _mock_timeseries,
+        _mock_stats,
+        _mock_portfolio,
+        _mock_enrich,
+        _mock_simmer,
+        mock_load,
+    ):
+        mock_load.return_value = [{
+            "status": "resolved",
+            "location": "Paris",
+            "side": "yes",
+            "entry_price": 0.20,
+            "exit_price": 0.30,
+            "shares": 100.0,
+            "cost": 20.0,
+            "pnl": 90.0,
+            "target_date": "2026-05-04",
+            "strategy": "core",
+            "metric": "high",
+            "partial_exits": [
+                {"shares": 400.0, "price": 0.39, "reason": "take_profit_1p9x_75pct"}
+            ],
+        }]
+
+        resp = dashboard.api_state()
+        payload = json.loads(resp.body)
+        row = payload["resolved"][0]
+
+        self.assertEqual(row["shares"], 500.0)
+        self.assertEqual(row["cost"], 100.0)
+        self.assertEqual(row["pnl"], 90.0)
+
+    @patch.object(dashboard, "_load_trades_jsonl")
+    @patch.object(dashboard, "_get_simmer_positions", return_value=None)
+    @patch.object(dashboard, "_enrich_positions", return_value=[])
+    @patch.object(dashboard, "_get_portfolio_stats", return_value={})
+    @patch.object(dashboard, "_get_stats", return_value={})
+    @patch.object(dashboard, "_build_timeseries", return_value=[])
+    @patch.object(dashboard, "_parse_signals_from_history", return_value=[])
+    @patch.object(dashboard, "_get_last_scan_time", return_value=None)
+    @patch.object(dashboard, "_get_config", return_value={})
+    def test_api_state_surfaces_open_partial_take_profit_in_resolved_history(
+        self,
+        _mock_config,
+        _mock_last_scan,
+        _mock_signals,
+        _mock_timeseries,
+        _mock_stats,
+        _mock_portfolio,
+        _mock_enrich,
+        _mock_simmer,
+        mock_load,
+    ):
+        mock_load.return_value = [{
+            "status": "open",
+            "location": "Tokyo",
+            "question": "Will the highest temperature in Tokyo be 23°C on May 9?",
+            "side": "yes",
+            "entry_price": 0.375,
+            "shares": 64.935065,
+            "target_date": "2026-05-09",
+            "strategy": "core",
+            "metric": "high",
+            "partial_exits": [{
+                "ts": "2026-05-09T05:50:20+00:00",
+                "shares": 194.805195,
+                "price": 0.885,
+                "pnl": 99.3506,
+                "reason": "take_profit_1p9x_75pct (price=$0.885 >= trigger=$0.712, sell_frac=75%)",
+                "fraction": 0.75,
+            }],
+        }]
+
+        resp = dashboard.api_state()
+        payload = json.loads(resp.body)
+        row = payload["resolved"][0]
+
+        self.assertEqual(row["location"], "Tokyo")
+        self.assertEqual(row["shares"], 194.805195)
+        self.assertEqual(row["cost"], 73.0519)
+        self.assertEqual(row["exit_price"], 0.885)
+        self.assertEqual(row["pnl"], 99.3506)
+        self.assertEqual(row["resolved_at"], "2026-05-09T05:50:20+00:00")
+        self.assertEqual(row["resolution_source"], "partial_take_profit")
+        self.assertEqual(row["exit_reason"], "take_profit_1p9x_75pct (price=$0.885 >= trigger=$0.712, sell_frac=75%)")
 
     @patch.object(dashboard, "_load_trades_jsonl")
     @patch.object(dashboard, "datetime")

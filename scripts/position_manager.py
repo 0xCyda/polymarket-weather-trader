@@ -6,7 +6,7 @@ Pulls TWC intraday observations for cities with open positions targeting today
 (in city-local time) and decides one of:
 
   * EXIT — projected EOD max sits in a different bucket than what we hold.
-           Settle the position at current Simmer mid-price, mark as resolved
+           Settle the position at the best live mark available, mark as resolved
            with resolution_source="early_exit_position_manager".
   * ADD  — projected EOD max sits solidly inside our held bucket and current
            Simmer price is below late_add_ceiling. Open a new paper trade
@@ -165,6 +165,51 @@ def _market_price_yes(market: dict | None) -> float | None:
         return price if price > 0 else None
     except Exception:
         return None
+
+
+def _fetch_clob_price_yes(token_id: str | None) -> tuple[float | None, str | None]:
+    if not token_id:
+        return None, None
+    try:
+        import requests
+
+        mid_resp = requests.get(
+            "https://clob.polymarket.com/midpoint",
+            params={"token_id": token_id},
+            timeout=5,
+        )
+        if mid_resp.status_code == 200:
+            mid = mid_resp.json().get("mid")
+            if mid is not None:
+                mid = float(mid)
+                if mid > 0:
+                    return mid, "clob_midpoint"
+
+        buy_resp = requests.get(
+            "https://clob.polymarket.com/price",
+            params={"token_id": token_id, "side": "buy"},
+            timeout=5,
+        )
+        if buy_resp.status_code == 200:
+            price = buy_resp.json().get("price")
+            if price is not None:
+                price = float(price)
+                if price > 0:
+                    return price, "clob_buy"
+    except Exception:
+        pass
+    return None, None
+
+
+def _live_price_yes(trade: dict | None, market: dict | None) -> tuple[float | None, str | None]:
+    token_id = (
+        (trade or {}).get("polymarket_token_id")
+        or (market or {}).get("polymarket_token_id")
+    )
+    clob_price, clob_source = _fetch_clob_price_yes(str(token_id) if token_id else None)
+    if clob_price is not None:
+        return clob_price, clob_source
+    return _market_price_yes(market), "simmer_external_price_yes"
 
 
 def _logged_prices(trade_id: str, before_ts: datetime | None = None) -> list[float]:
@@ -451,9 +496,10 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
     edge_c_now = _edge_distance_c(running_c, bucket)
     out["edge_c_running"] = round(edge_c_now, 2)
 
-    cur_price = _market_price_yes(market)
+    cur_price, cur_price_source = _live_price_yes(trade, market)
     if cur_price is not None:
         out["current_price"] = round(cur_price, 4)
+        out["current_price_source"] = cur_price_source
         prev_price = _last_logged_price(str(trade.get("trade_id") or ""), before_ts=now_utc)
         if prev_price is not None:
             out["previous_price"] = round(prev_price, 4)
@@ -746,7 +792,7 @@ def _execute_take_profit(trade_id: str, current_price: float, reason: str) -> di
     return update_trade_atomically(trade_id, _mutate)
 
 
-def _execute_add(trade: dict, market: dict, size_usd: float, reason: str) -> str | None:
+def _execute_add(trade: dict, market: dict, size_usd: float, reason: str, live_price: float | None = None) -> str | None:
     """Scale into the existing parent trade — DOES NOT create a new row.
 
     Adds shares + cost to the parent at the current market price, recomputes
@@ -759,7 +805,10 @@ def _execute_add(trade: dict, market: dict, size_usd: float, reason: str) -> str
     Returns the parent trade_id on success, None if the add couldn't be
     applied (status changed, no live price, etc.).
     """
-    cur_price = float(market.get("external_price_yes") or 0)
+    cur_price = float(live_price or 0)
+    if cur_price <= 0:
+        cur_price, _ = _live_price_yes(trade, market)
+        cur_price = float(cur_price or 0)
     if cur_price <= 0:
         return None
     if cur_price < ADD_PRICE_FLOOR or cur_price > ADD_PRICE_CEILING:
@@ -880,7 +929,13 @@ def main() -> int:
             continue
 
         if decision["action"] == "exit":
-            cur_price = float((market or {}).get("external_price_yes") or 0.0)
+            cur_price = float(decision.get("current_price") or 0.0)
+            if cur_price <= 0:
+                cur_price, cur_price_source = _live_price_yes(trade, market)
+                cur_price = float(cur_price or 0.0)
+                if cur_price > 0:
+                    decision["current_price"] = round(cur_price, 4)
+                    decision["current_price_source"] = cur_price_source
             if cur_price <= 0:
                 decision["action"] = "hold"
                 decision["reason"] = "exit_blocked_no_live_price"
@@ -943,7 +998,7 @@ def main() -> int:
                 continue
             print(f"  ADD  {trade.get('location')} {trade.get('target_date')} ${size:.0f}: {decision.get('reason')}")
             if args.execute:
-                parent_id = _execute_add(trade, market, size, decision.get("reason") or "")
+                parent_id = _execute_add(trade, market, size, decision.get("reason") or "", live_price=decision.get("current_price"))
                 decision["applied"] = bool(parent_id)
                 decision["scaled_into_trade_id"] = parent_id
                 if parent_id:

@@ -61,6 +61,7 @@ from weather_trader import (
     compute_dynamic_exit,
     calculate_ewma_vol,
     apply_vol_targeting,
+    calculate_position_size,
     fetch_weather_markets,
     _is_polymarket_weather_market,
 )
@@ -248,6 +249,40 @@ class TestVolTargeting(unittest.TestCase):
         size, meta = apply_vol_targeting(10.0, 5.0, target_vol=0.20, min_allocation=0.2)
         self.assertEqual(meta["leverage"], 0.2)
         self.assertAlmostEqual(size, 2.0)
+
+
+class TestPositionSizing(unittest.TestCase):
+    @patch("weather_trader.get_portfolio")
+    def test_easy_city_uses_three_percent_of_live_balance(self, mock_get_portfolio):
+        mock_get_portfolio.return_value = {"balance_usdc": 2000.0}
+        self.assertEqual(calculate_position_size(50.0, True, location="TEL AVIV"), 60.0)
+
+    @patch("weather_trader.get_stats")
+    @patch("weather_trader.get_open_positions")
+    @patch("weather_trader.get_portfolio")
+    def test_medium_city_uses_two_percent_of_current_paper_balance_when_portfolio_missing(
+        self, mock_get_portfolio, mock_get_open_positions, mock_get_stats
+    ):
+        mock_get_portfolio.return_value = None
+        mock_get_stats.return_value = {"total_pnl": 500.0}
+        mock_get_open_positions.return_value = [
+            {"cost": 1000.0},
+            {"cost": 250.0},
+        ]
+        with patch.dict("weather_trader._config", {"paper_balance": 10000.0}, clear=False):
+            self.assertEqual(calculate_position_size(50.0, False, location="NYC"), 185.0)
+
+    @patch("weather_trader.get_stats")
+    @patch("weather_trader.get_open_positions")
+    @patch("weather_trader.get_portfolio")
+    def test_hard_city_never_goes_below_one_dollar_floor(
+        self, mock_get_portfolio, mock_get_open_positions, mock_get_stats
+    ):
+        mock_get_portfolio.return_value = None
+        mock_get_stats.return_value = {"total_pnl": -9999.5}
+        mock_get_open_positions.return_value = []
+        with patch.dict("weather_trader._config", {"paper_balance": 10000.0}, clear=False):
+            self.assertEqual(calculate_position_size(50.0, False, location="TOKYO"), 1.0)
 
 
 class TestSimmerThrottle(unittest.TestCase):

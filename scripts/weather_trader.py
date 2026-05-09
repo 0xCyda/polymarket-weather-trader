@@ -502,24 +502,26 @@ ACTIVE_LOCATIONS = [loc.strip().upper() for loc in _locations_str.split(",") if 
 # Keys are uppercase to match ACTIVE_LOCATIONS. Unknown cities default to MEDIUM.
 # Last refresh: 2026-04-24 (see reports/top_traders_2026-04-24.txt).
 CITY_DIFFICULTY = {
-    # EASY — ≥75% pro win rate (stable climates, predictable)
-    "TEL AVIV":      "easy",   # n=46,  93.5%
-    "WARSAW":        "easy",   # n=70,  90.0%
-    "SAN FRANCISCO": "easy",   # n=53,  86.8%
-    "LOS ANGELES":   "easy",   # n=66,  86.4%
-    "MILAN":         "easy",   # n=78,  85.9%
-    "CHENGDU":       "easy",   # n=37,  83.8%
-    "HOUSTON":       "easy",   # n=60,  76.7%
-    "MUNICH":        "easy",   # n=89,  77.5%
-    # HARD — ≤55% pro win rate (volatile, hard to forecast accurately)
-    "TOKYO":         "hard",   # n=96,  54.2%
-    "SHANGHAI":      "hard",   # n=50,  52.0%
-    "BEIJING":       "hard",   # n=40,  60.0% — borderline; held HARD pending more data (same Asian basin as Tokyo/Shanghai)
-    "WUHAN":         "hard",   # n=35,  57.1% — borderline; held HARD pending more data
-    # Demoted from EASY/HARD on 2026-04-24 after expanded sample:
-    #   SEOUL:      Hans n=30@86.7% diluted by ColdMath n=196@62.8% → combined 226@65.9% (MEDIUM)
-    #   WELLINGTON: Hans n=11@100% noise; ColdMath n=358@56.7% drives combined 369@58.0% (MEDIUM, just above HARD threshold)
-    # Everything else defaults to "medium" (55-75% win rate)
+    # EASY — current CORE audit says these cities earned 3% sizing.
+    "TEL AVIV":      "easy",
+    "SAN FRANCISCO": "easy",
+    "LOS ANGELES":   "easy",
+    "CHENGDU":       "easy",
+    "HOUSTON":       "easy",
+    "HONG KONG":     "easy",   # CORE audit 2026-05-09: 4 resolved, 75.0% WR
+    "SEOUL":         "easy",   # CORE audit 2026-05-09: 4 resolved, 75.0% WR
+    "TORONTO":       "easy",   # CORE audit 2026-05-09: 4 resolved, 75.0% WR
+    # HARD — current CORE audit says these cities deserve 1% sizing.
+    "TOKYO":         "hard",
+    "SHANGHAI":      "hard",
+    "BEIJING":       "hard",
+    "WUHAN":         "hard",
+    "WARSAW":        "hard",   # CORE audit 2026-05-09: 6 resolved, 33.3% WR
+    "MUNICH":        "hard",   # CORE audit 2026-05-09: 5 resolved, 20.0% WR
+    "WELLINGTON":    "hard",   # CORE audit 2026-05-09: 6 resolved, 50.0% WR
+    "PARIS":         "hard",   # CORE audit 2026-05-09: 5 resolved, 40.0% WR
+    "SINGAPORE":     "hard",   # CORE audit 2026-05-09: 4 resolved, 0.0% WR
+    # Everything else defaults to medium, including MILAN after the CORE audit.
 }
 RISK_PCT_BY_TIER = {"easy": 0.03, "medium": 0.02, "hard": 0.01}
 
@@ -1830,31 +1832,37 @@ def calculate_position_size(default_size: float, smart_sizing: bool,
                             location: str | None = None) -> float:
     """
     Position sizing hierarchy:
-      1. If location is given: use city-tier risk % (EASY 3% / MEDIUM 2% / HARD 1%)
-         of paper balance — no cap.
+      1. If location is given: use city-tier risk % of current balance
+         (EASY 3% / MEDIUM 2% / HARD 1%).
       2. Else if smart_sizing: use SMART_SIZING_PCT of live portfolio balance.
       3. Otherwise return default_size (typically MAX_POSITION_USD).
 
-    City-tier sizing is additive to smart_sizing — city tier wins when both
-    are available. The empirical tiers were derived from 9k pro trades:
-    HARD cities (Tokyo, Shanghai, Wellington, Beijing, Wuhan) size down to
-    1% because even pros win <55% there; EASY cities (Tel Aviv, Warsaw, SF,
-    LA, Milan, Chengdu, Houston, Munich, Seoul) size up to 3%.
+    City-tier sizing always uses the current balance, not a flat configured bet.
+    In live mode that means portfolio balance. In paper mode that means paper
+    balance plus realized P&L minus current open exposure.
     """
     # Path 1: city-tier risk-based sizing (works in both live and paper modes)
     if location:
         tier = city_tier(location)
         risk_pct = RISK_PCT_BY_TIER[tier]
-        # Try live balance first, fall back to paper balance
         balance = None
-        if smart_sizing:
-            portfolio = get_portfolio()
-            if portfolio:
-                balance = portfolio.get("balance_usdc")
+
+        portfolio = get_portfolio()
+        if portfolio:
+            balance = portfolio.get("balance_usdc")
+
         if balance is None or balance <= 0:
             balance = _config.get("paper_balance", 10000.0)
-        city_size = balance * risk_pct
-        city_size = max(city_size, 1.0)
+            if PAPER_JOURNAL_AVAILABLE:
+                try:
+                    stats = get_stats()
+                    open_exposure = sum(float(p.get("cost", 0) or 0) for p in get_open_positions())
+                    balance = balance + float(stats.get("total_pnl", 0) or 0) - open_exposure
+                except Exception:
+                    pass
+
+        balance = max(float(balance or 0), 0.0)
+        city_size = max(balance * risk_pct, 1.0)
         print(f"  💡 City sizing: ${city_size:.2f} "
               f"({risk_pct:.0%} of ${balance:.2f}, tier={tier.upper()})")
         return city_size

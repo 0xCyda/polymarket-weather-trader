@@ -139,6 +139,35 @@ class TestCorpsePriceGuard(unittest.TestCase):
         self.assertEqual(decision["action"], "hold")
         self.assertEqual(decision["reason"], "hold_no_signal")
 
+    @patch.object(pm, "_fetch_clob_price_yes", return_value=(0.005, "clob_midpoint"))
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=19.0)
+    def test_clob_price_overrides_stale_simmer_for_corpse_exit(self, *_mocks):
+        trade = {
+            "trade_id": "ankara-core",
+            "market_id": "m-ank",
+            "location": "Ankara",
+            "target_date": "2026-05-09",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-05-07T20:45:13+00:00",
+            "question": "Will the highest temperature in Ankara be 20°C on May 9?",
+            "forecast_temp": 68.0,
+            "metric": "high",
+            "bucket": "20°C",
+            "entry_price": 0.365,
+            "polymarket_token_id": "yes-token",
+        }
+        market = {"id": "m-ank", "external_price_yes": 0.525}
+        now_utc = real_datetime(2026, 5, 9, 10, 21, 0, tzinfo=timezone.utc)
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertIn("corpse_price_guard", decision["reason"])
+        self.assertEqual(decision["current_price"], 0.005)
+        self.assertEqual(decision["current_price_source"], "clob_midpoint")
+
 
 class TestExactCoreTrailingStop(unittest.TestCase):
     @patch.object(pm, "_peak_logged_price", return_value=0.445)

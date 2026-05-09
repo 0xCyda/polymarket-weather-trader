@@ -789,7 +789,8 @@ function positionBadge(side) {
 }
 
 function pmExitBadge(source, pnl, exitReason) {
-  if ((source || '').toLowerCase() !== 'early_exit_position_manager') return '';
+  const normalized = (source || '').toLowerCase();
+  if (!['early_exit_position_manager', 'partial_take_profit'].includes(normalized)) return '';
   const reason = String(exitReason || '').toLowerCase();
   const n = Number(pnl || 0);
   const titleSuffix = exitReason ? ` · ${escapeHtml(String(exitReason))}` : '';
@@ -826,9 +827,11 @@ function sourceBadge(src) {
   const s = src.toLowerCase();
   const cls = s === 'historical_fallback' ? 'badge-source-historical'
            : s === 'manual' ? 'badge-source-manual'
+           : s === 'partial_take_profit' ? 'badge-source-manual'
            : 'badge-source-simmer';
   const label = s === 'historical_fallback' ? 'archive'
               : s === 'manual' ? 'manual'
+              : s === 'partial_take_profit' ? 'partial'
               : 'simmer';
   return `<span class="badge ${cls}" title="Resolution source: ${s}">${label}</span>`;
 }
@@ -2098,6 +2101,67 @@ def _parse_signals_from_history() -> list[dict]:
     return signals
 
 
+def _resolved_display_position(trade: dict) -> tuple[float, float]:
+    shares = float(trade.get("shares") or 0)
+    cost = float(trade.get("cost") or 0)
+    entry = float(trade.get("entry_price") or 0)
+    for row in trade.get("partial_exits") or []:
+        try:
+            sold = float(row.get("shares") or 0)
+        except Exception:
+            sold = 0.0
+        shares += sold
+        cost += sold * entry
+    return round(shares, 6), round(cost, 4)
+
+
+def _partial_exit_history_rows(trade: dict) -> list[dict]:
+    rows = []
+    entry = float(trade.get("entry_price") or 0)
+    for idx, row in enumerate(trade.get("partial_exits") or []):
+        try:
+            sold = float(row.get("shares") or 0)
+        except Exception:
+            sold = 0.0
+        if sold <= 0:
+            continue
+        try:
+            exit_price = float(row.get("price") or 0)
+        except Exception:
+            exit_price = 0.0
+        try:
+            pnl = float(row.get("pnl") or 0)
+        except Exception:
+            pnl = 0.0
+        partial = dict(trade)
+        partial["status"] = "partial_resolved"
+        partial["partial_parent_status"] = trade.get("status")
+        partial["partial_exit_index"] = idx
+        partial["shares"] = sold
+        partial["cost"] = round(sold * entry, 4)
+        partial["exit_price"] = exit_price
+        partial["pnl"] = round(pnl, 4)
+        partial["resolved_at"] = row.get("ts") or trade.get("resolved_at") or ""
+        partial["resolution_date"] = trade.get("resolution_date") or trade.get("target_date") or ""
+        partial["resolution_source"] = "partial_take_profit"
+        partial["exit_reason"] = row.get("reason") or "partial_take_profit"
+        partial["actual_temp"] = None
+        partial["partial_exit_fraction"] = row.get("fraction")
+        rows.append(partial)
+    return rows
+
+
+def _resolved_history_rows(trades: list[dict]) -> list[dict]:
+    history = [t for t in trades if t.get("status") == "resolved"]
+    history.extend(
+        partial
+        for trade in trades
+        if trade.get("status") == "open"
+        for partial in _partial_exit_history_rows(trade)
+    )
+    return history
+
+
 def _get_portfolio_stats(enriched_positions: list[dict]) -> dict:
     """Compute balance, realized, unrealized P&L using pre-enriched positions."""
     trades = _load_trades_jsonl(PAPER_TRADES)
@@ -2123,12 +2187,13 @@ def _get_portfolio_stats(enriched_positions: list[dict]) -> dict:
 def _get_stats() -> dict:
     trades = _load_trades_jsonl(PAPER_TRADES)
     resolved = [t for t in trades if t.get("status") == "resolved"]
+    resolved_history = _resolved_history_rows(trades)
     open_trades = [t for t in trades if t.get("status") == "open"]
 
     awst = ZoneInfo("Australia/Perth")
     today = datetime.now(awst).date()
     today_resolved = []
-    for t in resolved:
+    for t in resolved_history:
         ts = t.get("resolved_at")
         if not ts:
             continue
@@ -2143,11 +2208,13 @@ def _get_stats() -> dict:
     if not resolved:
         return dict(total_trades=len(trades), open_trades=len(open_trades),
                     resolved_trades=0, wins=0, losses=0, win_rate=None,
-                    total_pnl=0.0, avg_pnl=0.0, best_trade=None, worst_trade=None,
+                    total_pnl=round(sum(float(t.get("pnl") or 0) for t in resolved_history), 4),
+                    avg_pnl=0.0, best_trade=None, worst_trade=None,
                     today_pnl=today_pnl, today_trades=len(today_resolved))
     pnls = [float(t.get("pnl") or 0) for t in resolved]
     wins = [p for p in pnls if p > 0]
     losses = [p for p in pnls if p < 0]
+    total_pnl = round(sum(float(t.get("pnl") or 0) for t in resolved_history), 4)
     return dict(
         total_trades=len(trades),
         open_trades=len(open_trades),
@@ -2155,7 +2222,7 @@ def _get_stats() -> dict:
         wins=len(wins),
         losses=len(losses),
         win_rate=round(len(wins) / (len(wins) + len(losses)) * 100, 1) if (wins or losses) else None,
-        total_pnl=round(sum(pnls), 4),
+        total_pnl=total_pnl,
         avg_pnl=round(sum(pnls) / len(pnls), 4) if pnls else 0.0,
         best_trade=max(pnls) if pnls else None,
         worst_trade=min(pnls) if pnls else None,
@@ -2430,7 +2497,7 @@ def api_scan_status():
 @app.get("/api/state")
 def api_state():
     trades = _load_trades_jsonl(PAPER_TRADES)
-    resolved = [t for t in trades if t.get("status") == "resolved"]
+    resolved = _resolved_history_rows(trades)
     open_trades = [t for t in trades if t.get("status") == "open"]
     simmer_pos = _get_simmer_positions()
     open_trade_carveout = {
@@ -2508,8 +2575,8 @@ def api_state():
                 "side": t.get("side", "YES").upper(),
                 "entry_price": float(t.get("entry_price") or 0),
                 "exit_price": float(t.get("exit_price") or 0),
-                "shares": float(t.get("shares") or 0),
-                "cost": float(t.get("cost") or 0),
+                "shares": _resolved_display_position(t)[0] if t.get("status") == "resolved" else float(t.get("shares") or 0),
+                "cost": _resolved_display_position(t)[1] if t.get("status") == "resolved" else float(t.get("cost") or 0),
                 "pnl": float(t.get("pnl") or 0),
                 "outcome": t.get("outcome", ""),
                 "target_date": t.get("target_date", ""),
