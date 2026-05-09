@@ -25,8 +25,8 @@ Run:
   python3 scripts/position_manager.py --execute   # apply exits/adds to paper journal
   python3 scripts/position_manager.py --trade-id X --execute  # one position only
 
-Cron (hourly plus half-hour checks during peak / late-day risk windows):
-  19,49 * * * *  python3 /path/to/position_manager.py --execute --scheduled
+Cron (top-of-hour always, then every 10 minutes during peak / late-day risk windows):
+  */10 * * * *  python3 /path/to/position_manager.py --execute --scheduled
 """
 from __future__ import annotations
 
@@ -93,6 +93,7 @@ TAKE_PROFIT_TRIGGER_MULT = float(_cfg.get("position_take_profit_trigger_mult", 1
 TAKE_PROFIT_SELL_FRAC = float(_cfg.get("position_take_profit_sell_frac", 0.75))
 TAKE_PROFIT_TRAIL_DROP_FRAC = float(_cfg.get("position_take_profit_trail_drop_frac", 0.30))
 LATE_PROJECTED_EXIT_COOLDOWN_MIN = 45.0
+SCHEDULED_BASELINE_MINUTE = 0
 
 ACTIONS_LOG = JOURNAL_FILE.parent / "manager_actions.jsonl"
 
@@ -348,7 +349,7 @@ def _extreme_tracking_state(obs: list[dict], tz: ZoneInfo, now_utc: datetime, me
     }
 
 
-def _should_run_halfhour(trades: list[dict], now_utc: datetime) -> bool:
+def _should_run_supplemental_cycle(trades: list[dict], now_utc: datetime) -> bool:
     for trade in trades:
         city = trade.get("location") or ""
         loc = LOCATIONS.get(city)
@@ -873,7 +874,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Day-of position manager: exit losers, add to winners")
     ap.add_argument("--execute", action="store_true", help="Apply exits/adds (default: dry run, log only)")
     ap.add_argument("--trade-id", help="Process only this trade_id")
-    ap.add_argument("--scheduled", action="store_true", help="Enable adaptive cadence: top-of-hour always, half-hour only once same-day cities reach the peak/late-day window.")
+    ap.add_argument("--scheduled", action="store_true", help="Enable adaptive cadence: top-of-hour always, extra 10-minute checks only once same-day cities reach the peak/late-day window.")
     ap.add_argument("--now-utc", help="Override current UTC time for testing, e.g. 2026-04-28T14:49:00+00:00")
     args = ap.parse_args()
 
@@ -894,9 +895,9 @@ def main() -> int:
         print("no open positions")
         return 0
 
-    if args.scheduled and now_utc.minute >= 30 and not _should_run_halfhour(open_trades, now_utc):
+    if args.scheduled and now_utc.minute != SCHEDULED_BASELINE_MINUTE and not _should_run_supplemental_cycle(open_trades, now_utc):
         print(
-            "position_manager scheduled skip: half-hour run gated until same-day open positions reach "
+            "position_manager scheduled skip: supplemental 10-minute run gated until same-day open positions reach "
             f"local hour >= {HALFHOUR_START_HOUR}"
         )
         return 0
