@@ -2,6 +2,17 @@
 
 All notable changes to the Polymarket Weather Trader. Newest first.
 
+## 2026-05-09
+
+### Added
+- CORE positions now take 75% profit at 1.9x entry, then keep the remaining 25% alive as a runner with a peak-based trailing stop instead of dumping the whole position in one shot. (`position_manager.py`, `tests/test_position_manager.py`)
+- Paper-journal rows now persist partial take-profit history plus `realized_pnl`, so runner exits and later settlement logic can account for already-booked gains without making the ledger lie. (`paper_journal.py`, `position_manager.py`, `tests/test_paper_journal.py`, `tests/test_position_manager.py`)
+- Added fresh audit artifacts for the exit-review work, including the 2x audit, 1.8x-2.5x band sweep, top-swing recheck, and cleaned 1.9x timing analysis. (`reports/audits/*`)
+
+### Changed
+- Dashboard portfolio stats now include realized gains from still-open runner positions, so balance and realized P&L stop understating partial exits. (`dashboard.py`, `tests/test_dashboard_marks.py`)
+- Position-manager operations were tightened from the old 30-minute cadence to an adaptive 10-minute schedule so take-profit and runner-stop checks stop arriving half an hour late to the crime scene. (runtime cron schedule)
+
 ## 2026-05-07
 
 ### Added
