@@ -1,0 +1,114 @@
+trade_id,location,target_date,strategy,status,resolution_source,entry_price,tp_price,shares,actual_exit_price,actual_pnl,hit_2x,first_touch_ts_utc,max_price_seen,hypothetical_exit_price,hypothetical_pnl,delta_vs_actual,token_source,has_adds
+paper_ef0583a5-3d4e-40_1776517240,Wellington,2026-04-20,unknown,resolved,openmeteo,0.3,0.6,666.6666666666667,0.0005,-199.6667,False,,0.575,0.0005,-199.6667,0.0,gamma_event_question,False
+paper_9a975201-8d57-47_1776536535,Wellington,2026-04-20,unknown,resolved,openmeteo,0.19,0.38,1052.6315789473683,0.195,5.263157894736846,True,1776641459,0.9995,0.38,200.0,194.7368,gamma_event_question,False
+paper_f558acf5-d0ff-46_1776536538,Chengdu,2026-04-19,unknown,resolved,,0.195,0.39,1025.6410256410256,0.0,-200.0,False,,0.225,0.0,-200.0,0.0,gamma_event_question,False
+paper_d39ec3f6-3849-48_1776536541,Tokyo,2026-04-20,unknown,resolved,simmer,0.35,0.7,571.4285714285714,0.963,350.2857,True,1776661849,0.9995,0.7,200.0,-150.2857,gamma_event_question,False
+paper_0a0cf089-aa36-45_1776644844,Beijing,2026-04-21,unknown,resolved,,0.25,0.5,800.0,0.0005,-199.6,False,,0.36,0.0005,-199.6,0.0,gamma_event_question,False
+paper_394910aa-d4d0-4c_1776644847,Hong Kong,2026-04-20,unknown,resolved,simmer,0.3,0.6,666.6666666666667,0.994,462.6667,True,1776656446,0.9995,0.6,200.0,-262.6667,gamma_event_question,False
+paper_414ff8b9-0e42-45_1776667658,Shenzhen,2026-04-22,unknown,resolved,historical_fallback,0.23,0.46,869.5652173913043,0.0,-200.0,False,,0.245,0.0,-200.0,0.0,gamma_event_question,False
+paper_a30d60e4-0985-47_1776667661,Los Angeles,2026-04-22,unknown,resolved,openmeteo,0.275,0.55,727.2727272727273,0.275,0.0,False,,0.535,0.275,0.0,0.0,gamma_event_question,False
+paper_475a6376-6040-46_1776669158,NYC,2026-04-22,unknown,resolved,openmeteo,0.11,0.22,1818.1818181818182,0.165,100.0,True,1776671411,0.29,0.22,200.0,100.0,gamma_event_question,False
+manual_hk_2026-04-21_28c,Hong Kong,2026-04-21,core,resolved,,0.3,0.6,666.6666666666667,0.997,464.6667,True,1776741057,0.9995,0.6,200.0,-264.6667,gamma_market_id,False
+manual_sz_2026-04-21_28c,Shenzhen,2026-04-21,core,resolved,,0.3,0.6,666.6666666666667,0.001,-199.3333,False,,0.285,0.001,-199.3333,0.0,gamma_market_id,False
+paper_9e1f8cb8-bbf2-48_1776735411,Hong Kong,2026-04-22,core,resolved,simmer,0.315,0.63,634.9206349206349,0.0,-200.0,False,,0.325,0.0,-200.0,0.0,gamma_event_question,False
+paper_18060c1d-d3ae-46_1776767096,Wellington,2026-04-23,core,resolved,historical_fallback,0.365,0.73,547.945205479452,1.0,347.9452,False,,0.41,1.0,347.9452,0.0,gamma_event_question,False
+paper_9933be31-b949-4c_1776926359,Munich,2026-04-25,core,resolved,simmer,0.13,0.26,1538.4615384615383,0.0,-200.0,False,,0.255,0.0,-200.0,0.0,gamma_event_question,False
+paper_cb14abff-5089-45_1777012005,Milan,2026-04-26,core,resolved,manual,0.14,0.28,2142.8571428571427,0.34,428.5714,True,1777099803,0.9995,0.28,300.0,-128.5714,journal,False
+manual_well_2026-04-25_14c,Wellington,2026-04-25,punt,resolved,polymarket_api,0.0355,0.071,422.5352112676057,0.001,-15.0,True,1777055404,0.0985,0.071,15.0,30.0,gamma_market_id,False
+manual_tokyo_2026-04-26_20c_1777026934,Tokyo,2026-04-26,core,resolved,simmer,0.39,0.78,270.05128205128204,1.0,164.7313,True,1777180805,0.9995,0.78,105.32,-59.4113,journal,False
+paper_1f5d6880-33a6-4c_1777027948,Singapore,2026-04-25,core,resolved,manual,0.14,0.28,1428.5714285714284,0.0,-200.0,False,,0.165,0.0,-200.0,0.0,gamma_event_question,False
+paper_bd23b292-1abf-46_1777038646,Ankara,2026-04-25,core,resolved,simmer,0.2,0.4,1000.0,0.0,-200.0,True,1777120203,0.665,0.4,200.0,400.0,gamma_event_question,False
+paper_2478ad4c-db0a-4b_1777040810,Singapore,2026-04-26,core,resolved,early_exit_position_manager,0.055,0.11,3636.3636363636365,0.0135,-150.9091,False,,0.0695,0.0135,-150.9091,0.0,journal,False
+paper_27e33aec-4775-46_1777055875,Lucknow,2026-04-25,core,resolved,simmer,0.185,0.37,1081.081081081081,0.0,-200.0,False,,0.195,0.0,-200.0,0.0,gamma_event_question,False
+paper_c5d1b4d4-4081-4f_1777070282,NYC,2026-04-26,core,resolved,simmer,0.136,0.272,1470.5882352941176,0.0,-200.0,False,,0.1895,0.0,-200.0,0.0,journal,False
+paper_bea80cde-da48-46_1777098996,Paris,2026-04-27,core,resolved,polymarket_cli,0.195,0.39,1025.6410256410256,0.0,-200.0,True,1777217405,0.39,0.39,200.0,400.0,journal,False
+paper_d1210937-eb36-49_1777113023,Warsaw,2026-04-27,core,resolved,early_exit_position_manager,0.1625,0.325,1230.769231,0.195,40.0,True,1777183804,0.36,0.325,200.0,160.0,journal,False
+paper_dc2c06d1-4c1a-4e_1777127764,Shanghai,2026-04-26,core,resolved,early_exit_position_manager,0.15,0.3,666.6666666666667,0.0005,-99.6667,True,1777167005,0.465,0.3,100.0,199.6667,journal,False
+paper_6f754021-f4f2-41_1777176044,Shanghai,2026-04-27,core,resolved,early_exit_position_manager,0.355,0.71,281.69014084507046,0.0005,-99.8592,False,,0.7,0.0005,-99.8592,0.0,journal,False
+paper_96f37049-b3c5-48_1777201672,Milan,2026-04-28,core,resolved,gamma,0.535,1.0,560.7476635514018,1.0,260.7477,False,,0.9995,1.0,260.7477,0.0,journal,False
+paper_efb4170a-7527-4a_1777208108,Munich,2026-04-26,late,resolved,polymarket_cache,0.8,1.0,250.0,1.0,50.0,False,,0.9995,1.0,50.0,0.0,journal,True
+paper_95152b30-9da2-40_1777250344,Munich,2026-04-28,core,resolved,early_exit_position_manager,0.155,0.31,1935.483870967742,0.215,116.129,True,1777303805,0.535,0.31,300.0,183.871,journal,False
+paper_18813bef-df88-4b_1777250347,Seoul,2026-04-28,core,resolved,early_exit_position_manager,0.17,0.34,1176.4705882352941,0.56,458.8235,True,1777344005,0.9995,0.34,200.0,-258.8235,journal,False
+paper_63f5c80f-7641-4c_1777259357,Wellington,2026-04-27,late,resolved,manual,0.395,0.79,253.1645569620253,1.0,153.1646,True,1777259404,0.9995,0.79,100.0,-53.1646,journal,False
+paper_bc59c2fe-85ca-4c_1777270186,Singapore,2026-04-29,core,resolved,early_exit_position_manager,0.195,0.39,1025.6410256410256,0.06,-138.4615,True,1777393204,0.435,0.39,200.0,338.4615,journal,False
+paper_950befc9-3185-47_1777273526,Munich,2026-04-29,core,resolved,early_exit_position_manager,0.165,0.33,1818.181818181818,0.04,-227.2727,True,1777380603,0.46,0.33,300.0,527.2727,journal,False
+paper_90ed1a27-6b46-4c_1777273532,Buenos Aires,2026-04-28,core,resolved,early_exit_position_manager,0.19,0.38,1052.6315789473683,0.0255,-173.1579,True,1777376404,0.5,0.38,200.0,373.1579,journal,False
+paper_fa52430b-6b1d-4f_1777273759,Shenzhen,2026-04-27,late,resolved,manual,0.8405,1.0,118.9767995240928,1.0,18.9768,False,,0.9995,1.0,18.9768,0.0,journal,False
+paper_ad0841ad-2f36-45_1777273763,Chengdu,2026-04-27,late,resolved,manual,0.943,1.0,106.04453870625663,1.0,6.0445,False,,0.9995,1.0,6.0445,0.0,journal,False
+paper_f966248d-a074-4d_1777273766,Chongqing,2026-04-27,late,resolved,manual,0.735,1.0,136.0544217687075,1.0,36.0544,False,,0.9995,1.0,36.0544,0.0,journal,False
+paper_4a12d65d-b58d-47_1777288489,Ankara,2026-04-28,core,resolved,early_exit_position_manager,0.195,0.39,952.3809523809524,0.155,-38.0952,True,1777373403,0.4,0.39,185.7143,223.8095,journal,False
+paper_114c72de-5321-42_1777288492,Seoul,2026-04-29,core,resolved,early_exit_position_manager,0.195,0.39,1025.6410256410256,0.34,148.7179,True,1777431008,0.9995,0.39,200.0,51.2821,journal,False
+paper_dfbc96b7-061b-4e_1777291763,Tel Aviv,2026-04-27,late,resolved,gamma,0.885,1.0,112.99435028248587,1.0,12.9944,False,,0.9995,1.0,12.9944,0.0,journal,False
+paper_10dfd409-b6f1-46_1777295177,Paris,2026-04-28,core,resolved,early_exit_position_manager,0.17,0.34,1176.4705882352941,0.21,47.0588,True,1777327806,0.495,0.34,200.0,152.9412,journal,False
+paper_dd2b3c0b-dbdc-42_1777295179,Toronto,2026-04-29,core,resolved,early_exit_position_manager,0.195,0.39,1025.6410256410256,0.39,200.0,True,1777394404,0.45,0.39,200.0,0.0,journal,False
+paper_012542a6-af64-42_1777300335,London,2026-04-27,late,resolved,early_exit_position_manager,0.52,1.0,240.3846153846154,0.52,0.0,False,,0.9995,0.52,0.0,0.0,journal,False
+paper_f0a443c3-2593-4e_1777313373,Buenos Aires,2026-04-27,late,resolved,early_exit_position_manager,0.615,1.0,203.2520325203252,0.615,0.0,False,,0.75,0.615,0.0,0.0,journal,False
+paper_6e14b157-da59-4c_1777316996,Sao Paulo,2026-04-28,core,resolved,early_exit_position_manager,0.47,0.94,425.53191489361706,0.0005,-199.7872,False,,0.5,0.0005,-199.7872,0.0,journal,False
+paper_68f84619-dfa0-42_1777317232,NYC,2026-04-27,late,resolved,gamma,0.555,1.0,405.405405,1.0,180.4054,False,,0.9995,1.0,180.4054,0.0,journal,True
+paper_617c3ce8-f75e-4d_1777317238,Toronto,2026-04-27,late,resolved,early_exit_position_manager,0.68,1.0,183.8235294117647,0.68,0.0,False,,0.9995,0.68,0.0,0.0,journal,False
+paper_84203312-73e6-40_1777320562,Chicago,2026-04-27,late,resolved,early_exit_position_manager,0.3,0.6,416.6666666666667,0.3,0.0,False,,0.355,0.3,0.0,0.0,journal,False
+paper_3808cd87-f29e-47_1777360308,Warsaw,2026-04-29,core,resolved,early_exit_position_manager,0.17,0.34,1935.483870967742,0.031,-269.0323,True,1777380603,0.465,0.34,329.0323,598.0646,journal,False
+paper_753848cd-2fed-47_1777360522,Singapore,2026-04-28,late,resolved,gamma,0.885,1.0,141.24293785310735,1.0,16.2429,False,,0.9995,1.0,16.2429,0.0,journal,False
+paper_f93baf43-0780-4c_1777360529,Wuhan,2026-04-28,late,resolved,gamma,0.787402,1.0,171.449891,1.0,36.4499,False,,0.9995,1.0,36.4499,0.0,journal,True
+paper_56769162-ee44-41_1777381763,Warsaw,2026-04-28,late,resolved,manual,0.69,1.0,181.1594202898551,1.0,56.1594,False,,0.9995,1.0,56.1594,0.0,journal,False
+paper_bf6ef547-7952-45_1777386767,London,2026-04-28,late,resolved,manual,0.865,1.0,144.50867052023122,1.0,19.5087,False,,0.9995,1.0,19.5087,0.0,journal,False
+paper_f0adac17-9d46-4a_1777438108,Chicago,2026-05-01,core,resolved,gamma,0.495,0.99,388.34951456310677,1.0,196.1165,True,1777660207,0.9995,0.99,192.233,-3.8835,journal,False
+paper_eb4e9f83-accb-44_1777438111,Sao Paulo,2026-05-01,core,resolved,early_exit_position_manager,0.195,0.39,1025.6410256410256,0.56,374.359,True,1777572013,0.9995,0.39,200.0,-174.359,journal,False
+paper_bd55c56b-156a-4c_1777446027,Singapore,2026-04-29,late,resolved,early_exit_position_manager,0.875,1.0,142.85714285714286,0.947,10.2857,False,,0.9995,0.947,10.2857,0.0,journal,False
+paper_6b1b1094-9511-44_1777446033,Beijing,2026-04-29,late,resolved,early_exit_position_manager,0.46499999999999997,0.93,268.81720430107526,0.0005,-124.8656,False,,0.0005,0.0005,-124.8656,0.0,journal,False
+paper_faaac345-313a-4f_1777446037,Chongqing,2026-04-29,late,resolved,early_exit_position_manager,0.45999999999999996,0.92,271.7391304347826,0.725,72.0109,True,1777449005,0.9995,0.92,125.0,52.9891,journal,False
+paper_2624e005-5ccb-46_1777452530,Houston,2026-05-01,core,resolved,manual,0.415,0.83,722.8915662650603,1.0,422.8916,True,1777603205,0.9995,0.83,300.0,-122.8916,journal,False
+paper_182399f6-9195-48_1777452532,Austin,2026-04-30,core,resolved,gamma,0.509332,1.0,584.719713,1.0,286.9033,False,,0.9995,1.0,286.9033,0.0,journal,True
+paper_352d2a82-0677-4b_1777452535,Munich,2026-05-01,core,resolved,early_exit_position_manager,0.2,0.4,1500.0,0.11,-135.0,False,,0.305,0.11,-135.0,0.0,journal,False
+paper_cb7fb1e2-1765-4a_1777452727,Tokyo,2026-04-30,core,resolved,gamma,0.185,0.37,540.5405405405405,0.0,-100.0,False,,0.31,0.0,-100.0,0.0,journal,False
+paper_7a61c1ae-53d8-4d_1777464018,Ankara,2026-04-29,late,resolved,early_exit_position_manager,0.635,1.0,196.8503937007874,0.62,-2.9528,False,,0.9995,0.62,-2.9528,0.0,journal,False
+paper_5ab736b0-b0d0-4b_1777467213,Milan,2026-05-01,core,resolved,early_exit_position_manager,0.195,0.39,1538.4615384615383,0.16,-53.8462,False,,0.385,0.16,-53.8462,0.0,journal,False
+paper_42cdf9d5-3517-4e_1777467616,Munich,2026-04-29,late,resolved,early_exit_position_manager,0.245,0.49,510.2040816326531,0.23,-7.6531,False,,0.38,0.23,-7.6531,0.0,journal,False
+paper_b86faa65-d076-4d_1777467621,Milan,2026-04-29,late,resolved,early_exit_position_manager,0.225,0.45,555.5555555555555,0.225,0.0,False,,0.19,0.225,0.0,0.0,journal,False
+paper_9d8d276b-6dde-4c_1777467625,Warsaw,2026-04-29,late,resolved,early_exit_position_manager,0.515,1.0,242.71844660194174,0.51,-1.2136,False,,0.9695,0.51,-1.2136,0.0,journal,False
+paper_9ee68d33-442e-43_1777508281,Toronto,2026-04-30,core,resolved,early_exit_position_manager,0.165,0.33,1212.121212121212,0.425,315.1515,True,1777549805,0.9995,0.33,200.0,-115.1515,journal,False
+paper_9fdddf9d-50c8-4e_1777531440,Milan,2026-05-02,core,resolved,early_exit_position_manager,0.170932,0.341864,2340.116279,0.0005,-398.8307,True,1777569019,0.375,0.341864,400.0008,798.8315,journal,True
+paper_23ae4650-0f2c-4b_1777531444,Paris,2026-05-01,core,resolved,early_exit_position_manager,0.175,0.35,1081.081081081081,0.0005,-188.6486,True,1777569605,0.36,0.35,189.1892,377.8378,journal,False
+paper_6e5a1b13-07fa-40_1777531446,Warsaw,2026-05-02,core,resolved,early_exit_position_manager,0.195,0.39,1111.111111111111,0.145,-55.5556,False,,0.345,0.145,-55.5556,0.0,journal,False
+paper_832c766c-1283-47_1777532431,Shanghai,2026-04-30,late,resolved,early_exit_position_manager,0.85,1.0,147.05882352941177,0.9495,14.6324,False,,0.9995,0.9495,14.6324,0.0,journal,False
+paper_64f1ba6a-c396-48_1777532444,Chongqing,2026-04-30,late,resolved,early_exit_position_manager,0.295,0.59,423.7288135593221,0.85,235.1695,True,1777533004,0.89,0.59,125.0,-110.1695,journal,False
+paper_807bf140-95c4-46_1777579345,Chicago,2026-04-30,late,resolved,gamma,0.835,1.0,149.7005988023952,1.0,24.7006,False,,0.9995,1.0,24.7006,0.0,journal,False
+paper_b3cae9b3-5900-42_1777584480,Wellington,2026-05-02,core,resolved,early_exit_position_manager,0.16499999999999998,0.33,1250.0,0.05,-143.75,False,,0.19,0.05,-143.75,0.0,journal,False
+paper_cd10573e-b632-4f_1777584581,Toronto,2026-05-01,core,resolved,early_exit_position_manager,0.17,0.34,816.3265306122449,0.25,65.3061,True,1777646405,0.555,0.34,138.7755,73.4694,journal,False
+paper_2ade08fb-a732-40_1777584660,Warsaw,2026-05-01,core,resolved,early_exit_position_manager,0.16,0.32,1621.6216216216217,0.365,332.4324,True,1777591204,0.445,0.32,259.4595,-72.9729,journal,False
+paper_1a2dc196-cb68-41_1777613046,Hong Kong,2026-05-02,core,resolved,early_exit_position_manager,0.16,0.32,1379.3103448275863,0.48,441.3793,True,1777695008,0.9995,0.32,220.6897,-220.6896,journal,False
+paper_c6e07fa7-a856-46_1777671199,Warsaw,2026-05-03,core,resolved,early_exit_position_manager,0.185,0.37,1621.6216216216217,0.059,-204.3243,False,,0.263,0.059,-204.3243,0.0,journal,False
+paper_d9641618-3b71-45_1777671202,Toronto,2026-05-02,core,resolved,early_exit_position_manager,0.2,0.4,1000.0,0.05,-150.0,False,,0.265,0.05,-150.0,0.0,journal,False
+paper_4ceae1e1-5673-48_1777685536,Ankara,2026-05-03,core,resolved,gamma,0.325,0.65,615.3846153846154,1.0,415.3846,True,1777795204,0.9995,0.65,200.0,-215.3846,journal,False
+paper_5fd28a62-841b-44_1777685537,Buenos Aires,2026-05-03,core,resolved,early_exit_position_manager,0.19,0.38,1052.6315789473683,0.57,400.0,True,1777825804,0.9995,0.38,200.0,-200.0,journal,False
+paper_89607977-ab6d-41_1777699832,Shanghai,2026-05-03,core,resolved,early_exit_position_manager,0.155,0.31,645.1612903225806,0.015,-90.3226,True,1777782005,0.435,0.31,100.0,190.3226,journal,False
+paper_fe50b431-d2d0-45_1777714529,Chongqing,2026-05-04,core,resolved,early_exit_position_manager,0.185,0.37,1081.081081081081,0.045,-151.3514,False,,0.36,0.045,-151.3514,0.0,journal,False
+paper_e46317b5-2c4a-4d_1777714531,Wellington,2026-05-04,core,resolved,early_exit_position_manager,0.2,0.4,1000.0,0.0005,-199.5,False,,0.285,0.0005,-199.5,0.0,journal,False
+paper_5ac134f3-3584-41_1777757777,Sao Paulo,2026-05-04,core,resolved,early_exit_position_manager,0.19,0.38,1052.6315789473683,0.39,210.5263,True,1777879803,0.595,0.38,200.0,-10.5263,journal,False
+paper_9b217cac-6511-41_1777757779,Seoul,2026-05-04,core,resolved,early_exit_position_manager,0.195,0.39,1025.6410256410256,0.055,-143.5897,False,,0.225,0.055,-143.5897,0.0,journal,False
+paper_ba884967-132e-4c_1777759439,Los Angeles,2026-05-02,late,resolved,gamma,0.825,1.0,151.51515151515153,1.0,26.5152,False,,0.9995,1.0,26.5152,0.0,journal,False
+paper_edab5cb4-a812-41_1777786258,Paris,2026-05-04,core,resolved,early_exit_position_manager,0.155,0.31,1290.3225806451612,0.0005,-199.3548,True,1777826407,0.465,0.31,200.0,399.3548,journal,False
+paper_7ecb2a10-bc6e-45_1777815674,Singapore,2026-05-04,core,resolved,early_exit_position_manager,0.175,0.35,1142.857142857143,0.0145,-183.4286,True,1777819206,0.54,0.35,200.0,383.4286,journal,False
+paper_9df07245-37d5-40_1777844240,Milan,2026-05-04,core,resolved,early_exit_position_manager,0.1495,0.299,2006.6889632107025,0.171,43.1438,True,1777901404,0.9995,0.299,300.0,256.8562,journal,False
+paper_0b53a7c8-7041-4c_1777844243,Wellington,2026-05-05,core,resolved,early_exit_position_manager,0.16,0.32,1250.0,0.28,150.0,True,1777930804,0.475,0.32,200.0,50.0,journal,False
+paper_d8f333d0-a063-4d_1777845850,Los Angeles,2026-05-03,late,resolved,gamma,0.895,1.0,139.66480446927375,1.0,14.6648,False,,0.9995,1.0,14.6648,0.0,journal,False
+paper_d2790761-6131-42_1777930830,Warsaw,2026-05-06,core,resolved,early_exit_position_manager,0.49,0.98,612.2448979591837,0.43,-36.7347,False,,0.605,0.43,-36.7347,0.0,journal,False
+paper_76d6a9ff-5bfa-47_1778052961,Houston,2026-05-06,punt,resolved,early_exit_position_manager,0.115,0.23,130.43478260869566,0.029,-11.2174,False,,0.1,0.029,-11.2174,0.0,journal,False
+paper_dfeb70e4-9274-42_1778098520,Houston,2026-05-06,late,resolved,gamma,0.445,0.89,505.617978,1.0,280.618,True,1778100003,0.9995,0.89,225.0,-55.618,journal,True
+paper_895d5554-a892-42_1778105201,Seattle,2026-05-06,late,resolved,manual,0.384,0.768,585.9375,1.0,360.9375,True,1778105404,0.9995,0.768,225.0,-135.9375,journal,True
+paper_38abf7ec-031d-48_1778105204,San Francisco,2026-05-06,late,resolved,polymarket_cache,0.345,0.69,652.173913,1.0,427.1739,True,1778105404,0.9995,0.69,225.0,-202.1739,journal,True
+paper_2d5d68aa-6d34-4c_1778166385,Paris,2026-05-08,core,resolved,gamma,0.325,0.65,597.014925,1.0,402.9851,True,1778247603,0.9995,0.65,194.0299,-208.9552,journal,False
+paper_5a356cb1-4a94-48_1778166393,Seoul,2026-05-09,core,open,,0.355,0.71,547.945205,,,True,1778299085,0.71,0.71,194.5205,,journal,False
+paper_59fe23ab-f8e3-46_1778166398,Tokyo,2026-05-09,core,open,,0.375,0.75,259.74026,,,False,,0.54,0.49,29.8701,,journal,False
+paper_b5e61dd9-8dc4-41_1778166408,Shanghai,2026-05-08,core,resolved,early_exit_position_manager,0.395,0.79,246.91358,0.055,-83.9506,False,,0.455,0.055,-83.9506,0.0,journal,False
+paper_f24821a0-7823-4a_1778166417,Beijing,2026-05-08,core,resolved,gamma,0.385,0.77,253.164557,1.0,155.6962,True,1778221805,0.9995,0.77,97.4684,-58.2278,journal,False
+paper_2167c555-9cbc-46_1778171739,Munich,2026-05-09,core,resolved,early_exit_position_manager,0.31,0.62,967.741935483871,0.07,-232.2581,False,,0.31,0.07,-232.2581,0.0,journal,False
+paper_52e1c17e-b2b8-4b_1778184040,Austin,2026-05-07,late,resolved,gamma,0.2865,0.573,785.340314,0.0,-225.0,False,,0.5685,0.0,-225.0,0.0,journal,True
+paper_9c3a0f5c-406a-43_1778186711,Shanghai,2026-05-09,core,open,,0.30000000000000004,0.6,333.33333333333326,,,False,,0.45,0.315,5.0,,journal,False
+paper_3f727cf2-0937-4d_1778186713,Ankara,2026-05-09,core,open,,0.365,0.73,547.945205479452,,,False,,0.575,0.575,115.0685,,journal,False
+paper_580c53be-1701-40_1778231101,Tel Aviv,2026-05-10,core,open,,0.305,0.61,1016.949152542373,,,False,,0.365,0.365,61.0169,,journal,False
+paper_9fe214cf-e859-42_1778231103,Tel Aviv,2026-05-09,core,open,,0.365,0.73,869.5652173913044,,,False,,0.495,0.495,113.0435,,journal,False
+paper_b3f912f7-16b1-4c_1778245924,Tokyo,2026-05-10,core,open,,0.335,0.67,298.5074626865671,,,False,,0.335,0.24,-28.3582,,journal,False
+paper_be0f8cac-7660-45_1778245932,Ankara,2026-05-10,core,open,,0.335,0.67,597.0149253731342,,,False,,0.36,0.355,11.9403,,journal,False
+paper_d9fd8f27-c6cf-49_1778288983,Warsaw,2026-05-10,core,open,,0.31,0.62,967.741935483871,,,False,,0.315,0.315,4.8387,,journal,False
+paper_5ec4e68a-f62c-49_1778288984,Toronto,2026-05-10,core,open,,0.33,0.66,606.060606060606,,,False,,0.33,0.31,-12.1212,,journal,False

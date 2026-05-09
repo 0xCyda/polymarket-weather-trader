@@ -2,6 +2,15 @@
 
 All notable changes to the Polymarket Weather Trader. Newest first.
 
+## 2026-05-07
+
+### Added
+- Added a config-gated CORE carve-out for strong exact buckets in the 30-39¢ band when edge is below the normal floor but still clears a small minimum edge. The trade reasoning and signal payload now tag these entries for later audit. (`weather_trader.py`, `tests/test_exact_core_rules.py`)
+
+### Changed
+- CORE skip logging now distinguishes near-miss exact-bucket carve-out candidates from generic low-edge skips, so the 30-39¢ exact pocket can be audited without mixing it into the rest of the sludge. (`weather_trader.py`)
+- The dashboard now gives carve-out trades their own `CARVEOUT` tag next to `CORE`, and the paper journal persists that flag on new entries instead of making us guess later. (`dashboard.py`, `paper_journal.py`, `weather_trader.py`)
+
 ## 2026-05-05
 
 ### Changed

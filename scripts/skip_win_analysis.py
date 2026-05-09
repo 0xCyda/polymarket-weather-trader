@@ -29,7 +29,7 @@ from paper_journal import (  # noqa: E402
 FORECAST_LOG = "/home/brandon/projects/polymarket-weather-trader/data/forecast_history.jsonl"
 SKIP_LOG = "/home/brandon/projects/polymarket-weather-trader/scripts/data/skip_events.jsonl"
 PAPER = "/home/brandon/projects/polymarket-weather-trader/data/paper_trades.jsonl"
-DATES = {"2026-04-24", "2026-04-25", "2026-04-26"}
+DATES = {"2026-04-27", "2026-04-28", "2026-04-29", "2026-04-30", "2026-05-01", "2026-05-02"}
 GAMMA = "https://gamma-api.polymarket.com/events"
 TODAY = date.today()
 

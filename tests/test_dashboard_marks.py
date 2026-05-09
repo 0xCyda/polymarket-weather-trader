@@ -54,7 +54,7 @@ class TestDashboardMarks(unittest.TestCase):
     @patch.object(dashboard, "_load_trades_jsonl", return_value=[
         {"status": "resolved", "pnl": 12.34},
         {"status": "resolved", "pnl": -2.34},
-        {"status": "open", "pnl": 999},
+        {"status": "open", "pnl": 999, "realized_pnl": 8.0},
     ])
     def test_portfolio_stats_counts_missing_marks(self, _mock_load):
         stats = dashboard._get_portfolio_stats([
@@ -63,7 +63,7 @@ class TestDashboardMarks(unittest.TestCase):
             {"upnl": 0.0},
         ])
 
-        self.assertEqual(stats["realized_pnl"], 10.0)
+        self.assertEqual(stats["realized_pnl"], 18.0)
         self.assertEqual(stats["unrealized_pnl"], 10.0)
         self.assertEqual(stats["marked_positions"], 2)
         self.assertEqual(stats["missing_marks"], 1)

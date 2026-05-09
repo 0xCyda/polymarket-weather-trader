@@ -1,0 +1,17 @@
+{
+  "generated_at_utc": "2026-05-09T03:58:25.396967Z",
+  "rows_in_journal": 114,
+  "audited_rows": 113,
+  "unresolved_rows": 1,
+  "hit_2x_count": 48,
+  "hit_2x_rate_pct": 42.5,
+  "actual_realized_resolved_pnl": 2927.4,
+  "hypo_resolved_only_pnl": 6359.23,
+  "hypo_total_including_open_marks": 6854.04,
+  "unresolved": [
+    {
+      "trade_id": "paper_1ae40ead-eeb2-4e_1777887292",
+      "reason": "missing_yes_token"
+    }
+  ]
+}

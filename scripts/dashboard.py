@@ -2102,7 +2102,12 @@ def _get_portfolio_stats(enriched_positions: list[dict]) -> dict:
     """Compute balance, realized, unrealized P&L using pre-enriched positions."""
     trades = _load_trades_jsonl(PAPER_TRADES)
     resolved = [t for t in trades if t.get("status") == "resolved"]
-    realized = round(sum(float(t.get("pnl") or 0) for t in resolved), 4)
+    open_trades = [t for t in trades if t.get("status") == "open"]
+    realized = round(
+        sum(float(t.get("pnl") or 0) for t in resolved)
+        + sum(float(t.get("realized_pnl") or 0) for t in open_trades),
+        4,
+    )
     marked = [p for p in enriched_positions if p.get("upnl") is not None]
     missing_marks = max(0, len(enriched_positions) - len(marked))
     unrealized = round(sum(float(p.get("upnl") or 0) for p in marked), 2)

@@ -983,6 +983,13 @@ def _compute_pnl(side: str, entry: float, exit_price: float, shares: float) -> f
     return ((1.0 - exit_price) - entry) * shares
 
 
+def _partial_realized_pnl(trade: dict) -> float:
+    try:
+        return round(float(trade.get("realized_pnl") or 0.0), 4)
+    except Exception:
+        return 0.0
+
+
 def update_resolved_trades() -> list:
     """
     Check all open paper trades. Settlement flow:
@@ -1055,7 +1062,7 @@ def update_resolved_trades() -> list:
         side = trade.get("side", "yes")
         entry = trade.get("entry_price", 0)
         shares = trade.get("shares", 0)
-        pnl = _compute_pnl(side, entry, exit_price, shares)
+        pnl = _partial_realized_pnl(trade) + _compute_pnl(side, entry, exit_price, shares)
 
         old_status = trade.get("status")
         trade["status"] = "resolved"
@@ -1099,10 +1106,13 @@ def manual_resolve(trade_id: str, outcome: str) -> dict | None:
     target["status"] = "resolved"
     target["outcome"] = outcome
     target["exit_price"] = exit_price
-    target["pnl"] = round(_compute_pnl(
-        target.get("side", "yes"), target.get("entry_price", 0),
-        exit_price, target.get("shares", 0)
-    ), 4)
+    target["pnl"] = round(
+        _partial_realized_pnl(target) + _compute_pnl(
+            target.get("side", "yes"), target.get("entry_price", 0),
+            exit_price, target.get("shares", 0)
+        ),
+        4,
+    )
     target["resolved_at"] = datetime.now(timezone.utc).isoformat()
     target["resolution_source"] = "manual"
     # Populate actual_temp at resolution time so the dashboard / loss log
@@ -1239,6 +1249,8 @@ def get_stats() -> dict:
     wins = [t for t in resolved if t.get("pnl", 0) > 0]
     losses = [t for t in resolved if t.get("pnl", 0) < 0]
     pnls = [t.get("pnl", 0) for t in resolved]
+    open_realized = sum(_partial_realized_pnl(t) for t in open_trades)
+    total_pnl = round(sum(pnls) + open_realized, 4)
 
     return {
         "total_trades": len(trades),
@@ -1247,7 +1259,7 @@ def get_stats() -> dict:
         "wins": len(wins),
         "losses": len(losses),
         "win_rate": round(len(wins) / (len(wins) + len(losses)) * 100, 1) if (wins or losses) else None,
-        "total_pnl": round(sum(pnls), 4),
+        "total_pnl": total_pnl,
         "avg_pnl": round(sum(pnls) / len(pnls), 4) if pnls else 0.0,
         "best_trade": max(pnls) if pnls else None,
         "worst_trade": min(pnls) if pnls else None,

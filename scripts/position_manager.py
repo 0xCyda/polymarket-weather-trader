@@ -89,6 +89,9 @@ EXACT_CORE_WEAK_EXIT_START_HOUR = int(_cfg.get("position_exact_core_weak_exit_st
 EXACT_CORE_TRAIL_ARM_MULT = float(_cfg.get("position_exact_core_trail_arm_mult", 2.0))
 EXACT_CORE_TRAIL_DROP_FRAC = float(_cfg.get("position_exact_core_trail_drop_frac", 0.30))
 EXACT_CORE_TRAIL_START_HOUR = int(_cfg.get("position_exact_core_trail_start_hour", 10))
+TAKE_PROFIT_TRIGGER_MULT = float(_cfg.get("position_take_profit_trigger_mult", 1.90))
+TAKE_PROFIT_SELL_FRAC = float(_cfg.get("position_take_profit_sell_frac", 0.75))
+TAKE_PROFIT_TRAIL_DROP_FRAC = float(_cfg.get("position_take_profit_trail_drop_frac", 0.30))
 LATE_PROJECTED_EXIT_COOLDOWN_MIN = 45.0
 
 ACTIONS_LOG = JOURNAL_FILE.parent / "manager_actions.jsonl"
@@ -214,6 +217,21 @@ def _last_logged_price(trade_id: str, before_ts: datetime | None = None) -> floa
 def _peak_logged_price(trade_id: str, before_ts: datetime | None = None) -> float | None:
     prices = _logged_prices(trade_id, before_ts=before_ts)
     return max(prices) if prices else None
+
+
+def _partial_realized_pnl(trade: dict) -> float:
+    try:
+        return round(float(trade.get("realized_pnl") or 0.0), 4)
+    except Exception:
+        return 0.0
+
+
+def _has_partial_take_profit(trade: dict) -> bool:
+    for row in trade.get("partial_exits") or []:
+        reason = str(row.get("reason") or "")
+        if "take_profit_1p9x" in reason:
+            return True
+    return bool(trade.get("tp_1_9x_taken_at"))
 
 
 def _weather_support_weakening(running_edge_c: float, projected_c: float, bucket: tuple, confidence: float) -> bool:
@@ -447,6 +465,40 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
     except Exception:
         entry_price = 0.0
     bucket_kind = _bucket_kind(bucket)
+    take_profit_trigger = entry_price * TAKE_PROFIT_TRIGGER_MULT if entry_price > 0 else None
+    take_profit_taken = _has_partial_take_profit(trade)
+
+    if (
+        cur_price is not None
+        and (trade.get("strategy") or "").lower() == "core"
+        and not take_profit_taken
+        and take_profit_trigger is not None
+        and cur_price >= take_profit_trigger
+    ):
+        out["action"] = "exit"
+        out["partial_exit_frac"] = TAKE_PROFIT_SELL_FRAC
+        out["take_profit_price"] = round(cur_price, 4)
+        out["reason"] = (
+            f"take_profit_1p9x_75pct "
+            f"(price=${cur_price:.3f} >= trigger=${take_profit_trigger:.3f}, "
+            f"sell_frac={TAKE_PROFIT_SELL_FRAC:.0%})"
+        )
+        return out
+
+    if cur_price is not None and take_profit_taken:
+        peak_seen = _peak_logged_price(str(trade.get("trade_id") or ""), before_ts=now_utc)
+        if peak_seen is not None:
+            out["peak_seen_price"] = round(peak_seen, 4)
+            trail_floor = peak_seen * (1.0 - TAKE_PROFIT_TRAIL_DROP_FRAC)
+            out["trail_floor_price"] = round(trail_floor, 4)
+            if cur_price <= trail_floor:
+                out["action"] = "exit"
+                out["reason"] = (
+                    f"runner_trailing_stop "
+                    f"(peak=${peak_seen:.3f}, price=${cur_price:.3f} <= trail=${trail_floor:.3f}, "
+                    f"drop={TAKE_PROFIT_TRAIL_DROP_FRAC:.0%})"
+                )
+                return out
 
     # Exact-degree CORE trailing stop, including low-edge carveout entries: once
     # the trade has proven itself by trading up to a healthy multiple of entry,
@@ -636,10 +688,10 @@ def _execute_exit(trade_id: str, current_price: float, reason: str) -> dict | No
         side = target.get("side", "yes")
         entry = float(target.get("entry_price") or 0)
         shares = float(target.get("shares") or 0)
-        pnl = round(_compute_pnl(side, entry, current_price, shares), 4)
+        realized_so_far = _partial_realized_pnl(target)
+        pnl = round(realized_so_far + _compute_pnl(side, entry, current_price, shares), 4)
         target["status"] = "resolved"
-        # Outcome proxy for early exits: "yes" if the side was winning at exit time.
-        target["outcome"] = "yes" if (side == "yes" and current_price > entry) or (side == "no" and current_price < entry) else "no"
+        target["outcome"] = "yes" if pnl > 0 else "no"
         target["exit_price"] = round(float(current_price), 4)
         target["pnl"] = pnl
         target["resolved_at"] = datetime.now(timezone.utc).isoformat()
@@ -654,6 +706,44 @@ def _execute_exit(trade_id: str, current_price: float, reason: str) -> dict | No
     if resolved and float(resolved.get("pnl") or 0) < 0:
         log_loss(resolved)
     return resolved
+
+
+def _execute_take_profit(trade_id: str, current_price: float, reason: str) -> dict | None:
+    def _mutate(target: dict) -> dict | None:
+        if target.get("status") != "open":
+            return None
+        if _has_partial_take_profit(target):
+            return None
+        side = target.get("side", "yes")
+        entry = float(target.get("entry_price") or 0)
+        shares = float(target.get("shares") or 0)
+        if shares <= 0:
+            return None
+        exit_frac = TAKE_PROFIT_SELL_FRAC
+        sold_shares = round(shares * exit_frac, 6)
+        remaining_shares = round(max(0.0, shares - sold_shares), 6)
+        if sold_shares <= 0 or remaining_shares <= 0:
+            return None
+        prev_cost = float(target.get("cost") or (entry * shares) or 0)
+        remaining_cost = round(prev_cost * (remaining_shares / shares), 4) if shares > 0 else 0.0
+        realized = round(_compute_pnl(side, entry, current_price, sold_shares), 4)
+        target["shares"] = remaining_shares
+        target["cost"] = remaining_cost
+        target["realized_pnl"] = round(_partial_realized_pnl(target) + realized, 4)
+        target["tp_1_9x_taken_at"] = datetime.now(timezone.utc).isoformat()
+        exits = target.setdefault("partial_exits", [])
+        exits.append({
+            "ts": target["tp_1_9x_taken_at"],
+            "price": round(float(current_price), 4),
+            "shares": sold_shares,
+            "remaining_shares": remaining_shares,
+            "pnl": realized,
+            "reason": reason,
+            "fraction": exit_frac,
+        })
+        return target
+
+    return update_trade_atomically(trade_id, _mutate)
 
 
 def _execute_add(trade: dict, market: dict, size_usd: float, reason: str) -> str | None:
@@ -799,6 +889,23 @@ def main() -> int:
                 _log_action(decision)
                 continue
             decision["exit_price"] = round(cur_price, 4)
+            partial_exit_frac = float(decision.get("partial_exit_frac") or 0.0)
+            if 0 < partial_exit_frac < 1:
+                pct = int(round(partial_exit_frac * 100))
+                print(f"  EXIT {pct}% {trade.get('location')} {trade.get('target_date')} @ ${cur_price:.3f}: {decision.get('reason')}")
+                if args.execute:
+                    updated = _execute_take_profit(trade.get("trade_id"), cur_price, decision.get("reason") or "")
+                    decision["applied"] = bool(updated)
+                    if updated:
+                        decision["realized_pnl"] = updated.get("realized_pnl")
+                        decision["remaining_shares"] = updated.get("shares")
+                        print(
+                            f"    → took {pct}% profit, realized=${updated.get('realized_pnl'):.2f}, "
+                            f"remaining_shares={updated.get('shares'):.1f}"
+                        )
+                n_exit += 1
+                _log_action(decision)
+                continue
             print(f"  EXIT {trade.get('location')} {trade.get('target_date')} @ ${cur_price:.3f}: {decision.get('reason')}")
             if args.execute:
                 resolved = _execute_exit(trade.get("trade_id"), cur_price, decision.get("reason") or "")

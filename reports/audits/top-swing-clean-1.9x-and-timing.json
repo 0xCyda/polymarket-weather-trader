@@ -1,0 +1,192 @@
+{
+  "clean_1_9x": {
+    "excluded_trade_ids": [
+      "paper_23ae4650-0f2c-4b_1777531444",
+      "paper_4a12d65d-b58d-47_1777288489",
+      "paper_bd23b292-1abf-46_1777038646",
+      "paper_bea80cde-da48-46_1777098996"
+    ],
+    "excluded_count": 4,
+    "resolved_all_raw": {
+      "count": 103,
+      "hit_count": 56,
+      "hit_rate_pct": 54.4,
+      "actual_pnl": 2927.4,
+      "hypo_pnl": 7719.89,
+      "delta": 4792.49,
+      "loser_flips": 20
+    },
+    "resolved_all_clean": {
+      "count": 103,
+      "hit_count": 52,
+      "hit_rate_pct": 50.5,
+      "actual_pnl": 2927.4,
+      "hypo_pnl": 6395.73,
+      "delta": 3468.33,
+      "loser_flips": 16
+    },
+    "resolved_core_raw": {
+      "count": 61,
+      "hit_count": 41,
+      "hit_rate_pct": 67.2,
+      "actual_pnl": 1143.65,
+      "hypo_pnl": 5612.76,
+      "delta": 4469.11,
+      "loser_flips": 17
+    },
+    "resolved_core_clean": {
+      "count": 61,
+      "hit_count": 37,
+      "hit_rate_pct": 60.7,
+      "actual_pnl": 1143.65,
+      "hypo_pnl": 4288.6,
+      "delta": 3144.95,
+      "loser_flips": 13
+    },
+    "all_rows_raw": {
+      "count": 113,
+      "hit_count": 57,
+      "hit_rate_pct": 50.4,
+      "actual_pnl": 2927.4,
+      "hypo_pnl": 8296.71,
+      "delta": 5369.31,
+      "loser_flips": 20
+    },
+    "all_rows_clean": {
+      "count": 113,
+      "hit_count": 53,
+      "hit_rate_pct": 46.9,
+      "actual_pnl": 2927.4,
+      "hypo_pnl": 6972.55,
+      "delta": 4045.15,
+      "loser_flips": 16
+    },
+    "all_core_raw": {
+      "count": 71,
+      "hit_count": 42,
+      "hit_rate_pct": 59.2,
+      "actual_pnl": 1143.65,
+      "hypo_pnl": 6189.58,
+      "delta": 5045.93,
+      "loser_flips": 17
+    },
+    "all_core_clean": {
+      "count": 71,
+      "hit_count": 38,
+      "hit_rate_pct": 53.5,
+      "actual_pnl": 1143.65,
+      "hypo_pnl": 4865.42,
+      "delta": 3721.77,
+      "loser_flips": 13
+    }
+  },
+  "timing_pattern": {
+    "confirmed_trade_count": 8,
+    "hour_counts_awst": {
+      "0": 2,
+      "1": 1,
+      "19": 1,
+      "20": 2,
+      "21": 1,
+      "22": 1
+    },
+    "hour_buckets_awst": {
+      "00-05": 3,
+      "06-11": 0,
+      "12-17": 0,
+      "18-23": 5
+    },
+    "avg_hours_from_entry_to_touch": 17.07,
+    "median_hours_from_entry_to_touch": 15.88,
+    "trade_timing": [
+      {
+        "trade_id": "paper_9fdddf9d-50c8-4e_1777531440",
+        "location": "Milan",
+        "target_date": "2026-05-02",
+        "confidence": "good_confirm",
+        "entry_awst": "2026-04-30T14:44:00.489836+08:00",
+        "first_touch_awst": "2026-05-01T01:10:19+08:00",
+        "first_touch_hour_awst": 1,
+        "hours_from_entry_to_touch": 10.44,
+        "cushion_pct": 9.7
+      },
+      {
+        "trade_id": "paper_3808cd87-f29e-47_1777360308",
+        "location": "Warsaw",
+        "target_date": "2026-04-29",
+        "confidence": "strong_confirm",
+        "entry_awst": "2026-04-28T15:11:48.207199+08:00",
+        "first_touch_awst": "2026-04-28T20:50:03+08:00",
+        "first_touch_hour_awst": 20,
+        "hours_from_entry_to_touch": 5.64,
+        "cushion_pct": 36.8
+      },
+      {
+        "trade_id": "paper_950befc9-3185-47_1777273526",
+        "location": "Munich",
+        "target_date": "2026-04-29",
+        "confidence": "strong_confirm",
+        "entry_awst": "2026-04-27T15:05:26.435986+08:00",
+        "first_touch_awst": "2026-04-28T20:50:03+08:00",
+        "first_touch_hour_awst": 20,
+        "hours_from_entry_to_touch": 29.74,
+        "cushion_pct": 39.4
+      },
+      {
+        "trade_id": "paper_edab5cb4-a812-41_1777786258",
+        "location": "Paris",
+        "target_date": "2026-05-04",
+        "confidence": "strong_confirm",
+        "entry_awst": "2026-05-03T13:30:58.278994+08:00",
+        "first_touch_awst": "2026-05-04T00:40:07+08:00",
+        "first_touch_hour_awst": 0,
+        "hours_from_entry_to_touch": 11.15,
+        "cushion_pct": 50.0
+      },
+      {
+        "trade_id": "paper_7ecb2a10-bc6e-45_1777815674",
+        "location": "Singapore",
+        "target_date": "2026-05-04",
+        "confidence": "strong_confirm",
+        "entry_awst": "2026-05-03T21:41:14.055692+08:00",
+        "first_touch_awst": "2026-05-03T22:40:06+08:00",
+        "first_touch_hour_awst": 22,
+        "hours_from_entry_to_touch": 0.98,
+        "cushion_pct": 54.3
+      },
+      {
+        "trade_id": "paper_90ed1a27-6b46-4c_1777273532",
+        "location": "Buenos Aires",
+        "target_date": "2026-04-28",
+        "confidence": "strong_confirm",
+        "entry_awst": "2026-04-27T15:05:32.544277+08:00",
+        "first_touch_awst": "2026-04-28T19:40:04+08:00",
+        "first_touch_hour_awst": 19,
+        "hours_from_entry_to_touch": 28.58,
+        "cushion_pct": 31.6
+      },
+      {
+        "trade_id": "paper_bc59c2fe-85ca-4c_1777270186",
+        "location": "Singapore",
+        "target_date": "2026-04-29",
+        "confidence": "good_confirm",
+        "entry_awst": "2026-04-27T14:09:46.680346+08:00",
+        "first_touch_awst": "2026-04-29T00:20:04+08:00",
+        "first_touch_hour_awst": 0,
+        "hours_from_entry_to_touch": 34.17,
+        "cushion_pct": 11.5
+      },
+      {
+        "trade_id": "paper_9df07245-37d5-40_1777844240",
+        "location": "Milan",
+        "target_date": "2026-05-04",
+        "confidence": "good_confirm",
+        "entry_awst": "2026-05-04T05:37:20.668798+08:00",
+        "first_touch_awst": "2026-05-04T21:30:04+08:00",
+        "first_touch_hour_awst": 21,
+        "hours_from_entry_to_touch": 15.88,
+        "cushion_pct": 6.7
+      }
+    ]
+  }
+}

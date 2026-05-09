@@ -1,0 +1,514 @@
+{
+  "summary": {
+    "checked": 12,
+    "strong_confirm": 5,
+    "good_confirm": 3,
+    "borderline_sample_hit": 3,
+    "no_hit_found": 1
+  },
+  "trades": [
+    {
+      "trade_id": "paper_9fdddf9d-50c8-4e_1777531440",
+      "location": "Milan",
+      "target_date": "2026-05-02",
+      "entry_price": 0.170932,
+      "tp_price": 0.341864,
+      "actual_pnl": -398.8307,
+      "hypo_pnl": 400.0008,
+      "delta": 798.8315,
+      "max_price": 0.375,
+      "max_price_awst": "2026-05-01T15:20:04+08:00",
+      "first_touch_price": 0.345,
+      "first_touch_awst": "2026-05-01T01:10:19+08:00",
+      "cushion_abs": 0.0331,
+      "cushion_pct": 9.7,
+      "confidence": "good_confirm",
+      "snippet": [
+        {
+          "awst": "2026-05-01 00:50:06",
+          "p": 0.335
+        },
+        {
+          "awst": "2026-05-01 01:00:10",
+          "p": 0.335
+        },
+        {
+          "awst": "2026-05-01 01:10:19",
+          "p": 0.345
+        },
+        {
+          "awst": "2026-05-01 01:20:07",
+          "p": 0.325
+        },
+        {
+          "awst": "2026-05-01 01:30:05",
+          "p": 0.33
+        },
+        {
+          "awst": "2026-05-01 01:40:08",
+          "p": 0.34
+        }
+      ]
+    },
+    {
+      "trade_id": "paper_3808cd87-f29e-47_1777360308",
+      "location": "Warsaw",
+      "target_date": "2026-04-29",
+      "entry_price": 0.17,
+      "tp_price": 0.34,
+      "actual_pnl": -269.0323,
+      "hypo_pnl": 329.0323,
+      "delta": 598.0646,
+      "max_price": 0.465,
+      "max_price_awst": "2026-04-28T20:50:03+08:00",
+      "first_touch_price": 0.465,
+      "first_touch_awst": "2026-04-28T20:50:03+08:00",
+      "cushion_abs": 0.125,
+      "cushion_pct": 36.8,
+      "confidence": "strong_confirm",
+      "snippet": [
+        {
+          "awst": "2026-04-28 20:20:03",
+          "p": 0.1
+        },
+        {
+          "awst": "2026-04-28 20:30:05",
+          "p": 0.1
+        },
+        {
+          "awst": "2026-04-28 20:40:04",
+          "p": 0.1
+        },
+        {
+          "awst": "2026-04-28 20:50:03",
+          "p": 0.465
+        },
+        {
+          "awst": "2026-04-28 21:00:04",
+          "p": 0.46
+        },
+        {
+          "awst": "2026-04-28 21:10:03",
+          "p": 0.29
+        },
+        {
+          "awst": "2026-04-28 21:20:03",
+          "p": 0.165
+        }
+      ]
+    },
+    {
+      "trade_id": "paper_950befc9-3185-47_1777273526",
+      "location": "Munich",
+      "target_date": "2026-04-29",
+      "entry_price": 0.165,
+      "tp_price": 0.33,
+      "actual_pnl": -227.2727,
+      "hypo_pnl": 300.0,
+      "delta": 527.2727,
+      "max_price": 0.46,
+      "max_price_awst": "2026-04-28T20:50:03+08:00",
+      "first_touch_price": 0.46,
+      "first_touch_awst": "2026-04-28T20:50:03+08:00",
+      "cushion_abs": 0.13,
+      "cushion_pct": 39.4,
+      "confidence": "strong_confirm",
+      "snippet": [
+        {
+          "awst": "2026-04-28 20:20:03",
+          "p": 0.125
+        },
+        {
+          "awst": "2026-04-28 20:30:05",
+          "p": 0.125
+        },
+        {
+          "awst": "2026-04-28 20:40:04",
+          "p": 0.125
+        },
+        {
+          "awst": "2026-04-28 20:50:03",
+          "p": 0.46
+        },
+        {
+          "awst": "2026-04-28 21:00:04",
+          "p": 0.14
+        },
+        {
+          "awst": "2026-04-28 21:10:03",
+          "p": 0.155
+        },
+        {
+          "awst": "2026-04-28 21:20:03",
+          "p": 0.155
+        }
+      ]
+    },
+    {
+      "trade_id": "paper_bd23b292-1abf-46_1777038646",
+      "location": "Ankara",
+      "target_date": "2026-04-25",
+      "entry_price": 0.2,
+      "tp_price": 0.4,
+      "actual_pnl": -200.0,
+      "hypo_pnl": 200.0,
+      "delta": 400.0,
+      "max_price": null,
+      "max_price_awst": null,
+      "first_touch_price": null,
+      "first_touch_awst": null,
+      "cushion_abs": null,
+      "cushion_pct": null,
+      "confidence": "no_hit_found",
+      "snippet": []
+    },
+    {
+      "trade_id": "paper_bea80cde-da48-46_1777098996",
+      "location": "Paris",
+      "target_date": "2026-04-27",
+      "entry_price": 0.195,
+      "tp_price": 0.39,
+      "actual_pnl": -200.0,
+      "hypo_pnl": 200.0,
+      "delta": 400.0,
+      "max_price": 0.39,
+      "max_price_awst": "2026-04-26T23:30:05+08:00",
+      "first_touch_price": 0.39,
+      "first_touch_awst": "2026-04-26T23:30:05+08:00",
+      "cushion_abs": 0.0,
+      "cushion_pct": 0.0,
+      "confidence": "borderline_sample_hit",
+      "snippet": [
+        {
+          "awst": "2026-04-26 23:00:07",
+          "p": 0.385
+        },
+        {
+          "awst": "2026-04-26 23:10:05",
+          "p": 0.385
+        },
+        {
+          "awst": "2026-04-26 23:20:04",
+          "p": 0.385
+        },
+        {
+          "awst": "2026-04-26 23:30:05",
+          "p": 0.39
+        },
+        {
+          "awst": "2026-04-26 23:40:04",
+          "p": 0.385
+        },
+        {
+          "awst": "2026-04-26 23:50:04",
+          "p": 0.385
+        }
+      ]
+    },
+    {
+      "trade_id": "paper_edab5cb4-a812-41_1777786258",
+      "location": "Paris",
+      "target_date": "2026-05-04",
+      "entry_price": 0.155,
+      "tp_price": 0.31,
+      "actual_pnl": -199.3548,
+      "hypo_pnl": 200.0,
+      "delta": 399.3548,
+      "max_price": 0.465,
+      "max_price_awst": "2026-05-04T07:20:05+08:00",
+      "first_touch_price": 0.33,
+      "first_touch_awst": "2026-05-04T00:40:07+08:00",
+      "cushion_abs": 0.155,
+      "cushion_pct": 50.0,
+      "confidence": "strong_confirm",
+      "snippet": [
+        {
+          "awst": "2026-05-04 00:20:07",
+          "p": 0.305
+        },
+        {
+          "awst": "2026-05-04 00:30:06",
+          "p": 0.305
+        },
+        {
+          "awst": "2026-05-04 00:40:07",
+          "p": 0.33
+        },
+        {
+          "awst": "2026-05-04 00:50:18",
+          "p": 0.33
+        },
+        {
+          "awst": "2026-05-04 01:00:11",
+          "p": 0.35
+        },
+        {
+          "awst": "2026-05-04 01:10:06",
+          "p": 0.33
+        }
+      ]
+    },
+    {
+      "trade_id": "paper_7ecb2a10-bc6e-45_1777815674",
+      "location": "Singapore",
+      "target_date": "2026-05-04",
+      "entry_price": 0.175,
+      "tp_price": 0.35,
+      "actual_pnl": -183.4286,
+      "hypo_pnl": 200.0,
+      "delta": 383.4286,
+      "max_price": 0.54,
+      "max_price_awst": "2026-05-04T08:30:04+08:00",
+      "first_touch_price": 0.36,
+      "first_touch_awst": "2026-05-03T22:40:06+08:00",
+      "cushion_abs": 0.19,
+      "cushion_pct": 54.3,
+      "confidence": "strong_confirm",
+      "snippet": [
+        {
+          "awst": "2026-05-03 22:10:08",
+          "p": 0.265
+        },
+        {
+          "awst": "2026-05-03 22:20:04",
+          "p": 0.275
+        },
+        {
+          "awst": "2026-05-03 22:30:04",
+          "p": 0.25
+        },
+        {
+          "awst": "2026-05-03 22:40:06",
+          "p": 0.36
+        },
+        {
+          "awst": "2026-05-03 22:50:04",
+          "p": 0.39
+        },
+        {
+          "awst": "2026-05-03 23:00:08",
+          "p": 0.425
+        },
+        {
+          "awst": "2026-05-03 23:10:05",
+          "p": 0.445
+        }
+      ]
+    },
+    {
+      "trade_id": "paper_23ae4650-0f2c-4b_1777531444",
+      "location": "Paris",
+      "target_date": "2026-05-01",
+      "entry_price": 0.175,
+      "tp_price": 0.35,
+      "actual_pnl": -188.6486,
+      "hypo_pnl": 189.1892,
+      "delta": 377.8378,
+      "max_price": 0.36,
+      "max_price_awst": "2026-05-01T01:20:05+08:00",
+      "first_touch_price": 0.36,
+      "first_touch_awst": "2026-05-01T01:20:05+08:00",
+      "cushion_abs": 0.01,
+      "cushion_pct": 2.9,
+      "confidence": "borderline_sample_hit",
+      "snippet": [
+        {
+          "awst": "2026-05-01 01:00:05",
+          "p": 0.28
+        },
+        {
+          "awst": "2026-05-01 01:10:19",
+          "p": 0.31
+        },
+        {
+          "awst": "2026-05-01 01:20:05",
+          "p": 0.36
+        },
+        {
+          "awst": "2026-05-01 01:30:04",
+          "p": 0.355
+        },
+        {
+          "awst": "2026-05-01 01:40:07",
+          "p": 0.355
+        },
+        {
+          "awst": "2026-05-01 01:50:04",
+          "p": 0.335
+        }
+      ]
+    },
+    {
+      "trade_id": "paper_90ed1a27-6b46-4c_1777273532",
+      "location": "Buenos Aires",
+      "target_date": "2026-04-28",
+      "entry_price": 0.19,
+      "tp_price": 0.38,
+      "actual_pnl": -173.1579,
+      "hypo_pnl": 200.0,
+      "delta": 373.1579,
+      "max_price": 0.5,
+      "max_price_awst": "2026-04-28T19:40:04+08:00",
+      "first_touch_price": 0.5,
+      "first_touch_awst": "2026-04-28T19:40:04+08:00",
+      "cushion_abs": 0.12,
+      "cushion_pct": 31.6,
+      "confidence": "strong_confirm",
+      "snippet": [
+        {
+          "awst": "2026-04-28 19:10:05",
+          "p": 0.165
+        },
+        {
+          "awst": "2026-04-28 19:20:04",
+          "p": 0.165
+        },
+        {
+          "awst": "2026-04-28 19:30:04",
+          "p": 0.165
+        },
+        {
+          "awst": "2026-04-28 19:40:04",
+          "p": 0.5
+        },
+        {
+          "awst": "2026-04-28 19:50:04",
+          "p": 0.5
+        },
+        {
+          "awst": "2026-04-28 20:00:07",
+          "p": 0.5
+        }
+      ]
+    },
+    {
+      "trade_id": "paper_bc59c2fe-85ca-4c_1777270186",
+      "location": "Singapore",
+      "target_date": "2026-04-29",
+      "entry_price": 0.195,
+      "tp_price": 0.39,
+      "actual_pnl": -138.4615,
+      "hypo_pnl": 200.0,
+      "delta": 338.4615,
+      "max_price": 0.435,
+      "max_price_awst": "2026-04-29T11:30:04+08:00",
+      "first_touch_price": 0.425,
+      "first_touch_awst": "2026-04-29T00:20:04+08:00",
+      "cushion_abs": 0.045,
+      "cushion_pct": 11.5,
+      "confidence": "good_confirm",
+      "snippet": [
+        {
+          "awst": "2026-04-29 00:00:05",
+          "p": 0.235
+        },
+        {
+          "awst": "2026-04-29 00:10:04",
+          "p": 0.25
+        },
+        {
+          "awst": "2026-04-29 00:20:04",
+          "p": 0.425
+        },
+        {
+          "awst": "2026-04-29 00:30:04",
+          "p": 0.42
+        },
+        {
+          "awst": "2026-04-29 00:40:04",
+          "p": 0.38
+        },
+        {
+          "awst": "2026-04-29 00:50:03",
+          "p": 0.375
+        }
+      ]
+    },
+    {
+      "trade_id": "paper_9df07245-37d5-40_1777844240",
+      "location": "Milan",
+      "target_date": "2026-05-04",
+      "entry_price": 0.1495,
+      "tp_price": 0.299,
+      "actual_pnl": 43.1438,
+      "hypo_pnl": 300.0,
+      "delta": 256.8562,
+      "max_price": 0.319,
+      "max_price_awst": "2026-05-04T21:30:04+08:00",
+      "first_touch_price": 0.319,
+      "first_touch_awst": "2026-05-04T21:30:04+08:00",
+      "cushion_abs": 0.02,
+      "cushion_pct": 6.7,
+      "confidence": "good_confirm",
+      "snippet": [
+        {
+          "awst": "2026-05-04 21:00:06",
+          "p": 0.1085
+        },
+        {
+          "awst": "2026-05-04 21:10:04",
+          "p": 0.221
+        },
+        {
+          "awst": "2026-05-04 21:20:04",
+          "p": 0.256
+        },
+        {
+          "awst": "2026-05-04 21:30:04",
+          "p": 0.319
+        },
+        {
+          "awst": "2026-05-04 21:40:03",
+          "p": 0.2055
+        },
+        {
+          "awst": "2026-05-04 21:50:04",
+          "p": 0.247
+        }
+      ]
+    },
+    {
+      "trade_id": "paper_4a12d65d-b58d-47_1777288489",
+      "location": "Ankara",
+      "target_date": "2026-04-28",
+      "entry_price": 0.195,
+      "tp_price": 0.39,
+      "actual_pnl": -38.0952,
+      "hypo_pnl": 185.7143,
+      "delta": 223.8095,
+      "max_price": 0.4,
+      "max_price_awst": "2026-04-28T18:50:03+08:00",
+      "first_touch_price": 0.4,
+      "first_touch_awst": "2026-04-28T18:50:03+08:00",
+      "cushion_abs": 0.01,
+      "cushion_pct": 2.6,
+      "confidence": "borderline_sample_hit",
+      "snippet": [
+        {
+          "awst": "2026-04-28 18:20:04",
+          "p": 0.25
+        },
+        {
+          "awst": "2026-04-28 18:30:17",
+          "p": 0.255
+        },
+        {
+          "awst": "2026-04-28 18:40:03",
+          "p": 0.325
+        },
+        {
+          "awst": "2026-04-28 18:50:03",
+          "p": 0.4
+        },
+        {
+          "awst": "2026-04-28 19:00:03",
+          "p": 0.39
+        },
+        {
+          "awst": "2026-04-28 19:10:05",
+          "p": 0.355
+        }
+      ]
+    }
+  ]
+}

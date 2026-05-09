@@ -276,8 +276,127 @@ class TestRepricingGuard(unittest.TestCase):
         self.assertIn("repricing_guard_collapse", decision["reason"])
 
 
+class TestTakeProfitRunner(unittest.TestCase):
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=21.0)
+    def test_core_trade_triggers_partial_take_profit_at_1p9x(self, *_mocks):
+        trade = {
+            "trade_id": "tp-core-1",
+            "market_id": "m-tp-1",
+            "location": "Paris",
+            "target_date": "2026-05-04",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-05-03T05:30:58+00:00",
+            "question": "Will the highest temperature in Paris be 17°C on May 4?",
+            "forecast_temp": 62.6,
+            "metric": "high",
+            "bucket": "17°C",
+            "entry_price": 0.20,
+            "shares": 1000,
+            "cost": 200.0,
+        }
+        market = {"id": "m-tp-1", "external_price_yes": 0.39}
+        now_utc = real_datetime(2026, 5, 4, 9, 19, 0, tzinfo=timezone.utc)
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertAlmostEqual(decision["partial_exit_frac"], 0.75)
+        self.assertIn("take_profit_1p9x", decision["reason"])
+
+    @patch.object(pm, "_peak_logged_price", return_value=0.60)
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=21.0)
+    def test_runner_remainder_uses_trailing_stop_after_partial_take_profit(self, *_mocks):
+        trade = {
+            "trade_id": "tp-core-2",
+            "market_id": "m-tp-2",
+            "location": "Paris",
+            "target_date": "2026-05-04",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-05-03T05:30:58+00:00",
+            "question": "Will the highest temperature in Paris be 17°C on May 4?",
+            "forecast_temp": 62.6,
+            "metric": "high",
+            "bucket": "17°C",
+            "entry_price": 0.20,
+            "shares": 250,
+            "cost": 50.0,
+            "partial_exits": [{"reason": "take_profit_1p9x_75pct", "shares": 750, "price": 0.39}],
+            "realized_pnl": 142.5,
+        }
+        market = {"id": "m-tp-2", "external_price_yes": 0.41}
+        now_utc = real_datetime(2026, 5, 4, 10, 19, 0, tzinfo=timezone.utc)
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertIn("runner_trailing_stop", decision["reason"])
+        self.assertEqual(decision["peak_seen_price"], 0.6)
+        self.assertEqual(decision["trail_floor_price"], 0.42)
+
+    @patch.object(pm, "log_loss")
+    @patch.object(pm, "update_trade_atomically")
+    def test_execute_take_profit_reduces_position_and_tracks_realized_pnl(self, mock_update, _mock_log_loss):
+        trade = {
+            "trade_id": "tp-core-3",
+            "status": "open",
+            "side": "yes",
+            "entry_price": 0.20,
+            "shares": 1000.0,
+            "cost": 200.0,
+        }
+
+        def _run_mutator(_trade_id, mutator):
+            target = dict(trade)
+            return mutator(target)
+
+        mock_update.side_effect = _run_mutator
+
+        updated = pm._execute_take_profit("tp-core-3", current_price=0.39, reason="take_profit_1p9x")
+
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated["status"], "open")
+        self.assertAlmostEqual(updated["shares"], 250.0)
+        self.assertAlmostEqual(updated["cost"], 50.0)
+        self.assertAlmostEqual(updated["realized_pnl"], 142.5)
+        self.assertEqual(len(updated["partial_exits"]), 1)
+        self.assertAlmostEqual(updated["partial_exits"][0]["shares"], 750.0)
+        self.assertAlmostEqual(updated["partial_exits"][0]["price"], 0.39)
+
+    @patch.object(pm, "log_loss")
+    @patch.object(pm, "update_trade_atomically")
+    def test_execute_exit_includes_prior_partial_realized_pnl(self, mock_update, _mock_log_loss):
+        trade = {
+            "trade_id": "tp-core-4",
+            "status": "open",
+            "side": "yes",
+            "entry_price": 0.20,
+            "shares": 250.0,
+            "cost": 50.0,
+            "realized_pnl": 142.5,
+            "partial_exits": [{"reason": "take_profit_1p9x_75pct", "shares": 750, "price": 0.39}],
+        }
+
+        def _run_mutator(_trade_id, mutator):
+            target = dict(trade)
+            return mutator(target)
+
+        mock_update.side_effect = _run_mutator
+
+        updated = pm._execute_exit("tp-core-4", current_price=0.30, reason="runner_trailing_stop")
+
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated["status"], "resolved")
+        self.assertAlmostEqual(updated["pnl"], 167.5)
+        self.assertEqual(updated["outcome"], "yes")
+
+
 class TestLateCooldown(unittest.TestCase):
     @patch.object(pm, "datetime", FakeDateTime)
+    @patch.object(pm, "_project_eod_max_c", return_value={"projected_c": 23.0, "confidence": 0.9})
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
     @patch.object(pm, "_running_extreme", return_value=21.0)
     def test_fresh_late_trade_is_not_immediately_auto_exited(self, *_mocks):
@@ -302,6 +421,7 @@ class TestLateCooldown(unittest.TestCase):
         self.assertLess(decision["age_min"], pm.LATE_PROJECTED_EXIT_COOLDOWN_MIN)
 
     @patch.object(pm, "datetime", FakeDateTime)
+    @patch.object(pm, "_project_eod_max_c", return_value={"projected_c": 23.0, "confidence": 0.9})
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
     @patch.object(pm, "_running_extreme", return_value=21.0)
     def test_older_late_trade_can_still_auto_exit(self, *_mocks):

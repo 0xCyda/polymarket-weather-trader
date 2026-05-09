@@ -116,5 +116,19 @@ class TestBackfillActualTemps(unittest.TestCase):
             self.assertEqual(saved[0]["audit_source"], "polymarket_cache")
 
 
+class TestStatsWithPartialTakeProfit(unittest.TestCase):
+    @patch.object(pj, "_load_trades", return_value=[
+        {"status": "resolved", "pnl": 12.0},
+        {"status": "open", "realized_pnl": 8.5},
+        {"status": "open", "realized_pnl": 0.0},
+    ])
+    def test_get_stats_includes_realized_pnl_from_open_partials(self, _mock_load):
+        stats = pj.get_stats()
+
+        self.assertEqual(stats["resolved_trades"], 1)
+        self.assertEqual(stats["open_trades"], 2)
+        self.assertEqual(stats["total_pnl"], 20.5)
+
+
 if __name__ == "__main__":
     unittest.main()
