@@ -12,6 +12,7 @@ All notable changes to the Polymarket Weather Trader. Newest first.
 ### Changed
 - Dashboard portfolio stats now include realized gains from still-open runner positions, so balance and realized P&L stop understating partial exits. (`dashboard.py`, `tests/test_dashboard_marks.py`)
 - Position-manager operations were tightened from the old 30-minute cadence to an adaptive 10-minute schedule so take-profit and runner-stop checks stop arriving half an hour late to the crime scene. (runtime cron schedule)
+- Weather-station bias calibration was rerun across 618 resolved-date forecasts, refreshing `LOCATION_BIAS_C` and fixing the audit script to read current live bias settings instead of a stale hardcoded map. (`weather_trader.py`, `bias_audit.py`)
 
 ## 2026-05-07
 

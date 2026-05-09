@@ -23,6 +23,7 @@ sys.path.insert(0, "/home/brandon/projects/polymarket-weather-trader/scripts")
 from paper_journal import (  # noqa: E402
     _MONTH_NAMES, _location_to_slug_cities, _parse_outcome_prices,
 )
+from weather_trader import LOCATION_BIAS_C  # noqa: E402
 
 FH = "/home/brandon/projects/polymarket-weather-trader/data/forecast_history.jsonl"
 EVENTS_CACHE = "/home/brandon/projects/polymarket-weather-trader/data/polymarket_events.jsonl"
@@ -151,7 +152,7 @@ print(f"Skipped — no_event: {no_event}, no_yes: {no_yes}, no_parse: {no_parse}
 print()
 
 # Current LOCATION_BIAS_C
-CURRENT_BIAS = {"Hong Kong": 0.8, "Shenzhen": 1.0}
+CURRENT_BIAS = dict(LOCATION_BIAS_C)
 
 # Output
 print("=" * 80)
