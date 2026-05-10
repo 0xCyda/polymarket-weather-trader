@@ -2,6 +2,15 @@
 
 All notable changes to the Polymarket Weather Trader. Newest first.
 
+## 2026-05-10
+
+### Changed
+- CORE carve-out trades now use the same 1.9x partial take-profit flow as standard CORE positions, so the 75% trim plus 25% runner logic applies consistently instead of treating carve-outs like weird cousins. (`position_manager.py`, `tests/test_position_manager.py`)
+
+### Fixed
+- Dashboard resolved-history rows now compute weighted exit prices correctly when a trade had partial take-profits before final resolution, so the exit column reflects the blended realized path instead of whichever stale leg yelled the loudest. (`dashboard.py`, `tests/test_dashboard_marks.py`)
+- Resolved-history size reconstruction now uses actual partial-exit tranche cost basis, and new take-profit journal rows persist tranche `cost` plus `entry_price`, so later adds no longer blow the displayed size out into fake nonsense like Warsaw showing $457. (`dashboard.py`, `position_manager.py`, `tests/test_dashboard_marks.py`, `tests/test_position_manager.py`)
+
 ## 2026-05-09
 
 ### Added
