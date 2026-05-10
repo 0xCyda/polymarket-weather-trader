@@ -517,7 +517,7 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
 
     if (
         cur_price is not None
-        and (trade.get("strategy") or "").lower() == "core"
+        and _is_exact_core_sl_eligible(trade, bucket_kind)
         and not take_profit_taken
         and take_profit_trigger is not None
         and cur_price >= take_profit_trigger

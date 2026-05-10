@@ -334,6 +334,35 @@ class TestTakeProfitRunner(unittest.TestCase):
         self.assertAlmostEqual(decision["partial_exit_frac"], 0.75)
         self.assertIn("take_profit_1p9x", decision["reason"])
 
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=21.0)
+    def test_carveout_trade_triggers_partial_take_profit_at_1p9x(self, *_mocks):
+        trade = {
+            "trade_id": "tp-carve-1",
+            "market_id": "m-tp-carve-1",
+            "location": "Paris",
+            "target_date": "2026-05-04",
+            "side": "yes",
+            "strategy": "carveout",
+            "core_low_edge_exact_carveout": True,
+            "entered_at": "2026-05-03T05:30:58+00:00",
+            "question": "Will the highest temperature in Paris be 17°C on May 4?",
+            "forecast_temp": 62.6,
+            "metric": "high",
+            "bucket": "17°C",
+            "entry_price": 0.20,
+            "shares": 1000,
+            "cost": 200.0,
+        }
+        market = {"id": "m-tp-carve-1", "external_price_yes": 0.39}
+        now_utc = real_datetime(2026, 5, 4, 9, 19, 0, tzinfo=timezone.utc)
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertAlmostEqual(decision["partial_exit_frac"], 0.75)
+        self.assertIn("take_profit_1p9x", decision["reason"])
+
     @patch.object(pm, "_peak_logged_price", return_value=0.60)
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
     @patch.object(pm, "_running_extreme", return_value=21.0)
