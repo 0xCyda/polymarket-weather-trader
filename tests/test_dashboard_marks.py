@@ -141,6 +141,7 @@ class TestDashboardMarks(unittest.TestCase):
         self.assertEqual(row["shares"], 500.0)
         self.assertEqual(row["cost"], 100.0)
         self.assertEqual(row["pnl"], 90.0)
+        self.assertEqual(row["exit_price"], 0.372)
 
     @patch.object(dashboard, "_load_trades_jsonl")
     @patch.object(dashboard, "_get_simmer_positions", return_value=None)
@@ -195,6 +196,53 @@ class TestDashboardMarks(unittest.TestCase):
         self.assertEqual(row["resolved_at"], "2026-05-09T05:50:20+00:00")
         self.assertEqual(row["resolution_source"], "partial_take_profit")
         self.assertEqual(row["exit_reason"], "take_profit_1p9x_75pct (price=$0.885 >= trigger=$0.712, sell_frac=75%)")
+
+    @patch.object(dashboard, "_load_trades_jsonl")
+    @patch.object(dashboard, "_get_simmer_positions", return_value=None)
+    @patch.object(dashboard, "_enrich_positions", return_value=[])
+    @patch.object(dashboard, "_get_portfolio_stats", return_value={})
+    @patch.object(dashboard, "_get_stats", return_value={})
+    @patch.object(dashboard, "_build_timeseries", return_value=[])
+    @patch.object(dashboard, "_parse_signals_from_history", return_value=[])
+    @patch.object(dashboard, "_get_last_scan_time", return_value=None)
+    @patch.object(dashboard, "_get_config", return_value={})
+    def test_api_state_uses_weighted_average_exit_for_resolved_partial_exits(
+        self,
+        _mock_config,
+        _mock_last_scan,
+        _mock_signals,
+        _mock_timeseries,
+        _mock_stats,
+        _mock_portfolio,
+        _mock_enrich,
+        _mock_simmer,
+        mock_load,
+    ):
+        mock_load.return_value = [{
+            "status": "resolved",
+            "location": "Tel Aviv",
+            "side": "yes",
+            "entry_price": 0.30,
+            "exit_price": 0.28,
+            "shares": 250.0,
+            "cost": 75.0,
+            "pnl": 77.5,
+            "target_date": "2026-05-10",
+            "strategy": "core",
+            "metric": "high",
+            "partial_exits": [
+                {"shares": 750.0, "price": 0.61, "reason": "take_profit_1p9x_75pct"}
+            ],
+        }]
+
+        resp = dashboard.api_state()
+        payload = json.loads(resp.body)
+        row = payload["resolved"][0]
+
+        self.assertEqual(row["shares"], 1000.0)
+        self.assertEqual(row["cost"], 300.0)
+        self.assertEqual(row["pnl"], 77.5)
+        self.assertEqual(row["exit_price"], 0.5275)
 
     @patch.object(dashboard, "_load_trades_jsonl")
     @patch.object(dashboard, "datetime")

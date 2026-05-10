@@ -2115,6 +2115,40 @@ def _resolved_display_position(trade: dict) -> tuple[float, float]:
     return round(shares, 6), round(cost, 4)
 
 
+def _resolved_display_exit_price(trade: dict) -> float:
+    total_shares = 0.0
+    total_proceeds = 0.0
+
+    for row in trade.get("partial_exits") or []:
+        try:
+            sold = float(row.get("shares") or 0)
+        except Exception:
+            sold = 0.0
+        try:
+            exit_price = float(row.get("price") or 0)
+        except Exception:
+            exit_price = 0.0
+        if sold > 0 and exit_price > 0:
+            total_shares += sold
+            total_proceeds += sold * exit_price
+
+    try:
+        final_shares = float(trade.get("shares") or 0)
+    except Exception:
+        final_shares = 0.0
+    try:
+        final_exit_price = float(trade.get("exit_price") or 0)
+    except Exception:
+        final_exit_price = 0.0
+    if final_shares > 0 and final_exit_price > 0:
+        total_shares += final_shares
+        total_proceeds += final_shares * final_exit_price
+
+    if total_shares <= 0:
+        return round(final_exit_price, 4)
+    return round(total_proceeds / total_shares, 4)
+
+
 def _partial_exit_history_rows(trade: dict) -> list[dict]:
     rows = []
     entry = float(trade.get("entry_price") or 0)
@@ -2574,7 +2608,7 @@ def api_state():
                 "location": t.get("location", ""),
                 "side": t.get("side", "YES").upper(),
                 "entry_price": float(t.get("entry_price") or 0),
-                "exit_price": float(t.get("exit_price") or 0),
+                "exit_price": _resolved_display_exit_price(t) if t.get("status") == "resolved" else float(t.get("exit_price") or 0),
                 "shares": _resolved_display_position(t)[0] if t.get("status") == "resolved" else float(t.get("shares") or 0),
                 "cost": _resolved_display_position(t)[1] if t.get("status") == "resolved" else float(t.get("cost") or 0),
                 "pnl": float(t.get("pnl") or 0),
