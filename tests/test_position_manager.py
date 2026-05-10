@@ -423,6 +423,8 @@ class TestTakeProfitRunner(unittest.TestCase):
         self.assertEqual(len(updated["partial_exits"]), 1)
         self.assertAlmostEqual(updated["partial_exits"][0]["shares"], 750.0)
         self.assertAlmostEqual(updated["partial_exits"][0]["price"], 0.39)
+        self.assertAlmostEqual(updated["partial_exits"][0]["cost"], 150.0)
+        self.assertAlmostEqual(updated["partial_exits"][0]["entry_price"], 0.20)
 
     @patch.object(pm, "log_loss")
     @patch.object(pm, "update_trade_atomically")

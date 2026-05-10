@@ -245,6 +245,56 @@ class TestDashboardMarks(unittest.TestCase):
         self.assertEqual(row["exit_price"], 0.5275)
 
     @patch.object(dashboard, "_load_trades_jsonl")
+    @patch.object(dashboard, "_get_simmer_positions", return_value=None)
+    @patch.object(dashboard, "_enrich_positions", return_value=[])
+    @patch.object(dashboard, "_get_portfolio_stats", return_value={})
+    @patch.object(dashboard, "_get_stats", return_value={})
+    @patch.object(dashboard, "_build_timeseries", return_value=[])
+    @patch.object(dashboard, "_parse_signals_from_history", return_value=[])
+    @patch.object(dashboard, "_get_last_scan_time", return_value=None)
+    @patch.object(dashboard, "_get_config", return_value={})
+    def test_api_state_uses_partial_exit_cost_basis_when_trade_was_later_scaled_in(
+        self,
+        _mock_config,
+        _mock_last_scan,
+        _mock_signals,
+        _mock_timeseries,
+        _mock_stats,
+        _mock_portfolio,
+        _mock_enrich,
+        _mock_simmer,
+        mock_load,
+    ):
+        mock_load.return_value = [{
+            "status": "resolved",
+            "location": "Warsaw",
+            "side": "yes",
+            "entry_price": 0.388657,
+            "exit_price": 0.0005,
+            "shares": 450.268816,
+            "cost": 175.0,
+            "pnl": 24.8218,
+            "realized_pnl": 199.5968,
+            "target_date": "2026-05-10",
+            "strategy": "core",
+            "metric": "high",
+            "partial_exits": [
+                {"shares": 725.806452, "price": 0.585, "pnl": 199.5968, "reason": "take_profit_1p9x_75pct"}
+            ],
+            "adds": [
+                {"shares": 208.333333, "price": 0.48, "cost": 100.0, "reason": "running_locked_in_bucket"}
+            ],
+        }]
+
+        resp = dashboard.api_state()
+        payload = json.loads(resp.body)
+        row = payload["resolved"][0]
+
+        self.assertAlmostEqual(row["shares"], 1176.075268)
+        self.assertAlmostEqual(row["cost"], 400.0)
+        self.assertAlmostEqual(row["pnl"], 24.8218)
+
+    @patch.object(dashboard, "_load_trades_jsonl")
     @patch.object(dashboard, "datetime")
     def test_parse_signals_filters_past_dates_from_dashboard(self, mock_datetime, mock_load):
         mock_datetime.now.return_value = datetime(2026, 4, 30, 8, 0, tzinfo=ZoneInfo("Australia/Perth"))

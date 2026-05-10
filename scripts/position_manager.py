@@ -784,6 +784,8 @@ def _execute_take_profit(trade_id: str, current_price: float, reason: str) -> di
             "price": round(float(current_price), 4),
             "shares": sold_shares,
             "remaining_shares": remaining_shares,
+            "cost": round(prev_cost - remaining_cost, 4),
+            "entry_price": round(entry, 6),
             "pnl": realized,
             "reason": reason,
             "fraction": exit_frac,

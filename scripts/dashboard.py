@@ -2101,17 +2101,61 @@ def _parse_signals_from_history() -> list[dict]:
     return signals
 
 
+def _partial_exit_cost_basis(trade: dict, row: dict) -> float:
+    try:
+        stored = row.get("cost")
+        if stored not in (None, ""):
+            return float(stored)
+    except Exception:
+        pass
+
+    try:
+        sold = float(row.get("shares") or 0)
+    except Exception:
+        sold = 0.0
+    if sold <= 0:
+        return 0.0
+
+    try:
+        row_entry = row.get("entry_price")
+        if row_entry not in (None, ""):
+            return max(0.0, float(row_entry) * sold)
+    except Exception:
+        pass
+
+    # Legacy rows without stored tranche cost are only safe to reconstruct from
+    # the parent entry when the trade was never scaled after the take-profit.
+    if not (trade.get("adds") or []):
+        try:
+            return max(0.0, float(trade.get("entry_price") or 0) * sold)
+        except Exception:
+            return 0.0
+
+    try:
+        exit_price = float(row.get("price") or 0)
+    except Exception:
+        exit_price = 0.0
+    try:
+        pnl = float(row.get("pnl") or 0)
+    except Exception:
+        pnl = 0.0
+
+    side = str(trade.get("side") or "yes").lower()
+    if side == "no":
+        return max(0.0, ((1.0 - exit_price) * sold) - pnl)
+    return max(0.0, (exit_price * sold) - pnl)
+
+
 def _resolved_display_position(trade: dict) -> tuple[float, float]:
     shares = float(trade.get("shares") or 0)
     cost = float(trade.get("cost") or 0)
-    entry = float(trade.get("entry_price") or 0)
     for row in trade.get("partial_exits") or []:
         try:
             sold = float(row.get("shares") or 0)
         except Exception:
             sold = 0.0
         shares += sold
-        cost += sold * entry
+        cost += _partial_exit_cost_basis(trade, row)
     return round(shares, 6), round(cost, 4)
 
 
