@@ -157,6 +157,10 @@ def _is_exact_core_sl_eligible(trade: dict, bucket_kind: str) -> bool:
     return strategy in {"core", "carveout"} or trade.get("core_low_edge_exact_carveout") is True
 
 
+def _exact_core_pre_tp_guard_only(trade: dict, bucket_kind: str, take_profit_taken: bool) -> bool:
+    return _is_exact_core_sl_eligible(trade, bucket_kind) and not take_profit_taken
+
+
 def _market_price_yes(market: dict | None) -> float | None:
     try:
         price = (market or {}).get("external_price_yes")
@@ -514,6 +518,7 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
     bucket_kind = _bucket_kind(bucket)
     take_profit_trigger = entry_price * TAKE_PROFIT_TRIGGER_MULT if entry_price > 0 else None
     take_profit_taken = _has_partial_take_profit(trade)
+    exact_core_pre_tp_guard_only = _exact_core_pre_tp_guard_only(trade, bucket_kind, take_profit_taken)
 
     if (
         cur_price is not None
@@ -623,6 +628,7 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
         effective_repricing_guard_start_hour = min(REPRICING_GUARD_START_HOUR, EASY_CORE_REPRICING_GUARD_START_HOUR)
     if (
         cur_price is not None
+        and not exact_core_pre_tp_guard_only
         and cur_hour >= effective_repricing_guard_start_hour
         and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN)
         and _weather_support_weakening(edge_c_now, proj["projected_c"], bucket, proj["confidence"])
@@ -643,7 +649,12 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
     # clearly outside the held bucket by a full degree. Whole-degree market
     # resolution makes 0.3-0.5°C boundary misses too noisy to force an exit.
     exit_window_open = cur_hour >= EXIT_AFTER_HOUR or (peak_state and peak_state.get("locked") and cur_hour >= HALFHOUR_MIN_LOCAL_HOUR)
-    if exit_window_open and not in_bucket_now and edge_c_now <= -POST_PEAK_EXIT_BUFFER_C:
+    if (
+        not exact_core_pre_tp_guard_only
+        and exit_window_open
+        and not in_bucket_now
+        and edge_c_now <= -POST_PEAK_EXIT_BUFFER_C
+    ):
         out["action"] = "exit"
         out["reason"] = (
             f"post_peak_running_outside_bucket "
@@ -656,7 +667,7 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
     # day's only going up, no path back.
     lo, hi, unit = bucket
     hi_c = hi if unit == "C" else (hi - 32) * 5 / 9 if hi != 999 else 999
-    if hi != 999 and running_c > hi_c + PRE_PEAK_BREAKOUT_C:
+    if not exact_core_pre_tp_guard_only and hi != 999 and running_c > hi_c + PRE_PEAK_BREAKOUT_C:
         out["action"] = "exit"
         out["reason"] = (
             f"breakout_above_bucket "
@@ -668,7 +679,11 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
     # only exit if the projected EOD max sits meaningfully outside the held
     # bucket. Whole-degree markets are too noisy for 0.5°C projected misses.
     projected_edge_c = _edge_distance_c(proj["projected_c"], bucket)
-    if proj["confidence"] >= 0.7 and projected_edge_c <= -PROJECTED_EXIT_BUFFER_C:
+    if (
+        not exact_core_pre_tp_guard_only
+        and proj["confidence"] >= 0.7
+        and projected_edge_c <= -PROJECTED_EXIT_BUFFER_C
+    ):
         strategy = (trade.get("strategy") or "").lower()
         if strategy == "late" and age_min is not None and age_min < LATE_PROJECTED_EXIT_COOLDOWN_MIN:
             out["reason"] = (

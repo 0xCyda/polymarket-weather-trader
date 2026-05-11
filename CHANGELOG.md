@@ -2,6 +2,11 @@
 
 All notable changes to the Polymarket Weather Trader. Newest first.
 
+## 2026-05-11
+
+### Changed
+- Exact CORE and CARVE exact-bucket positions now stay in guard-only mode before the 1.9x take-profit hits: generic repricing, post-peak, breakout, and projected-outside exits no longer front-run them, while hard disaster guards still can. Once TP hits, the 25% runner still hands off to the trailing smart exit. (`position_manager.py`, `tests/test_position_manager.py`, `tests/test_position_manager_carveout_stops.py`)
+
 ## 2026-05-10
 
 ### Changed

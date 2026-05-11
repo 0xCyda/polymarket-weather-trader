@@ -281,7 +281,7 @@ class TestRepricingGuard(unittest.TestCase):
     @patch.object(pm, "_last_logged_price", return_value=0.20)
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
     @patch.object(pm, "_running_extreme", return_value=10.0)
-    def test_easy_core_repricing_guard_starts_before_generic_hour(self, *_mocks):
+    def test_easy_exact_core_ignores_repricing_guard_before_tp(self, *_mocks):
         trade = {
             "trade_id": "warsaw-repricing",
             "market_id": "m-war-reprice",
@@ -301,8 +301,8 @@ class TestRepricingGuard(unittest.TestCase):
 
         decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
 
-        self.assertEqual(decision["action"], "exit")
-        self.assertIn("repricing_guard_collapse", decision["reason"])
+        self.assertEqual(decision["action"], "hold")
+        self.assertEqual(decision["reason"], "hold_no_signal")
 
 
 class TestTakeProfitRunner(unittest.TestCase):
@@ -452,6 +452,37 @@ class TestTakeProfitRunner(unittest.TestCase):
         self.assertEqual(updated["status"], "resolved")
         self.assertAlmostEqual(updated["pnl"], 167.5)
         self.assertEqual(updated["outcome"], "yes")
+
+
+class TestExactCorePreTpGenericExits(unittest.TestCase):
+    @patch.object(pm, "_project_eod_max_c", return_value={"projected_c": 20.5, "confidence": 0.95})
+    @patch.object(pm, "_extreme_tracking_state", return_value={"locked": True})
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=19.0)
+    def test_exact_core_holds_pre_tp_even_if_projection_and_running_look_bad(self, *_mocks):
+        trade = {
+            "trade_id": "pre-tp-core-1",
+            "market_id": "m-pre-tp-1",
+            "location": "Paris",
+            "target_date": "2026-05-04",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-05-04T02:30:58+00:00",
+            "question": "Will the highest temperature in Paris be 22°C on May 4?",
+            "forecast_temp": 71.6,
+            "metric": "high",
+            "bucket": "22°C",
+            "entry_price": 0.30,
+            "shares": 1000,
+            "cost": 300.0,
+        }
+        market = {"id": "m-pre-tp-1", "external_price_yes": 0.32}
+        now_utc = real_datetime(2026, 5, 4, 12, 19, 0, tzinfo=timezone.utc)
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "hold")
+        self.assertEqual(decision["reason"], "hold_no_signal")
 
 
 class TestLateCooldown(unittest.TestCase):
