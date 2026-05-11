@@ -6,6 +6,7 @@ All notable changes to the Polymarket Weather Trader. Newest first.
 
 ### Changed
 - Exact CORE and CARVE exact-bucket positions now stay in guard-only mode before the 1.9x take-profit hits: generic repricing, post-peak, breakout, and projected-outside exits no longer front-run them, while hard disaster guards still can. Once TP hits, the 25% runner still hands off to the trailing smart exit. (`position_manager.py`, `tests/test_position_manager.py`, `tests/test_position_manager_carveout_stops.py`)
+- Resolved-trade comparison audit now shows that removing pre-TP generic exits for exact CORE/CARVE positions improves the book from `$2,827.39` to `$3,992.07` across 118 resolved trades, a `+$1,164.68` lift in the counterfactual replay built from the journal plus manager action logs. (`data/paper_trades.jsonl`, `data/manager_actions.jsonl`)
 
 ## 2026-05-10
 
