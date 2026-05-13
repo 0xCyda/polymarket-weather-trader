@@ -1,0 +1,274 @@
+{
+  "generated_at": "2026-05-13T04:32:14.959517+00:00",
+  "method": "Replay exact-bucket core/carveout resolved trades using logged position-manager checks; compare first weak/corpse/collapse stop vs actual journal PnL. Uses live city-tier sizing already present in paper_trades costs.",
+  "actual_exact_core": {
+    "trades": 87,
+    "pnl": -402.98
+  },
+  "scenarios": [
+    {
+      "name": "current_70pct_drawdown",
+      "drop_threshold": 0.7,
+      "floor_only": false,
+      "resolved_exact_core_trades": 87,
+      "scenario_pnl": -382.45,
+      "wins": 32,
+      "losses": 55,
+      "changed_count": 1,
+      "changed_delta": 20.53,
+      "changed": [
+        {
+          "trade_id": "paper_90ed1a27-6b46-4c_1777273532",
+          "city": "Buenos Aires",
+          "date": "2026-04-28",
+          "bucket": "18\u00b0C",
+          "entry_price": 0.19,
+          "cost": 200.0,
+          "actual_pnl": -173.1579,
+          "scenario_pnl": -152.6316,
+          "delta_vs_actual": 20.5263,
+          "actual_exit_reason": "breakout_above_bucket (running=19.00\u00b0C > upper=18.00\u00b0C+0.50\u00b0C)",
+          "actual_resolved_at": "2026-04-28T16:19:31.710203+00:00",
+          "exit": {
+            "ts": "2026-04-28T15:05:03.037303+00:00",
+            "price": 0.045,
+            "pnl": -152.6316,
+            "reason": "exact_core_weak_price_guard price=0.0450 edge=-1.50",
+            "hour": 11,
+            "age_min": 1903.5,
+            "running_c": 16.0,
+            "projected_c": 18.0,
+            "peak": 0.045,
+            "drawdown": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "name": "drop_65pct_drawdown",
+      "drop_threshold": 0.65,
+      "floor_only": false,
+      "resolved_exact_core_trades": 87,
+      "scenario_pnl": -284.09,
+      "wins": 32,
+      "losses": 55,
+      "changed_count": 3,
+      "changed_delta": 118.89,
+      "changed": [
+        {
+          "trade_id": "paper_90ed1a27-6b46-4c_1777273532",
+          "city": "Buenos Aires",
+          "date": "2026-04-28",
+          "bucket": "18\u00b0C",
+          "entry_price": 0.19,
+          "cost": 200.0,
+          "actual_pnl": -173.1579,
+          "scenario_pnl": -152.6316,
+          "delta_vs_actual": 20.5263,
+          "actual_exit_reason": "breakout_above_bucket (running=19.00\u00b0C > upper=18.00\u00b0C+0.50\u00b0C)",
+          "actual_resolved_at": "2026-04-28T16:19:31.710203+00:00",
+          "exit": {
+            "ts": "2026-04-28T15:05:03.037303+00:00",
+            "price": 0.045,
+            "pnl": -152.6316,
+            "reason": "exact_core_weak_price_guard price=0.0450 edge=-1.50",
+            "hour": 11,
+            "age_min": 1903.5,
+            "running_c": 16.0,
+            "projected_c": 18.0,
+            "peak": 0.045,
+            "drawdown": 0.0
+          }
+        },
+        {
+          "trade_id": "paper_be0f8cac-7660-45_1778245932",
+          "city": "Ankara",
+          "date": "2026-05-10",
+          "bucket": "21\u00b0C",
+          "entry_price": 0.335,
+          "cost": 200.0,
+          "actual_pnl": -176.1194,
+          "scenario_pnl": -146.2687,
+          "delta_vs_actual": 29.8507,
+          "actual_exit_reason": "corpse_price_guard (price=$0.040 <= floor=$0.050, entry=$0.335, entry_frac=0.35, running=21.00\u00b0C, projected=21.50\u00b0C)",
+          "actual_resolved_at": "2026-05-10T11:50:12.312713+00:00",
+          "exit": {
+            "ts": "2026-05-10T09:00:17.306014+00:00",
+            "price": 0.09,
+            "pnl": -146.2687,
+            "reason": "exact_core_market_collapse_guard price=0.0900 peak=0.2950 drawdown=0.6949 threshold=0.65 floor_only=False",
+            "hour": 12,
+            "age_min": 2628.0,
+            "running_c": 19.0,
+            "projected_c": 21.0,
+            "peak": 0.295,
+            "drawdown": 0.6949
+          }
+        },
+        {
+          "trade_id": "paper_ac7118a7-a106-49_1778622491",
+          "city": "Shenzhen",
+          "date": "2026-05-13",
+          "bucket": "30\u00b0C",
+          "entry_price": 0.345,
+          "cost": 215.85066711067702,
+          "actual_pnl": -215.5378,
+          "scenario_pnl": -147.0287,
+          "delta_vs_actual": 68.5091,
+          "actual_exit_reason": "corpse_price_guard (price=$0.001 <= floor=$0.050, entry=$0.345, entry_frac=0.35, running=31.00\u00b0C, projected=31.00\u00b0C)",
+          "actual_resolved_at": "2026-05-13T04:22:14.632199+00:00",
+          "exit": {
+            "ts": "2026-05-13T02:30:29.019856+00:00",
+            "price": 0.11,
+            "pnl": -147.0287,
+            "reason": "exact_core_market_collapse_guard price=0.1100 peak=0.3400 drawdown=0.6765 threshold=0.65 floor_only=False",
+            "hour": 10,
+            "age_min": 282.2,
+            "running_c": 28.0,
+            "projected_c": 30.0,
+            "peak": 0.34,
+            "drawdown": 0.6765
+          }
+        }
+      ]
+    },
+    {
+      "name": "floor_only_12c_and_half_entry",
+      "drop_threshold": 0.7,
+      "floor_only": true,
+      "resolved_exact_core_trades": 87,
+      "scenario_pnl": -252.48,
+      "wins": 32,
+      "losses": 55,
+      "changed_count": 5,
+      "changed_delta": 150.5,
+      "changed": [
+        {
+          "trade_id": "paper_b3f912f7-16b1-4c_1778245924",
+          "city": "Tokyo",
+          "date": "2026-05-10",
+          "bucket": "24\u00b0C",
+          "entry_price": 0.335,
+          "cost": 100.0,
+          "actual_pnl": -59.7015,
+          "scenario_pnl": -68.6567,
+          "delta_vs_actual": -8.9552,
+          "actual_exit_reason": "post_peak_running_outside_bucket (running=21.00\u00b0C, bucket=24\u00b0C, edge=-2.50\u00b0C, buffer=1.00\u00b0C)",
+          "actual_resolved_at": "2026-05-10T04:30:14.746224+00:00",
+          "exit": {
+            "ts": "2026-05-10T04:00:57.378191+00:00",
+            "price": 0.105,
+            "pnl": -68.6567,
+            "reason": "exact_core_market_collapse_guard price=0.1050 peak=0.2950 drawdown=0.6441 threshold=0.70 floor_only=True",
+            "hour": 13,
+            "age_min": 2328.8,
+            "running_c": 21.0,
+            "projected_c": 24.0,
+            "peak": 0.295,
+            "drawdown": 0.6441
+          }
+        },
+        {
+          "trade_id": "paper_90ed1a27-6b46-4c_1777273532",
+          "city": "Buenos Aires",
+          "date": "2026-04-28",
+          "bucket": "18\u00b0C",
+          "entry_price": 0.19,
+          "cost": 200.0,
+          "actual_pnl": -173.1579,
+          "scenario_pnl": -152.6316,
+          "delta_vs_actual": 20.5263,
+          "actual_exit_reason": "breakout_above_bucket (running=19.00\u00b0C > upper=18.00\u00b0C+0.50\u00b0C)",
+          "actual_resolved_at": "2026-04-28T16:19:31.710203+00:00",
+          "exit": {
+            "ts": "2026-04-28T15:05:03.037303+00:00",
+            "price": 0.045,
+            "pnl": -152.6316,
+            "reason": "exact_core_weak_price_guard price=0.0450 edge=-1.50",
+            "hour": 11,
+            "age_min": 1903.5,
+            "running_c": 16.0,
+            "projected_c": 18.0,
+            "peak": 0.045,
+            "drawdown": 0.0
+          }
+        },
+        {
+          "trade_id": "paper_9b217cac-6511-41_1777757779",
+          "city": "Seoul",
+          "date": "2026-05-04",
+          "bucket": "16\u00b0C",
+          "entry_price": 0.195,
+          "cost": 200.0,
+          "actual_pnl": -143.5897,
+          "scenario_pnl": -117.9487,
+          "delta_vs_actual": 25.641,
+          "actual_exit_reason": "breakout_above_bucket (running=17.00\u00b0C > upper=16.00\u00b0C+0.50\u00b0C)",
+          "actual_resolved_at": "2026-05-04T02:19:18.098693+00:00",
+          "exit": {
+            "ts": "2026-05-04T01:49:16.554658+00:00",
+            "price": 0.08,
+            "pnl": -117.9487,
+            "reason": "exact_core_market_collapse_guard price=0.0800 peak=0.1400 drawdown=0.4286 threshold=0.70 floor_only=True",
+            "hour": 10,
+            "age_min": 1692.9,
+            "running_c": 15.0,
+            "projected_c": 16.0,
+            "peak": 0.14,
+            "drawdown": 0.4286
+          }
+        },
+        {
+          "trade_id": "paper_be0f8cac-7660-45_1778245932",
+          "city": "Ankara",
+          "date": "2026-05-10",
+          "bucket": "21\u00b0C",
+          "entry_price": 0.335,
+          "cost": 200.0,
+          "actual_pnl": -176.1194,
+          "scenario_pnl": -131.3433,
+          "delta_vs_actual": 44.7761,
+          "actual_exit_reason": "corpse_price_guard (price=$0.040 <= floor=$0.050, entry=$0.335, entry_frac=0.35, running=21.00\u00b0C, projected=21.50\u00b0C)",
+          "actual_resolved_at": "2026-05-10T11:50:12.312713+00:00",
+          "exit": {
+            "ts": "2026-05-10T08:50:11.108922+00:00",
+            "price": 0.115,
+            "pnl": -131.3433,
+            "reason": "exact_core_market_collapse_guard price=0.1150 peak=0.2950 drawdown=0.6102 threshold=0.70 floor_only=True",
+            "hour": 11,
+            "age_min": 2618.0,
+            "running_c": 19.0,
+            "projected_c": 21.0,
+            "peak": 0.295,
+            "drawdown": 0.6102
+          }
+        },
+        {
+          "trade_id": "paper_ac7118a7-a106-49_1778622491",
+          "city": "Shenzhen",
+          "date": "2026-05-13",
+          "bucket": "30\u00b0C",
+          "entry_price": 0.345,
+          "cost": 215.85066711067702,
+          "actual_pnl": -215.5378,
+          "scenario_pnl": -147.0287,
+          "delta_vs_actual": 68.5091,
+          "actual_exit_reason": "corpse_price_guard (price=$0.001 <= floor=$0.050, entry=$0.345, entry_frac=0.35, running=31.00\u00b0C, projected=31.00\u00b0C)",
+          "actual_resolved_at": "2026-05-13T04:22:14.632199+00:00",
+          "exit": {
+            "ts": "2026-05-13T02:30:29.019856+00:00",
+            "price": 0.11,
+            "pnl": -147.0287,
+            "reason": "exact_core_market_collapse_guard price=0.1100 peak=0.3400 drawdown=0.6765 threshold=0.70 floor_only=True",
+            "hour": 10,
+            "age_min": 282.2,
+            "running_c": 28.0,
+            "projected_c": 30.0,
+            "peak": 0.34,
+            "drawdown": 0.6765
+          }
+        }
+      ]
+    }
+  ]
+}
