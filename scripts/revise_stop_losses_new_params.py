@@ -18,7 +18,7 @@ ACTIONS_PATH = ROOT / "data" / "manager_actions.jsonl"
 LOSSES_PATH = ROOT / "data" / "losses.log"
 
 FLOOR = 0.12
-DROP = 0.70
+DROP = 0.65
 WEAK_FLOOR = 0.08
 ENTRY_FRAC = 0.50
 WEAK_EDGE = -1.5

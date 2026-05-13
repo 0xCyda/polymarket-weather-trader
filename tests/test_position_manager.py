@@ -223,6 +223,67 @@ class TestExactCoreTrailingStop(unittest.TestCase):
         self.assertEqual(decision["reason"], "hold_no_signal")
 
 
+class TestExactCoreMarketCollapseGuard(unittest.TestCase):
+    @patch.object(pm, "_peak_logged_price", return_value=0.455)
+    @patch.object(pm, "_last_logged_price", return_value=0.425)
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=22.0)
+    def test_exact_core_market_collapse_exits_even_when_weather_still_in_bucket(self, *_mocks):
+        trade = {
+            "trade_id": "ankara-exact",
+            "market_id": "m-ankara",
+            "location": "Ankara",
+            "target_date": "2026-05-12",
+            "side": "yes",
+            "strategy": "core",
+            "core_low_edge_exact_carveout": True,
+            "entered_at": "2026-05-10T09:26:48+00:00",
+            "question": "Will the highest temperature in Ankara be 22°C on May 12?",
+            "forecast_temp": 71.6,
+            "metric": "high",
+            "bucket": "22°C",
+            "entry_price": 0.35,
+        }
+        market = {"id": "m-ankara", "external_price_yes": 0.095}
+        now_utc = real_datetime(2026, 5, 12, 10, 50, 0, tzinfo=timezone.utc)  # 13:50 local
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertIn("exact_core_market_collapse_guard", decision["reason"])
+        self.assertEqual(decision["current_price"], 0.095)
+
+    @patch.object(pm, "_peak_logged_price", return_value=0.34)
+    @patch.object(pm, "_last_logged_price", return_value=0.245)
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=28.0)
+    def test_exact_core_market_collapse_exits_at_65pct_drawdown(self, *_mocks):
+        trade = {
+            "trade_id": "shenzhen-exact",
+            "market_id": "m-shenzhen",
+            "location": "Shenzhen",
+            "target_date": "2026-05-13",
+            "side": "yes",
+            "strategy": "core",
+            "core_low_edge_exact_carveout": True,
+            "entered_at": "2026-05-12T21:48:11+00:00",
+            "question": "Will the highest temperature in Shenzhen be 30°C on May 13?",
+            "forecast_temp": 86.0,
+            "metric": "high",
+            "bucket": "30°C",
+            "entry_price": 0.345,
+        }
+        market = {"id": "m-shenzhen", "external_price_yes": 0.11}
+        now_utc = real_datetime(2026, 5, 13, 2, 30, 0, tzinfo=timezone.utc)  # 10:30 local
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertIn("exact_core_market_collapse_guard", decision["reason"])
+        self.assertIn("drawdown=67.6% >= 65.0%", decision["reason"])
+        self.assertEqual(decision["current_price"], 0.11)
+
+
 class TestExactCoreWeakPriceGuard(unittest.TestCase):
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
     @patch.object(pm, "_running_extreme", return_value=30.0)

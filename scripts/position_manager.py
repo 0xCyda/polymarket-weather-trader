@@ -82,6 +82,8 @@ CORPSE_ENTRY_FRAC = float(_cfg.get("position_corpse_entry_frac", 0.35))
 EASY_CORE_CORPSE_PRICE_FLOOR = float(_cfg.get("position_easy_core_corpse_price_floor", 0.07))
 REPRICING_WEATHER_EDGE_C = float(_cfg.get("position_repricing_weather_edge_c", 0.20))
 REPRICING_COOLDOWN_MIN = float(_cfg.get("position_repricing_cooldown_min", 45.0))
+EXACT_CORE_MARKET_COLLAPSE_FLOOR = float(_cfg.get("position_exact_core_market_collapse_floor", 0.12))
+EXACT_CORE_MARKET_COLLAPSE_DROP_FRAC = float(_cfg.get("position_exact_core_market_collapse_drop_frac", 0.65))
 EXACT_CORE_WEAK_PRICE_FLOOR = float(_cfg.get("position_exact_core_weak_price_floor", 0.08))
 EXACT_CORE_WEAK_ENTRY_FRAC = float(_cfg.get("position_exact_core_weak_entry_frac", 0.50))
 EXACT_CORE_WEAK_EDGE_C = float(_cfg.get("position_exact_core_weak_edge_c", -1.5))
@@ -618,6 +620,41 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
                 f"corpse_price_guard "
                 f"(price=${cur_price:.3f} <= floor=${effective_corpse_floor:.3f}, "
                 f"entry=${entry_price:.3f}, entry_frac={CORPSE_ENTRY_FRAC:.2f}, "
+                f"running={running_c:.2f}°C, projected={proj['projected_c']:.2f}°C)"
+            )
+            return out
+
+    # Exact-degree CORE/carveout hard market-collapse stop. Ankara exposed the
+    # failure mode: exact books can crater from ~42¢ to 9.5¢ while the weather
+    # read still says "maybe 22°C", then hit the generic corpse guard at 0.05¢.
+    # If the market has already taken out most of the manager-seen value, stop
+    # treating the weather projection as the sole source of truth.
+    if (
+        cur_price is not None
+        and _is_exact_core_sl_eligible(trade, bucket_kind)
+        and cur_hour >= EXACT_CORE_WEAK_EXIT_START_HOUR
+        and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN)
+        and cur_price <= EXACT_CORE_MARKET_COLLAPSE_FLOOR
+        and (entry_price <= 0 or cur_price <= entry_price * EXACT_CORE_WEAK_ENTRY_FRAC)
+    ):
+        peak_seen = _peak_logged_price(str(trade.get("trade_id") or ""), before_ts=now_utc)
+        if peak_seen is not None:
+            out["peak_seen_price"] = round(peak_seen, 4)
+        drawdown_frac = max(0.0, 1.0 - (cur_price / peak_seen)) if peak_seen and peak_seen > 0 else None
+        if drawdown_frac is not None:
+            out["peak_drawdown_frac"] = round(drawdown_frac, 4)
+        if drawdown_frac is None or drawdown_frac >= EXACT_CORE_MARKET_COLLAPSE_DROP_FRAC:
+            out["action"] = "exit"
+            out["reason"] = (
+                f"exact_core_market_collapse_guard "
+                f"(price=${cur_price:.3f} <= floor=${EXACT_CORE_MARKET_COLLAPSE_FLOOR:.3f}, "
+                f"entry=${entry_price:.3f}, entry_frac={EXACT_CORE_WEAK_ENTRY_FRAC:.2f}, "
+                f"peak=${peak_seen:.3f} drawdown={drawdown_frac*100:.1f}% >= {EXACT_CORE_MARKET_COLLAPSE_DROP_FRAC*100:.1f}%, "
+                f"running={running_c:.2f}°C, projected={proj['projected_c']:.2f}°C)"
+                if drawdown_frac is not None and peak_seen is not None else
+                f"exact_core_market_collapse_guard "
+                f"(price=${cur_price:.3f} <= floor=${EXACT_CORE_MARKET_COLLAPSE_FLOOR:.3f}, "
+                f"entry=${entry_price:.3f}, entry_frac={EXACT_CORE_WEAK_ENTRY_FRAC:.2f}, "
                 f"running={running_c:.2f}°C, projected={proj['projected_c']:.2f}°C)"
             )
             return out
