@@ -519,8 +519,7 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print,
     # CORE/PUNT in weather_trader.py. The journal entry below is gated on
     # trade.simulated, not on dry_run, so paper trades land in paper_trades.jsonl
     # while real wallet trades go through --live (validated in main()).
-    mode_tag = "PAPER" if dry_run else "LIVE"
-    log(f"  [{mode_tag}] {city}: running={running_c:.2f}°C locked in {result['bucket']} "
+    log(f"  [LATE] {city}: running={running_c:.2f}°C locked in {result['bucket']} "
         f"@ ${price:.3f} (lock {edge_c:.2f}°C, p≈{est_prob:.3f}, misprice={model_edge:+.3f}) size=${size:.0f}")
 
     reasoning = (
@@ -555,7 +554,7 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print,
         return result
 
     shares = trade.get("shares_bought") or trade.get("shares") or 0
-    log(f"  [BUY] {city}: {shares:.0f} @ ${price:.3f} bucket={result['bucket']} "
+    log(f"  [LATE] BUY {city}: {shares:.0f} @ ${price:.3f} bucket={result['bucket']} "
         f"({'paper' if trade.get('simulated') else 'live'})")
 
     # Paper journal entry (mirrors CORE/PUNT pattern)

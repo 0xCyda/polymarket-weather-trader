@@ -2951,17 +2951,17 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             order_status = result.get("order_status")
             is_pending = order_status == "live" and not result.get("simulated")
 
-            mode_tag = "[PAPER] " if result.get("simulated") else ""
+            entry_tag = "[CORE-CARVEOUT] " if c.get("core_low_edge_exact_carveout") else "[CORE] "
             if is_pending:
                 # GTC order placed but not filled. Don't count as executed
                 # (would over-state exposure and let next cycle double-fire).
                 # Track the market_id so same-event guard catches it.
                 already_held_markets.add(market_id)
-                log(f"  ⏳ {mode_tag}GTC pending {location} {outcome_name} YES @ ${price:.3f} (${position_size:.0f}, {shares:.0f} shares) — not counted until filled", force=True)
+                log(f"  ⏳ {entry_tag}GTC pending {location} {outcome_name} YES @ ${price:.3f} (${position_size:.0f}, {shares:.0f} shares) — not counted until filled", force=True)
             else:
                 trades_executed += 1
                 total_usd_spent += position_size
-                log(f"  ✅ {mode_tag}BUY {location} {outcome_name} YES @ ${price:.3f} (${position_size:.0f}, {shares:.0f} shares)", force=True)
+                log(f"  ✅ {entry_tag}BUY {location} {outcome_name} YES @ ${price:.3f} (${position_size:.0f}, {shares:.0f} shares)", force=True)
 
             if trade_id and JOURNAL_AVAILABLE and not result.get("simulated"):
                 # Journal confidence ~ the model confidence shifted by realized edge.
@@ -3094,8 +3094,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                     continue
 
             size = PUNT_MAX_POSITION_USD
-            tag = "[PAPER]" if dry_run else "[LIVE]"
-            log(f"  🎯 PUNT {tag} {p['location']} {p['date_str']} {p['outcome_name']} @ ${p['price']:.3f} | prob={p['confidence']:.0%} | edge={p['edge']:+.2f} | ${size:.2f}", force=True)
+            log(f"  🎯 [PUNT] {p['location']} {p['date_str']} {p['outcome_name']} @ ${p['price']:.3f} | prob={p['confidence']:.0%} | edge={p['edge']:+.2f} | ${size:.2f}", force=True)
 
             try:
                 result = execute_trade(
@@ -3120,8 +3119,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 punt_usd_spent += size
                 remaining_budget -= size
                 shares = result.get("shares_bought") or result.get("shares") or 0
-                punt_mode_tag = "[PAPER] " if result.get("simulated") else ""
-                log(f"  ✅ {punt_mode_tag}PUNT {p['location']} {p['outcome_name']} YES @ ${p['price']:.3f} (${size:.0f}, {shares:.0f} shares)", force=True)
+                log(f"  ✅ [PUNT] BUY {p['location']} {p['outcome_name']} YES @ ${p['price']:.3f} (${size:.0f}, {shares:.0f} shares)", force=True)
 
                 if result.get("simulated") and PAPER_JOURNAL_AVAILABLE:
                     # Synthesize a clean bucket label from the parsed bucket
