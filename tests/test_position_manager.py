@@ -452,6 +452,61 @@ class TestTakeProfitRunner(unittest.TestCase):
         self.assertAlmostEqual(decision["partial_exit_frac"], 0.75)
         self.assertIn("take_profit_1p9x", decision["reason"])
 
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=27.0)
+    def test_binary_core_trade_triggers_partial_take_profit_at_1p9x(self, *_mocks):
+        trade = {
+            "trade_id": "tp-core-binary",
+            "market_id": "m-tp-binary",
+            "location": "Seoul",
+            "target_date": "2026-05-15",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-05-13T07:35:15+00:00",
+            "question": "Will the highest temperature in Seoul be 26°C or higher on May 15?",
+            "forecast_temp": 84.2,
+            "metric": "high",
+            "bucket": "26°C or above",
+            "entry_price": 0.26,
+            "shares": 1000,
+            "cost": 260.0,
+        }
+        market = {"id": "m-tp-binary", "external_price_yes": 0.50}
+        now_utc = real_datetime(2026, 5, 15, 4, 19, 0, tzinfo=timezone.utc)
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertAlmostEqual(decision["partial_exit_frac"], 0.75)
+        self.assertIn("take_profit_1p9x", decision["reason"])
+
+    @patch.object(pm, "_fetch_twc_intraday", side_effect=AssertionError("future TP should not fetch obs"))
+    def test_future_binary_core_trade_can_take_profit_before_target_day(self, _mock_obs):
+        trade = {
+            "trade_id": "tp-core-future-binary",
+            "market_id": "m-tp-future-binary",
+            "location": "Seoul",
+            "target_date": "2026-05-15",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-05-13T07:35:15+00:00",
+            "question": "Will the highest temperature in Seoul be 26°C or higher on May 15?",
+            "forecast_temp": 84.2,
+            "metric": "high",
+            "bucket": "26°C or above",
+            "entry_price": 0.26,
+            "shares": 1000,
+            "cost": 260.0,
+        }
+        market = {"id": "m-tp-future-binary", "external_price_yes": 0.50}
+        now_utc = real_datetime(2026, 5, 14, 9, 19, 0, tzinfo=timezone.utc)
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "exit")
+        self.assertAlmostEqual(decision["partial_exit_frac"], 0.75)
+        self.assertIn("take_profit_1p9x", decision["reason"])
+
     @patch.object(pm, "_peak_logged_price", return_value=0.60)
     @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
     @patch.object(pm, "_running_extreme", return_value=21.0)

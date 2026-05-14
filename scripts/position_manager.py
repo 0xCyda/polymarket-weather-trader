@@ -160,6 +160,11 @@ def _is_carveout_trade(trade: dict) -> bool:
     return strategy == "carveout" or trade.get("core_low_edge_exact_carveout") is True
 
 
+def _is_take_profit_eligible(trade: dict) -> bool:
+    strategy = str(trade.get("strategy") or "").lower()
+    return strategy in {"core", "carveout"} or trade.get("core_low_edge_exact_carveout") is True
+
+
 def _is_exact_core_sl_eligible(trade: dict, bucket_kind: str) -> bool:
     if bucket_kind != "exact":
         return False
@@ -467,13 +472,6 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
     local_today = local_now.date().isoformat()
     target = trade.get("target_date") or ""
 
-    if target != local_today:
-        # Past targets get resolved by the existing update_resolved_trades cron.
-        # Future targets aren't actionable yet (no obs).
-        out["reason"] = "not_today_local"
-        out["local_today"] = local_today
-        return out
-
     bucket = _resolve_bucket(trade, market)
     if not bucket:
         out["reason"] = "bucket_unparseable"
@@ -507,6 +505,51 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
     if age_min is not None:
         out["age_min"] = round(age_min, 1)
 
+    cur_price, cur_price_source = _live_price_yes(trade, market)
+    if cur_price is not None:
+        out["current_price"] = round(cur_price, 4)
+        out["current_price_source"] = cur_price_source
+        prev_price = _last_logged_price(str(trade.get("trade_id") or ""), before_ts=now_utc)
+        if prev_price is not None:
+            out["previous_price"] = round(prev_price, 4)
+            out["price_drop_frac"] = round(max(0.0, 1.0 - (cur_price / prev_price)), 4) if prev_price > 0 else None
+
+    # Price-only take-profit can fire before target day. Waiting for same-day
+    # observations lets D+1/D+2 winners round-trip for no reason.
+    try:
+        entry_price = float(trade.get("entry_price") or 0)
+    except Exception:
+        entry_price = 0.0
+    bucket_kind = _bucket_kind(bucket)
+    take_profit_trigger = entry_price * TAKE_PROFIT_TRIGGER_MULT if entry_price > 0 else None
+    take_profit_taken = _has_partial_take_profit(trade)
+    exact_core_pre_tp_guard_only = _exact_core_pre_tp_guard_only(trade, bucket_kind, take_profit_taken)
+
+    if (
+        cur_price is not None
+        and _is_take_profit_eligible(trade)
+        and not take_profit_taken
+        and take_profit_trigger is not None
+        and cur_price >= take_profit_trigger
+    ):
+        out["action"] = "exit"
+        out["partial_exit_frac"] = TAKE_PROFIT_SELL_FRAC
+        out["take_profit_price"] = round(cur_price, 4)
+        out["reason"] = (
+            f"take_profit_1p9x_75pct "
+            f"(price=${cur_price:.3f} >= trigger=${take_profit_trigger:.3f}, "
+            f"sell_frac={TAKE_PROFIT_SELL_FRAC:.0%})"
+        )
+        return out
+
+    if target != local_today:
+        # Past targets get resolved by the existing update_resolved_trades cron.
+        # Future targets only use price-only take-profit above; weather-driven
+        # exits/adds still wait for same-day observations.
+        out["reason"] = "not_today_local"
+        out["local_today"] = local_today
+        return out
+
     obs = _fetch_twc_intraday(station, local_today)
     if not obs:
         out["reason"] = "twc_empty"
@@ -536,42 +579,7 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
     edge_c_now = _edge_distance_c(running_c, bucket)
     out["edge_c_running"] = round(edge_c_now, 2)
 
-    cur_price, cur_price_source = _live_price_yes(trade, market)
-    if cur_price is not None:
-        out["current_price"] = round(cur_price, 4)
-        out["current_price_source"] = cur_price_source
-        prev_price = _last_logged_price(str(trade.get("trade_id") or ""), before_ts=now_utc)
-        if prev_price is not None:
-            out["previous_price"] = round(prev_price, 4)
-            out["price_drop_frac"] = round(max(0.0, 1.0 - (cur_price / prev_price)), 4) if prev_price > 0 else None
-
     # ----- EXIT rules -----
-    try:
-        entry_price = float(trade.get("entry_price") or 0)
-    except Exception:
-        entry_price = 0.0
-    bucket_kind = _bucket_kind(bucket)
-    take_profit_trigger = entry_price * TAKE_PROFIT_TRIGGER_MULT if entry_price > 0 else None
-    take_profit_taken = _has_partial_take_profit(trade)
-    exact_core_pre_tp_guard_only = _exact_core_pre_tp_guard_only(trade, bucket_kind, take_profit_taken)
-
-    if (
-        cur_price is not None
-        and _is_exact_core_sl_eligible(trade, bucket_kind)
-        and not take_profit_taken
-        and take_profit_trigger is not None
-        and cur_price >= take_profit_trigger
-    ):
-        out["action"] = "exit"
-        out["partial_exit_frac"] = TAKE_PROFIT_SELL_FRAC
-        out["take_profit_price"] = round(cur_price, 4)
-        out["reason"] = (
-            f"take_profit_1p9x_75pct "
-            f"(price=${cur_price:.3f} >= trigger=${take_profit_trigger:.3f}, "
-            f"sell_frac={TAKE_PROFIT_SELL_FRAC:.0%})"
-        )
-        return out
-
     if cur_price is not None and take_profit_taken:
         runner_be_stop = entry_price * TAKE_PROFIT_RUNNER_BE_STOP_MULT if entry_price > 0 else None
         if runner_be_stop is not None:
