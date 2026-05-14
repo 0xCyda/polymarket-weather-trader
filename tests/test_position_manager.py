@@ -236,7 +236,7 @@ class TestExactCoreMarketCollapseGuard(unittest.TestCase):
             "target_date": "2026-05-12",
             "side": "yes",
             "strategy": "core",
-            "core_low_edge_exact_carveout": True,
+            "core_low_edge_exact_carveout": False,
             "entered_at": "2026-05-10T09:26:48+00:00",
             "question": "Will the highest temperature in Ankara be 22°C on May 12?",
             "forecast_temp": 71.6,
@@ -265,7 +265,7 @@ class TestExactCoreMarketCollapseGuard(unittest.TestCase):
             "target_date": "2026-05-13",
             "side": "yes",
             "strategy": "core",
-            "core_low_edge_exact_carveout": True,
+            "core_low_edge_exact_carveout": False,
             "entered_at": "2026-05-12T21:48:11+00:00",
             "question": "Will the highest temperature in Shenzhen be 30°C on May 13?",
             "forecast_temp": 86.0,
@@ -282,6 +282,34 @@ class TestExactCoreMarketCollapseGuard(unittest.TestCase):
         self.assertIn("exact_core_market_collapse_guard", decision["reason"])
         self.assertIn("drawdown=67.6% >= 65.0%", decision["reason"])
         self.assertEqual(decision["current_price"], 0.11)
+
+    @patch.object(pm, "_peak_logged_price", return_value=0.34)
+    @patch.object(pm, "_last_logged_price", return_value=0.245)
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=30.0)
+    def test_carveout_ignores_market_collapse_before_take_profit(self, *_mocks):
+        trade = {
+            "trade_id": "milan-carveout",
+            "market_id": "m-milan",
+            "location": "Milan",
+            "target_date": "2026-05-13",
+            "side": "yes",
+            "strategy": "core",
+            "core_low_edge_exact_carveout": True,
+            "entered_at": "2026-05-12T21:48:11+00:00",
+            "question": "Will the highest temperature in Milan be 19°C on May 13?",
+            "forecast_temp": 66.2,
+            "metric": "high",
+            "bucket": "19°C",
+            "entry_price": 0.37,
+        }
+        market = {"id": "m-milan", "external_price_yes": 0.095}
+        now_utc = real_datetime(2026, 5, 13, 12, 30, 0, tzinfo=timezone.utc)
+
+        decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "hold")
+        self.assertEqual(decision["reason"], "hold_no_signal")
 
 
 class TestExactCoreWeakPriceGuard(unittest.TestCase):

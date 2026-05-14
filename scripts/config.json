@@ -6,7 +6,7 @@
   "late_price_ceiling": 0.9,
   "core_low_edge_exact_carveout_enabled": true,
   "core_low_edge_exact_carveout_min_edge": 0.05,
-  "core_low_edge_exact_carveout_min_price": 0.34,
+  "core_low_edge_exact_carveout_min_price": 0.35,
   "core_low_edge_exact_carveout_max_price": 0.4,
   "position_exact_core_market_collapse_floor": 0.12,
   "position_exact_core_market_collapse_drop_frac": 0.65

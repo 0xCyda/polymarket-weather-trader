@@ -155,6 +155,11 @@ def _bucket_kind(bucket: tuple | None) -> str:
     return "range"
 
 
+def _is_carveout_trade(trade: dict) -> bool:
+    strategy = str(trade.get("strategy") or "").lower()
+    return strategy == "carveout" or trade.get("core_low_edge_exact_carveout") is True
+
+
 def _is_exact_core_sl_eligible(trade: dict, bucket_kind: str) -> bool:
     if bucket_kind != "exact":
         return False
@@ -664,14 +669,14 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
             )
             return out
 
-    # Exact-degree CORE/carveout hard market-collapse stop. Ankara exposed the
-    # failure mode: exact books can crater from ~42¢ to 9.5¢ while the weather
-    # read still says "maybe 22°C", then hit the generic corpse guard at 0.05¢.
-    # If the market has already taken out most of the manager-seen value, stop
-    # treating the weather projection as the sole source of truth.
+    # Exact-degree CORE hard market-collapse stop. For low-edge CARVE entries,
+    # live replay showed this cut too many eventual winners before take-profit;
+    # CARVE should use the weaker weather+corpse guards until it has actually
+    # paid us. Non-carve exact CORE still gets the collapse stop.
     if (
         cur_price is not None
         and _is_exact_core_sl_eligible(trade, bucket_kind)
+        and not (_is_carveout_trade(trade) and not take_profit_taken)
         and cur_hour >= EXACT_CORE_WEAK_EXIT_START_HOUR
         and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN)
         and cur_price <= EXACT_CORE_MARKET_COLLAPSE_FLOOR
