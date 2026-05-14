@@ -93,6 +93,7 @@ EXACT_CORE_TRAIL_DROP_FRAC = float(_cfg.get("position_exact_core_trail_drop_frac
 EXACT_CORE_TRAIL_START_HOUR = int(_cfg.get("position_exact_core_trail_start_hour", 10))
 TAKE_PROFIT_TRIGGER_MULT = float(_cfg.get("position_take_profit_trigger_mult", 1.90))
 TAKE_PROFIT_SELL_FRAC = float(_cfg.get("position_take_profit_sell_frac", 0.75))
+TAKE_PROFIT_RUNNER_BE_STOP_MULT = float(_cfg.get("position_take_profit_runner_be_stop_mult", 1.0))
 TAKE_PROFIT_TRAIL_DROP_FRAC = float(_cfg.get("position_take_profit_trail_drop_frac", 0.30))
 LATE_PROJECTED_EXIT_COOLDOWN_MIN = 45.0
 SCHEDULED_BASELINE_MINUTE = 0
@@ -540,6 +541,18 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
         return out
 
     if cur_price is not None and take_profit_taken:
+        runner_be_stop = entry_price * TAKE_PROFIT_RUNNER_BE_STOP_MULT if entry_price > 0 else None
+        if runner_be_stop is not None:
+            out["runner_be_stop_price"] = round(runner_be_stop, 4)
+            if cur_price <= runner_be_stop:
+                out["action"] = "exit"
+                out["reason"] = (
+                    f"runner_breakeven_stop_after_1p9x "
+                    f"(price=${cur_price:.3f} <= stop=${runner_be_stop:.3f}, "
+                    f"entry=${entry_price:.3f}, stop_mult={TAKE_PROFIT_RUNNER_BE_STOP_MULT:.2f})"
+                )
+                return out
+
         peak_seen = _peak_logged_price(str(trade.get("trade_id") or ""), before_ts=now_utc)
         if peak_seen is not None:
             out["peak_seen_price"] = round(peak_seen, 4)

@@ -281,6 +281,14 @@ CONFIG_SCHEMA = {
                           "help": "Once armed, exact-CORE trades exit if price falls this fraction or more from the best seen manager price."},
     "position_exact_core_trail_start_hour": {"env": "SIMMER_WEATHER_POSITION_EXACT_CORE_TRAIL_START_HOUR", "default": 10, "type": int,
                           "help": "Local hour after which the exact-CORE trailing stop is allowed to fire."},
+    "position_take_profit_trigger_mult": {"env": "SIMMER_WEATHER_POSITION_TAKE_PROFIT_TRIGGER_MULT", "default": 1.90, "type": float,
+                          "help": "Sell the first take-profit chunk once price reaches this multiple of entry."},
+    "position_take_profit_sell_frac": {"env": "SIMMER_WEATHER_POSITION_TAKE_PROFIT_SELL_FRAC", "default": 0.75, "type": float,
+                          "help": "Fraction of shares to sell when the 1.9x take-profit trigger fires."},
+    "position_take_profit_runner_be_stop_mult": {"env": "SIMMER_WEATHER_POSITION_TAKE_PROFIT_RUNNER_BE_STOP_MULT", "default": 1.0, "type": float,
+                          "help": "After the 1.9x partial take-profit, stop the remaining runner at entry_price * this multiplier."},
+    "position_take_profit_trail_drop_frac": {"env": "SIMMER_WEATHER_POSITION_TAKE_PROFIT_TRAIL_DROP_FRAC", "default": 0.30, "type": float,
+                          "help": "After partial take-profit, also exit the remaining runner if it drops this fraction from the best manager-seen price."},
 }
 
 # Backwards-compatible env var aliases (old name -> new name)

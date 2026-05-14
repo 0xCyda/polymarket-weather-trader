@@ -104,6 +104,26 @@ class TestPositionManagerCarveoutStops(unittest.TestCase):
         self.assertEqual(out["peak_seen_price"], 0.9)
         self.assertEqual(out["trail_floor_price"], 0.63)
 
+    def test_carveout_trade_stops_runner_at_breakeven_after_partial_tp(self):
+        trade = {
+            **self.trade,
+            "shares": 250.0,
+            "cost": 75.0,
+            "partial_exits": [{"reason": "take_profit_1p9x_75pct", "shares": 750.0, "price": 0.61}],
+            "realized_pnl": 232.5,
+        }
+        market = {**self.market, "external_price_yes": 0.29}
+        patches = self._common_patches() + [
+            patch.object(pm, "_peak_logged_price", return_value=0.90),
+            patch.object(pm, "_last_logged_price", return_value=0.31),
+        ]
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8]:
+            out = pm._evaluate_position(trade, market, now_utc=self.now_utc, log=lambda *_: None)
+
+        self.assertEqual(out["action"], "exit")
+        self.assertIn("runner_breakeven_stop_after_1p9x", out["reason"])
+        self.assertEqual(out["runner_be_stop_price"], 0.3)
+
     def test_carveout_trade_uses_weak_price_guard(self):
         weak_market = {**self.market, "external_price_yes": 0.051}
         patches = self._common_patches() + [
