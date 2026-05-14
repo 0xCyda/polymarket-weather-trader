@@ -21,13 +21,13 @@ ALLOW_ALL_SIGNALS = "--all-signals" in sys.argv
 SKIP_LOG = "/home/brandon/projects/polymarket-weather-trader/scripts/data/skip_events.jsonl"
 PAPER_BALANCE = 10532.23  # current paper balance
 
-# City difficulty tiers
+# City difficulty tiers. Keep synced with scripts/weather_trader.py.
 RISK_PCT = {"easy": 0.03, "medium": 0.02, "hard": 0.01}
 CITY_DIFFICULTY = {
-    "TEL AVIV": "easy", "WARSAW": "easy", "SAN FRANCISCO": "easy",
-    "LOS ANGELES": "easy", "MILAN": "easy", "CHENGDU": "easy",
-    "HOUSTON": "easy", "MUNICH": "easy",
-    "TOKYO": "hard", "SHANGHAI": "hard", "BEIJING": "hard", "WUHAN": "hard",
+    "TEL AVIV": "easy", "SAN FRANCISCO": "easy", "LOS ANGELES": "easy",
+    "CHENGDU": "easy", "MUNICH": "easy", "MILAN": "easy",
+    "WARSAW": "easy", "HONG KONG": "easy",
+    "TOKYO": "hard", "SHANGHAI": "hard",
 }
 
 # Retry config

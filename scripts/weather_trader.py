@@ -507,34 +507,28 @@ _locations_str = _config["locations"]
 ACTIVE_LOCATIONS = [loc.strip().upper() for loc in _locations_str.split(",") if loc.strip()]
 
 # Empirical city difficulty tiers derived from resolved weather trades across
-# Hans323 (+$80k, n=2,684) and ColdMath (-$173k, n=6,386). EASY cities have
-# ≥75% pro win rate; HARD cities ≤55%. These drive risk-based position sizing:
+# Hans323 and ColdMath. EASY cities have ≥75% pro win rate; HARD cities ≤55%.
+# These drive risk-based position sizing:
 #   EASY   → 3% of paper balance per trade
 #   MEDIUM → 2%
 #   HARD   → 1%
 # Keys are uppercase to match ACTIVE_LOCATIONS. Unknown cities default to MEDIUM.
-# Last refresh: 2026-04-24 (see reports/top_traders_2026-04-24.txt).
+# Last pro refresh: 2026-05-14 (see reports/city_difficulty_compare_2026-05-14.md).
 CITY_DIFFICULTY = {
-    # EASY — current CORE audit says these cities earned 3% sizing.
+    # EASY — pro combined WR >=75%, except Hong Kong retained from CORE audit
+    # because Hans/Cold have no sample for it in the refreshed report.
     "TEL AVIV":      "easy",
     "SAN FRANCISCO": "easy",
     "LOS ANGELES":   "easy",
     "CHENGDU":       "easy",
-    "HOUSTON":       "easy",
+    "MUNICH":        "easy",
+    "MILAN":         "easy",
+    "WARSAW":        "easy",
     "HONG KONG":     "easy",   # CORE audit 2026-05-09: 4 resolved, 75.0% WR
-    "SEOUL":         "easy",   # CORE audit 2026-05-09: 4 resolved, 75.0% WR
-    "TORONTO":       "easy",   # CORE audit 2026-05-09: 4 resolved, 75.0% WR
-    # HARD — current CORE audit says these cities deserve 1% sizing.
+    # HARD — pro combined WR <=55%.
     "TOKYO":         "hard",
     "SHANGHAI":      "hard",
-    "BEIJING":       "hard",
-    "WUHAN":         "hard",
-    "WARSAW":        "hard",   # CORE audit 2026-05-09: 6 resolved, 33.3% WR
-    "MUNICH":        "hard",   # CORE audit 2026-05-09: 5 resolved, 20.0% WR
-    "WELLINGTON":    "hard",   # CORE audit 2026-05-09: 6 resolved, 50.0% WR
-    "PARIS":         "hard",   # CORE audit 2026-05-09: 5 resolved, 40.0% WR
-    "SINGAPORE":     "hard",   # CORE audit 2026-05-09: 4 resolved, 0.0% WR
-    # Everything else defaults to medium, including MILAN after the CORE audit.
+    # Everything else defaults to medium.
 }
 RISK_PCT_BY_TIER = {"easy": 0.03, "medium": 0.02, "hard": 0.01}
 
