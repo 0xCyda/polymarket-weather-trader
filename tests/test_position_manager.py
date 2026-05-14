@@ -546,6 +546,60 @@ class TestExactCorePreTpGenericExits(unittest.TestCase):
         self.assertEqual(decision["reason"], "hold_no_signal")
 
 
+class TestPositionManagerAdds(unittest.TestCase):
+    def _locked_in_trade(self, entry_price=0.30):
+        return {
+            "trade_id": "london-add",
+            "market_id": "m-london-add",
+            "location": "London",
+            "target_date": "2026-04-27",
+            "side": "yes",
+            "strategy": "core",
+            "entered_at": "2026-04-26T12:00:00+00:00",
+            "question": "Will the highest temperature in London be 21°C on April 27?",
+            "forecast_temp": 69.8,
+            "metric": "high",
+            "bucket": "21°C",
+            "entry_price": entry_price,
+            "shares": 1000,
+            "cost": entry_price * 1000,
+        }
+
+    @patch.object(pm, "_project_eod_max_c", return_value={"projected_c": 21.0, "confidence": 0.9})
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=21.0)
+    def test_adds_are_disabled_by_default(self, *_mocks):
+        trade = self._locked_in_trade(entry_price=0.30)
+        market = {"id": "m-london-add", "external_price_yes": 0.45}
+        now_utc = real_datetime(2026, 4, 27, 14, 33, 0, tzinfo=timezone.utc)
+
+        with patch.object(pm, "ADDS_ENABLED", False):
+            decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "hold")
+        self.assertEqual(decision["reason"], "add_blocked_position_adds_disabled")
+
+    @patch.object(pm, "_project_eod_max_c", return_value={"projected_c": 21.0, "confidence": 0.9})
+    @patch.object(pm, "_fetch_twc_intraday", return_value=[{"dummy": True}])
+    @patch.object(pm, "_running_extreme", return_value=21.0)
+    def test_enabled_adds_still_block_losing_positions(self, *_mocks):
+        trade = self._locked_in_trade(entry_price=0.30)
+        market = {"id": "m-london-add", "external_price_yes": 0.25}
+        now_utc = real_datetime(2026, 4, 27, 14, 33, 0, tzinfo=timezone.utc)
+
+        with patch.object(pm, "ADDS_ENABLED", True):
+            decision = pm._evaluate_position(trade, market=market, now_utc=now_utc)
+
+        self.assertEqual(decision["action"], "hold")
+        self.assertIn("add_blocked_losing_position", decision["reason"])
+
+    @patch.object(pm, "_live_price_yes", return_value=(0.25, "test"))
+    def test_execute_add_refuses_losing_positions(self, *_mocks):
+        trade = self._locked_in_trade(entry_price=0.30)
+        updated = pm._execute_add(trade, market={}, size_usd=100.0, reason="test")
+        self.assertIsNone(updated)
+
+
 class TestLateCooldown(unittest.TestCase):
     @patch.object(pm, "datetime", FakeDateTime)
     @patch.object(pm, "_project_eod_max_c", return_value={"projected_c": 23.0, "confidence": 0.9})

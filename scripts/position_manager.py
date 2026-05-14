@@ -8,10 +8,11 @@ Pulls TWC intraday observations for cities with open positions targeting today
   * EXIT — projected EOD max sits in a different bucket than what we hold.
            Settle the position at the best live mark available, mark as resolved
            with resolution_source="early_exit_position_manager".
-  * ADD  — projected EOD max sits solidly inside our held bucket and current
-           Simmer price is below late_add_ceiling. Open a new paper trade
-           (strategy="late_add") capped at late_add_max_position_usd.
   * HOLD — anything else.
+
+Scale-in ADDs are disabled by default. They can be enabled by config for audits,
+but live/paper cron management should be exit/hold-only unless explicitly tested
+again.
 
 Action thresholds are gated by city-local hour because the diurnal peak (and
 therefore confidence in the projection) is itself a function of how late in
@@ -61,6 +62,7 @@ _cfg = load_config(CONFIG_SCHEMA, str(_HERE / "weather_trader.py"), slug="polyma
 
 # Reuse late_trader's edge buffer — same semantic ("locked in" vs "borderline")
 EDGE_BUFFER_C       = float(_cfg.get("late_edge_buffer_c", 0.3))
+ADDS_ENABLED        = bool(_cfg.get("position_adds_enabled", False))
 ADD_MAX_POSITION    = float(_cfg.get("late_add_max_position_usd", 100.0))
 ADD_PRICE_CEILING   = float(_cfg.get("late_add_price_ceiling", 0.85))
 ADD_PRICE_FLOOR     = float(_cfg.get("late_price_floor", 0.20))
@@ -277,6 +279,31 @@ def _partial_realized_pnl(trade: dict) -> float:
         return round(float(trade.get("realized_pnl") or 0.0), 4)
     except Exception:
         return 0.0
+
+
+def _side_mark_price(trade: dict, yes_price: float) -> float:
+    """Return the current value of the held side, using YES market price."""
+    side = str(trade.get("side") or "yes").lower()
+    if side == "no":
+        return max(0.0, 1.0 - float(yes_price))
+    return float(yes_price)
+
+
+def _add_profit_block_reason(trade: dict, yes_price: float) -> str | None:
+    """Block scale-ins unless the current held side is marked above entry."""
+    try:
+        entry = float(trade.get("entry_price") or 0.0)
+    except Exception:
+        entry = 0.0
+    if entry <= 0:
+        return "add_blocked_missing_entry_price"
+    mark = _side_mark_price(trade, yes_price)
+    if mark <= entry:
+        return (
+            f"add_blocked_losing_position "
+            f"(mark=${mark:.3f} <= entry=${entry:.3f}, side={str(trade.get('side') or 'yes').lower()})"
+        )
+    return None
 
 
 def _has_partial_take_profit(trade: dict) -> bool:
@@ -758,6 +785,9 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
     # solidly in the held bucket AND market price below add ceiling.
     add_window_open = cur_hour >= ADD_AFTER_HOUR or (peak_state and peak_state.get("locked") and cur_hour >= HALFHOUR_MIN_LOCAL_HOUR)
     if add_window_open and in_bucket_now and in_bucket_proj and edge_c_now >= EDGE_BUFFER_C and proj["confidence"] >= 0.7:
+        if not ADDS_ENABLED:
+            out["reason"] = "add_blocked_position_adds_disabled"
+            return out
         if cur_price is None:
             out["reason"] = "add_blocked_no_price"
             return out
@@ -768,6 +798,10 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
             return out
         if cur_price > ADD_PRICE_CEILING:
             out["reason"] = f"add_blocked_price_{cur_price:.3f}_above_ceiling_{ADD_PRICE_CEILING:.2f}"
+            return out
+        profit_block = _add_profit_block_reason(trade, cur_price)
+        if profit_block:
+            out["reason"] = profit_block
             return out
         # Don't add if we've already added today (single add per day per position)
         out["action"] = "add"
@@ -880,6 +914,8 @@ def _execute_add(trade: dict, market: dict, size_usd: float, reason: str, live_p
     if cur_price <= 0:
         return None
     if cur_price < ADD_PRICE_FLOOR or cur_price > ADD_PRICE_CEILING:
+        return None
+    if _add_profit_block_reason(trade, cur_price):
         return None
     # Re-derive bucket from live market question — don't trust trade["bucket"]
     bucket = _resolve_bucket(trade, market)

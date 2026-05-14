@@ -203,10 +203,11 @@ CONFIG_SCHEMA = {
                           "type": str,
                           "help": "Comma-separated whitelist of cities eligible for LATE mode. Defaults to full CORE city list. The original backtest-derived 12-city subset was: London,Toronto,Singapore,Sao Paulo,Shanghai,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas (>=70% hit rate). Cities outside that subset use the global LATE_PRICE_CEILING (0.90); per-city ceilings live in late_trader.py LATE_CITY_CEILINGS."},
     # Position manager: hourly day-of management of open positions. Reads TWC
-    # intraday and either exits losers (running max projects EOD into a
-    # different bucket) or adds to winners (running max locked in held bucket
-    # AND market price is still cheap). Runs separately via
-    # scripts/position_manager.py.
+    # intraday and exits/holds positions by default. Scale-in adds are disabled
+    # by default because they increase tail loss when a locked-in intraday read
+    # later flips.
+    "position_adds_enabled": {"env": "SIMMER_WEATHER_POSITION_ADDS_ENABLED", "default": False, "type": bool,
+                          "help": "Enable position-manager scale-in adds. Default false: exit/hold only, no averaging in."},
     "late_add_max_position_usd": {"env": "SIMMER_WEATHER_LATE_ADD_POSITION_USD", "default": 100.0, "type": float,
                           "help": "Max USD per averaging-in add."},
     "late_add_price_ceiling": {"env": "SIMMER_WEATHER_LATE_ADD_PRICE_CEILING", "default": 0.85, "type": float,
