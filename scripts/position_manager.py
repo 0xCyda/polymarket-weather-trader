@@ -79,9 +79,7 @@ PEAK_LOCK_BUFFER_C = float(_cfg.get("position_peak_lock_buffer_c", 0.2))
 REPRICING_GUARD_START_HOUR = int(_cfg.get("position_repricing_guard_start_hour", ADD_AFTER_HOUR))
 EASY_CORE_REPRICING_GUARD_START_HOUR = int(_cfg.get("position_easy_core_repricing_guard_start_hour", 12))
 REPRICING_DROP_FRAC = float(_cfg.get("position_repricing_drop_frac", 0.50))
-CORPSE_PRICE_FLOOR = float(_cfg.get("position_corpse_price_floor", 0.05))
-CORPSE_ENTRY_FRAC = float(_cfg.get("position_corpse_entry_frac", 0.35))
-EASY_CORE_CORPSE_PRICE_FLOOR = float(_cfg.get("position_easy_core_corpse_price_floor", 0.07))
+HARD_STOP_DRAWDOWN_FRAC = float(_cfg.get("position_hard_stop_drawdown_frac", 0.65))
 REPRICING_WEATHER_EDGE_C = float(_cfg.get("position_repricing_weather_edge_c", 0.20))
 REPRICING_COOLDOWN_MIN = float(_cfg.get("position_repricing_cooldown_min", 45.0))
 EXACT_CORE_MARKET_COLLAPSE_FLOOR = float(_cfg.get("position_exact_core_market_collapse_floor", 0.12))
@@ -542,6 +540,22 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
         )
         return out
 
+    # Universal price-only hard stop. This deliberately runs before the same-day
+    # weather gates so future/today positions cannot sit around waiting for an
+    # observation-based exit after the market has already nuked.
+    if cur_price is not None and entry_price > 0:
+        hard_stop_price = entry_price * (1.0 - HARD_STOP_DRAWDOWN_FRAC)
+        out["hard_stop_price"] = round(hard_stop_price, 4)
+        if cur_price <= hard_stop_price:
+            out["action"] = "exit"
+            stop_pct = int(round(HARD_STOP_DRAWDOWN_FRAC * 100))
+            out["reason"] = (
+                f"hard_stop_drawdown_{stop_pct}pct "
+                f"(price=${cur_price:.3f} <= stop=${hard_stop_price:.3f}, "
+                f"entry=${entry_price:.3f}, drawdown={HARD_STOP_DRAWDOWN_FRAC:.0%})"
+            )
+            return out
+
     if target != local_today:
         # Past targets get resolved by the existing update_resolved_trades cron.
         # Future targets only use price-only take-profit above; weather-driven
@@ -636,8 +650,8 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
 
     # Exact-degree CORE rescue hatch for the same exact-book, including carveout
     # entries: when the market has already cheapened the ticket hard and the
-    # running temperature is still well away from the held bucket, stop waiting
-    # for the generic corpse floor.
+    # running temperature is still well away from the held bucket, cut before
+    # the universal hard stop has to do all the work.
     if (
         cur_price is not None
         and _is_exact_core_sl_eligible(trade, bucket_kind)
@@ -657,30 +671,10 @@ def _evaluate_position(trade: dict, market: dict | None, now_utc: datetime | Non
         )
         return out
 
-    # Emergency market-implied stop: if the same-day position is mature and
-    # Polymarket has repriced it to a corpse probability, get out even before
-    # the peak-hour weather gates. This catches the Buenos Aires / Sao Paulo
-    # failure mode where the PM check saw ~4¢ prices but held until the next
-    # hourly weather breakout exit at a worse fill.
-    if cur_price is not None and (age_min is None or age_min >= REPRICING_COOLDOWN_MIN):
-        effective_corpse_floor = CORPSE_PRICE_FLOOR
-        if strategy == "core" and tier == "easy":
-            effective_corpse_floor = max(CORPSE_PRICE_FLOOR, EASY_CORE_CORPSE_PRICE_FLOOR)
-        corpse_hit = cur_price <= effective_corpse_floor and (entry_price <= 0 or cur_price <= entry_price * CORPSE_ENTRY_FRAC)
-        if corpse_hit:
-            out["action"] = "exit"
-            out["reason"] = (
-                f"corpse_price_guard "
-                f"(price=${cur_price:.3f} <= floor=${effective_corpse_floor:.3f}, "
-                f"entry=${entry_price:.3f}, entry_frac={CORPSE_ENTRY_FRAC:.2f}, "
-                f"running={running_c:.2f}°C, projected={proj['projected_c']:.2f}°C)"
-            )
-            return out
-
     # Exact-degree CORE hard market-collapse stop. For low-edge CARVE entries,
     # live replay showed this cut too many eventual winners before take-profit;
-    # CARVE should use the weaker weather+corpse guards until it has actually
-    # paid us. Non-carve exact CORE still gets the collapse stop.
+    # CARVE should use the universal hard stop plus weather guards until it has
+    # actually paid us. Non-carve exact CORE still gets the collapse stop.
     if (
         cur_price is not None
         and _is_exact_core_sl_eligible(trade, bucket_kind)
