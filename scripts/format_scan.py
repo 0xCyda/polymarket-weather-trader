@@ -19,6 +19,7 @@ Critical behavior:
 from __future__ import annotations
 
 import os
+import json
 import re
 import sys
 from datetime import datetime, timezone, timedelta
@@ -36,6 +37,30 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from paper_journal import get_open_positions, get_stats, _load_trades  # type: ignore
 from weather_trader import city_tier  # type: ignore
+
+X_DAILY_DIR = SKILL_DIR / "reports" / "x-daily"
+
+
+def previous_daily_balance() -> float | None:
+    today = datetime.now(ZoneInfo("Australia/Perth")).strftime("%Y-%m-%d")
+    if not X_DAILY_DIR.exists():
+        return None
+    for path in sorted(X_DAILY_DIR.glob("*.json"), reverse=True):
+        if path.name == "latest.json" or path.stem >= today:
+            continue
+        try:
+            data = json.loads(path.read_text())
+            return float((data.get("portfolio") or {}).get("balance"))
+        except Exception:
+            continue
+    return None
+
+
+def daily_balance_delta(current_balance: float, fallback: float) -> float:
+    previous = previous_daily_balance()
+    if previous is None:
+        return round(float(fallback or 0.0), 2)
+    return round(float(current_balance or 0.0) - previous, 2)
 
 
 def get_awst_time() -> str:
@@ -95,16 +120,17 @@ def parse_new_entries(scan_output: str) -> list[str]:
         if in_section:
             if stripped in {"None", "none"}:
                 return []
-            if re.match(r"^(markets scanned|signals found|trades executed|\[failures\])", stripped, re.I):
+            if re.match(r"^(markets scanned|events scanned|signals found|trades executed|\[failures\])", stripped, re.I):
                 break
             entries.append(stripped)
     return entries
 
 
-def parse_scan_stats(scan_output: str) -> dict[str, int]:
-    stats = {"markets_scanned": 0, "signals_found": 0, "trades_executed": 0}
+def parse_scan_stats(scan_output: str) -> dict[str, int | None]:
+    stats = {"markets_scanned": None, "events_scanned": None, "signals_found": 0, "trades_executed": 0}
     patterns = {
         "markets_scanned": r"Markets scanned:\s*(\d+)",
+        "events_scanned": r"Events scanned:\s*(\d+)",
         "signals_found": r"Signals found:\s*(\d+)",
         "trades_executed": r"Trades executed:\s*(\d+)",
     }
@@ -306,15 +332,27 @@ def get_portfolio_stats() -> dict[str, Any]:
         realized_pnl = float(stats.get("total_pnl", 0.0) or 0.0)
 
         try:
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-            pnl_24h = sum(
-                float(t.get("pnl", 0) or 0)
-                for t in trades
-                if t.get("resolved_at")
-                and datetime.fromisoformat(str(t["resolved_at"]).replace("Z", "+00:00")) > cutoff
-            )
+            awst = ZoneInfo("Australia/Perth")
+            start = datetime.now(awst).replace(hour=0, minute=0, second=0, microsecond=0)
+            end = start + timedelta(days=1)
+            pnl_today = 0.0
+            for trade in trades:
+                raw = trade.get("resolved_at")
+                if raw:
+                    resolved_at = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone(awst)
+                    if start <= resolved_at < end:
+                        pnl_today += float(trade.get("pnl", 0) or 0)
+                if trade.get("status") != "open":
+                    continue
+                for partial in trade.get("partial_exits") or []:
+                    raw = partial.get("ts")
+                    if not raw:
+                        continue
+                    resolved_at = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone(awst)
+                    if start <= resolved_at < end:
+                        pnl_today += float(partial.get("pnl", 0) or 0)
         except Exception:
-            pnl_24h = 0.0
+            pnl_today = 0.0
 
         unrealized_pnl: float | None = None
         simmer_positions = get_simmer_positions()
@@ -333,12 +371,13 @@ def get_portfolio_stats() -> dict[str, Any]:
                 unrealized_pnl = None
 
         total_pnl = None if unrealized_pnl is None else round(realized_pnl + unrealized_pnl, 2)
+        balance = float(stats.get("paper_balance", 10000.0 + realized_pnl) or (10000.0 + realized_pnl))
         return {
-            "balance": float(stats.get("paper_balance", 10000.0) or 10000.0),
+            "balance": balance,
             "realized_pnl": realized_pnl,
             "unrealized_pnl": unrealized_pnl,
             "total_pnl": total_pnl,
-            "pnl_24h": round(float(pnl_24h), 2),
+            "pnl_24h": daily_balance_delta(balance, float(pnl_today)),
             "open_trades": int(stats.get("open_trades", 0) or 0),
         }
     except Exception:
@@ -393,7 +432,7 @@ def format_output(scan_output: str) -> str:
         f"- Balance: ${fmt_usd(portfolio.get('balance', 0.0))} (paper) | Realized: ${fmt_usd(portfolio.get('realized_pnl', 0.0), signed=True)} | uPNL: {upnl_str} | Total: {total_str}"
     )
     lines.append(
-        f"- 24h P&L: ${fmt_usd(portfolio.get('pnl_24h', 0.0), signed=True)} | Open positions: {portfolio.get('open_trades', 0)}"
+        f"- Today P&L: ${fmt_usd(portfolio.get('pnl_24h', 0.0), signed=True)} | Open positions: {portfolio.get('open_trades', 0)}"
     )
     lines.append("")
     lines.append("**Open Positions:**")
@@ -403,6 +442,8 @@ def format_output(scan_output: str) -> str:
         for p in positions:
             question = _question_short(p.get("question") or p.get("market_id") or "Unknown")
             strategy = str(p.get("strategy") or "core").upper()
+            if strategy == "LATE_ADD":
+                strategy = "LATE+"
             tier = str(p.get("tier") or "medium").upper()
 
             shares = p.get("shares")
@@ -438,7 +479,11 @@ def format_output(scan_output: str) -> str:
 
     lines.append("")
     lines.append("🔍 **This Scan**")
-    lines.append(f"- Markets scanned: {scan_stats['markets_scanned']}")
+    markets_scanned = scan_stats.get("markets_scanned")
+    events_scanned = scan_stats.get("events_scanned")
+    lines.append(f"- Markets scanned: {markets_scanned if markets_scanned is not None else 'N/A'}")
+    if events_scanned is not None:
+        lines.append(f"- Events scanned: {events_scanned}")
     lines.append(f"- Signals found: {scan_stats['signals_found']}")
     lines.append(f"- Trades executed: {scan_stats['trades_executed']}")
 

@@ -2,6 +2,19 @@
 
 All notable changes to the Polymarket Weather Trader. Newest first.
 
+## 2026-05-17
+
+### Added
+- Added paper-tracked `LATE+` entries for CORE-held city/date pairs when live TWC observations lock the day-of bucket in the local 3pm window. `LATE+` is logged separately as `late_add`, displayed separately from CORE, and bypasses the projected-bucket guard only for this CORE-held observed-weather confirmation path. (`scripts/late_trader.py`, `scripts/format_scan.py`)
+- Added resolved-history LATE+ replay tooling and audit output. The full replay covered 133 resolved CORE trades / 131 city-dates, found 54 edge-locked LATE+ setups, and measured 39W / 15L with a 72.2c breakeven entry price. (`scripts/backtest_late_plus_resolved_history.py`, `reports/audits/late-plus-resolved-history-2026-05-17.json`)
+
+### Changed
+- LATE+ starts conservatively in paper mode: price floor stays at 20c, price ceiling starts at 60c, and max add-on size starts at $75 instead of the regular LATE cap. (`scripts/weather_trader.py`, `scripts/late_trader.py`)
+
+### Fixed
+- Discord scan summaries now label daily balance movement as Today P&L, reconcile it against the previous daily balance snapshot when available, and show grouped event counts separately from raw market counts. (`scripts/format_scan.py`)
+- `late_trader.py` is executable again so the LATE cron can invoke it directly. (`scripts/late_trader.py`)
+
 ## 2026-05-11
 
 ### Changed

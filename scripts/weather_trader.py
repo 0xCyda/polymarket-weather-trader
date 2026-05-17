@@ -202,6 +202,12 @@ CONFIG_SCHEMA = {
                           "default": "NYC,Chicago,Seattle,Atlanta,Dallas,Miami,Houston,San Francisco,Phoenix,Los Angeles,Denver,Austin,Las Vegas,Tel Aviv,Munich,London,Tokyo,Seoul,Ankara,Lucknow,Wellington,Toronto,Paris,Milan,Sao Paulo,Warsaw,Singapore,Shanghai,Beijing,Shenzhen,Chengdu,Chongqing,Wuhan,Hong Kong,Buenos Aires",
                           "type": str,
                           "help": "Comma-separated whitelist of cities eligible for LATE mode. Defaults to full CORE city list. The original backtest-derived 12-city subset was: London,Toronto,Singapore,Sao Paulo,Shanghai,Tokyo,Beijing,Los Angeles,Miami,Seattle,Chicago,Dallas (>=70% hit rate). Cities outside that subset use the global LATE_PRICE_CEILING (0.90); per-city ceilings live in late_trader.py LATE_CITY_CEILINGS."},
+    "late_core_add_enabled": {"env": "SIMMER_WEATHER_LATE_CORE_ADD_ENABLED", "default": True, "type": bool,
+                          "help": "Enable LATE+ add-ons when CORE already holds the same city/date and live TWC observations lock a bucket."},
+    "late_core_add_price_ceiling": {"env": "SIMMER_WEATHER_LATE_CORE_ADD_PRICE_CEILING", "default": 0.60, "type": float,
+                          "help": "Max entry price for LATE+ CORE-held add-ons. Starts conservatively below the 0.65 profitable replay cap."},
+    "late_core_add_position_usd": {"env": "SIMMER_WEATHER_LATE_CORE_ADD_POSITION_USD", "default": 75.0, "type": float,
+                          "help": "Hard cap per LATE+ add-on. Actual size remains edge-banded by mispricing, capped lower for initial paper testing."},
     # Position manager: hourly day-of management of open positions. Reads TWC
     # intraday and exits/holds positions by default. Scale-in adds are disabled
     # by default because they increase tail loss when a locked-in intraday read
@@ -3179,6 +3185,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
     show_summary = not quiet or total_trades > 0
     if show_summary:
         print("📊 Summary:")
+        print(f"  Markets scanned: {len(markets)}")
         print(f"  Events scanned: {len(events)}")
         print(f"  Entry opportunities: {opportunities_found}")
         print(f"  Exit opportunities:  {exits_found}")

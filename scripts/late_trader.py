@@ -106,6 +106,9 @@ LATE_ENTRY_MINUTE_START = int(_cfg.get("late_entry_minute_start", 0))
 LATE_ENTRY_MINUTE_END   = int(_cfg.get("late_entry_minute_end", 45))
 LATE_EDGE_BUFFER_C   = float(_cfg.get("late_edge_buffer_c", 0.3))
 LATE_ALLOWED_CITIES  = [c.strip() for c in str(_cfg.get("late_cities", "")).split(",") if c.strip()]
+LATE_CORE_ADD_ENABLED = bool(_cfg.get("late_core_add_enabled", True))
+LATE_CORE_ADD_PRICE_CEILING = float(_cfg.get("late_core_add_price_ceiling", 0.60))
+LATE_CORE_ADD_MAX_POSITION = float(_cfg.get("late_core_add_position_usd", 75.0))
 
 LATE_STATE_FILE = _HERE / "data" / "late_window_state.json"
 
@@ -379,18 +382,41 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print,
     cur_hour = local_now.hour
     state_key = _late_state_key(city, date_str)
     locked = (late_state or {}).get(state_key)
-    if locked and locked.get("kind") == "structural_skip":
+    if (
+        locked
+        and locked.get("kind") == "structural_skip"
+        and not (LATE_CORE_ADD_ENABLED and locked.get("reason") == "already_held_by_core")
+    ):
         result["reason"] = f"locked_after_{locked.get('reason', 'skip')}"
         result["locked"] = True
         return result
 
-    # Check for duplicate: skip if core/punt already holds this city+date
+    core_add_mode = False
+    held_core_trade = None
+
+    # Check for duplicate: skip punt/non-late duplicates, but allow a separate
+    # LATE+ add-on when CORE already holds this city+date and live weather locks
+    # a bucket. This is observed-weather confirmation, not forecast averaging.
     try:
         from paper_journal import get_open_positions
         for pos in get_open_positions():
             if (pos.get("location") == city
                     and pos.get("target_date") == date_str
+                    and pos.get("strategy") == "late_add"):
+                result["reason"] = "already_held_by_late_add"
+                return result
+            if (pos.get("location") == city
+                    and pos.get("target_date") == date_str
+                    and pos.get("strategy") == "late"):
+                result["reason"] = "already_held_by_late"
+                return result
+            if (pos.get("location") == city
+                    and pos.get("target_date") == date_str
                     and pos.get("strategy") != "late"):
+                if LATE_CORE_ADD_ENABLED and pos.get("strategy") == "core":
+                    core_add_mode = True
+                    held_core_trade = pos
+                    continue
                 result["reason"] = f"already_held_by_{pos.get('strategy', 'core')}"
                 return result
     except Exception:
@@ -454,11 +480,14 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print,
     result["projected_c"] = round(proj["projected_c"], 2)
     result["projected_confidence"] = proj["confidence"]
     if proj["confidence"] >= 0.7 and not _bucket_contains(proj["projected_c"], pick_bucket):
-        result["reason"] = (
-            f"projected_outside_bucket_"
-            f"{proj['projected_c']:.2f}C_vs_{result['bucket']}"
-        )
-        return result
+        if core_add_mode:
+            result["projected_guard_bypassed"] = True
+        else:
+            result["reason"] = (
+                f"projected_outside_bucket_"
+                f"{proj['projected_c']:.2f}C_vs_{result['bucket']}"
+            )
+            return result
 
     price = pick_market.get("external_price_yes")
     if price is None:
@@ -471,10 +500,18 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print,
         result["reason"] = f"borderline_edge_{edge_c:.2f}C"
         return result
     ceiling = _effective_ceiling(city)
+    if core_add_mode:
+        ceiling = min(ceiling, LATE_CORE_ADD_PRICE_CEILING)
+        result["mode"] = "late_add"
+        result["held_core_trade_id"] = (held_core_trade or {}).get("trade_id")
     result["ceiling"] = ceiling
     if price > ceiling:
-        result["reason"] = f"price_too_high_{price:.3f}_vs_{ceiling:.2f}"
+        result["reason"] = (
+            f"price_too_high_{price:.3f}_vs_{ceiling:.2f}"
+            + ("_late_add" if core_add_mode else "")
+        )
         return result
+
     # LATE thesis requires the market to already agree the bucket is locked in
     # (running max sits inside it post-peak). If the market is pricing the
     # bucket below LATE_PRICE_FLOOR, it expects the day to climb past our
@@ -489,7 +526,8 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print,
     result["estimated_prob"] = round(est_prob, 4)
     result["model_edge"] = round(model_edge, 4)
 
-    size = min(LATE_MAX_POSITION, _size_late_trade(model_edge))
+    max_position = LATE_CORE_ADD_MAX_POSITION if core_add_mode else LATE_MAX_POSITION
+    size = min(max_position, _size_late_trade(model_edge))
     if size < 5:
         result["reason"] = f"edge_too_thin_{model_edge:.3f}"
         return result
@@ -519,17 +557,19 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print,
     # CORE/PUNT in weather_trader.py. The journal entry below is gated on
     # trade.simulated, not on dry_run, so paper trades land in paper_trades.jsonl
     # while real wallet trades go through --live (validated in main()).
-    log(f"  [LATE] {city}: running={running_c:.2f}°C locked in {result['bucket']} "
+    strategy_tag = "LATE+" if core_add_mode else "LATE"
+    log(f"  [{strategy_tag}] {city}: running={running_c:.2f}°C locked in {result['bucket']} "
         f"@ ${price:.3f} (lock {edge_c:.2f}°C, p≈{est_prob:.3f}, misprice={model_edge:+.3f}) size=${size:.0f}")
 
+    thesis = "LATE+" if core_add_mode else "LATE"
     reasoning = (
-        f"LATE: {city} running {metric} at {local_now.strftime('%H:%M %Z')} = "
+        f"{thesis}: {city} running {metric} at {local_now.strftime('%H:%M %Z')} = "
         f"{running_c:.1f}°C, locked into {result['bucket']} (edge {edge_c:.2f}°C). "
         f"Estimated true win probability {est_prob:.1%} vs market price ${price:.3f} "
         f"(mispricing {model_edge:+.1%}); sized at ${size:.0f}."
     )
     signal_data = {
-        "mode": "late",
+        "mode": "late_add" if core_add_mode else "late",
         "city": city,
         "date": date_str,
         "metric": metric,
@@ -542,6 +582,9 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print,
         "model_edge": round(model_edge, 4),
         "size_usd": round(size, 2),
     }
+    if core_add_mode:
+        signal_data["held_core_trade_id"] = (held_core_trade or {}).get("trade_id")
+        signal_data["projected_guard_bypassed"] = bool(result.get("projected_guard_bypassed"))
     trade = execute_trade(
         market_id=pick_market.get("id"), side="yes", amount=size,
         reasoning=reasoning, signal_data=signal_data,
@@ -554,7 +597,7 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print,
         return result
 
     shares = trade.get("shares_bought") or trade.get("shares") or 0
-    log(f"  [LATE] BUY {city}: {shares:.0f} @ ${price:.3f} bucket={result['bucket']} "
+    log(f"  [{strategy_tag}] BUY {city}: {shares:.0f} @ ${price:.3f} bucket={result['bucket']} "
         f"({'paper' if trade.get('simulated') else 'live'})")
 
     # Paper journal entry (mirrors CORE/PUNT pattern)
@@ -566,11 +609,11 @@ def _scan_city(city: str, dry_run: bool, markets: list | None = None, log=print,
                 side="yes", entry_price=price, shares=shares,
                 cost=size, bucket=result["bucket"],
                 forecast_temp=running_c * 9 / 5 + 32,  # store as °F (journal convention)
-                signal_strength="late_locked",
+                signal_strength="late_core_add_locked" if core_add_mode else "late_locked",
                 location=city, date_str=date_str, metric=metric,
                 models_used=0, agreement_pct=100.0, spread=0.0,
                 model_temps={"twc_running": round(running_c, 2)},
-                strategy="late",
+                strategy="late_add" if core_add_mode else "late",
                 confidence=est_prob,
                 polymarket_token_id=pick_market.get("polymarket_token_id"),
                 polymarket_no_token_id=pick_market.get("polymarket_no_token_id"),

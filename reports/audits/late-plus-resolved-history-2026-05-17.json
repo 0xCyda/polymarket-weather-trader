@@ -1,0 +1,2631 @@
+{
+  "edge_locked_scenario": {
+    "breakeven_price": 0.722,
+    "losses": 15,
+    "pnl_totals_by_price": {
+      "0.35": 7178.46,
+      "0.50": 3000.0,
+      "0.60": 1374.87,
+      "0.65": 750.09,
+      "0.80": -93.75
+    },
+    "trades": 54,
+    "trades_by_price": {
+      "0.35": 54,
+      "0.50": 54,
+      "0.60": 54,
+      "0.65": 54,
+      "0.80": 7
+    },
+    "win_rate": 72.2,
+    "wins": 39
+  },
+  "generated_at": "2026-05-17T12:49:27.069710+00:00",
+  "note": "Resolved CORE history replay. Historical LATE+ entry prices are not stored; P&L is simulated across assumed prices.",
+  "reconstructed": 56,
+  "resolved_core_city_dates": 131,
+  "resolved_core_trades": 133,
+  "rows": [
+    {
+      "actual_c": 18.0,
+      "city": "Ankara",
+      "core_buckets": [
+        "71\u00b0F or below"
+      ],
+      "core_trade_ids": [
+        "paper_bd23b292-1abf-46_1777038646"
+      ],
+      "date": "2026-04-25",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "18\u00b0C",
+      "late_window_local": "2026-04-25 15:00",
+      "late_window_utc": "2026-04-25T12:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 18.5,
+      "projected_ok": false,
+      "running_c": 18.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 20.0,
+      "city": "Ankara",
+      "core_buckets": [
+        "19\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_4a12d65d-b58d-47_1777288489"
+      ],
+      "date": "2026-04-28",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "20\u00b0C",
+      "late_window_local": "2026-04-28 15:00",
+      "late_window_utc": "2026-04-28T12:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 20.5,
+      "projected_ok": false,
+      "running_c": 20.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 9.0,
+      "city": "Ankara",
+      "core_buckets": [
+        "9\u00b0C or above"
+      ],
+      "core_trade_ids": [
+        "paper_4ceae1e1-5673-48_1777685536"
+      ],
+      "date": "2026-05-03",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "9\u00b0C",
+      "late_window_local": "2026-05-03 15:00",
+      "late_window_utc": "2026-05-03T12:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 9.5,
+      "projected_ok": false,
+      "running_c": 9.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 22.0,
+      "city": "Ankara",
+      "core_buckets": [
+        "22\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_a718ff74-f264-4f_1778362041"
+      ],
+      "date": "2026-05-11",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "22\u00b0C",
+      "late_window_local": "2026-05-11 15:00",
+      "late_window_utc": "2026-05-11T12:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 22.5,
+      "projected_ok": false,
+      "running_c": 22.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 17.0,
+      "city": "Ankara",
+      "core_buckets": [
+        "17\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_044030d3-d637-4c_1778672215"
+      ],
+      "date": "2026-05-15",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "16\u00b0C",
+      "late_window_local": "2026-05-15 15:00",
+      "late_window_utc": "2026-05-15T12:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 16.5,
+      "projected_ok": false,
+      "running_c": 16.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 18.0,
+      "city": "Ankara",
+      "core_buckets": [
+        "19\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_f7451321-4dda-4c_1778918680"
+      ],
+      "date": "2026-05-17",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "18\u00b0C",
+      "late_window_local": "2026-05-17 15:00",
+      "late_window_utc": "2026-05-17T12:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 18.5,
+      "projected_ok": false,
+      "running_c": 18.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 22.0,
+      "city": "Austin",
+      "core_buckets": [
+        "73\u00b0F or below"
+      ],
+      "core_trade_ids": [
+        "paper_182399f6-9195-48_1777452532"
+      ],
+      "date": "2026-04-30",
+      "edge_c": 0.056,
+      "edge_ok": false,
+      "edge_pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": false,
+      "est_prob": 0.76,
+      "late_bucket": "72\u00b0F",
+      "late_window_local": "2026-04-30 15:00",
+      "late_window_utc": "2026-04-30T20:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.41,
+        "0.50": 0.26,
+        "0.60": 0.16,
+        "0.65": 0.11,
+        "0.80": -0.04
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 22.5,
+      "projected_ok": false,
+      "running_c": 22.0,
+      "strict_qualified": false,
+      "unit": "F",
+      "won": true
+    },
+    {
+      "actual_c": 28.0,
+      "city": "Beijing",
+      "core_buckets": [
+        "28\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_f24821a0-7823-4a_1778166417"
+      ],
+      "date": "2026-05-08",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.804,
+      "late_bucket": "28\u00b0C",
+      "late_window_local": "2026-05-08 15:00",
+      "late_window_utc": "2026-05-08T07:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.454,
+        "0.50": 0.304,
+        "0.60": 0.204,
+        "0.65": 0.154,
+        "0.80": 0.004
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 28.5,
+      "projected_ok": false,
+      "running_c": 28.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 31.0,
+      "city": "Beijing",
+      "core_buckets": [
+        "31\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_1953bd27-403a-47_1778405210"
+      ],
+      "date": "2026-05-11",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.804,
+      "late_bucket": "31\u00b0C",
+      "late_window_local": "2026-05-11 15:00",
+      "late_window_utc": "2026-05-11T07:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.454,
+        "0.50": 0.304,
+        "0.60": 0.204,
+        "0.65": 0.154,
+        "0.80": 0.004
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 31.5,
+      "projected_ok": false,
+      "running_c": 31.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 33.0,
+      "city": "Beijing",
+      "core_buckets": [
+        "33\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_a469eb1a-df91-44_1778491742"
+      ],
+      "date": "2026-05-12",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.804,
+      "late_bucket": "33\u00b0C",
+      "late_window_local": "2026-05-12 15:00",
+      "late_window_utc": "2026-05-12T07:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.454,
+        "0.50": 0.304,
+        "0.60": 0.204,
+        "0.65": 0.154,
+        "0.80": 0.004
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 33.5,
+      "projected_ok": false,
+      "running_c": 33.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 17.0,
+      "city": "Buenos Aires",
+      "core_buckets": [
+        "17\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_5fd28a62-841b-44_1777685537"
+      ],
+      "date": "2026-05-03",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "17\u00b0C",
+      "late_window_local": "2026-05-03 15:00",
+      "late_window_utc": "2026-05-03T18:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 17.5,
+      "projected_ok": false,
+      "running_c": 17.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 17.0,
+      "city": "Buenos Aires",
+      "core_buckets": [
+        "18\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_d1f031d5-1a20-46_1778376175"
+      ],
+      "date": "2026-05-11",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "17\u00b0C",
+      "late_window_local": "2026-05-11 15:00",
+      "late_window_utc": "2026-05-11T18:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 17.5,
+      "projected_ok": false,
+      "running_c": 17.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 15.0,
+      "city": "Buenos Aires",
+      "core_buckets": [
+        "16\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_cb4233a1-cb18-45_1778622489"
+      ],
+      "date": "2026-05-13",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "15\u00b0C",
+      "late_window_local": "2026-05-13 15:00",
+      "late_window_utc": "2026-05-13T18:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 15.5,
+      "projected_ok": false,
+      "running_c": 15.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 17.0,
+      "city": "Buenos Aires",
+      "core_buckets": [
+        "18\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_090f816c-586e-46_1778701041"
+      ],
+      "date": "2026-05-14",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "16\u00b0C",
+      "late_window_local": "2026-05-14 15:00",
+      "late_window_utc": "2026-05-14T18:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 16.5,
+      "projected_ok": false,
+      "running_c": 16.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 18.0,
+      "city": "Buenos Aires",
+      "core_buckets": [
+        "18\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_366122f6-f5f8-45_1778758468"
+      ],
+      "date": "2026-05-15",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "18\u00b0C",
+      "late_window_local": "2026-05-15 15:00",
+      "late_window_utc": "2026-05-15T18:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 18.5,
+      "projected_ok": false,
+      "running_c": 18.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 9.0,
+      "city": "Chicago",
+      "core_buckets": [
+        "51\u00b0F or below"
+      ],
+      "core_trade_ids": [
+        "paper_f0adac17-9d46-4a_1777438108"
+      ],
+      "date": "2026-05-01",
+      "edge_c": 0.167,
+      "edge_ok": false,
+      "edge_pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": false,
+      "est_prob": 0.929,
+      "late_bucket": "48\u00b0F",
+      "late_window_local": "2026-05-01 15:00",
+      "late_window_utc": "2026-05-01T20:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.579,
+        "0.50": 0.429,
+        "0.60": 0.329,
+        "0.65": 0.279,
+        "0.80": 0.129
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 9.5,
+      "projected_ok": false,
+      "running_c": 9.0,
+      "strict_qualified": false,
+      "unit": "F",
+      "won": true
+    },
+    {
+      "actual_c": 30.0,
+      "city": "Hong Kong",
+      "core_buckets": [
+        "28\u00b0C"
+      ],
+      "core_trade_ids": [
+        "manual_hk_2026-04-21_28c"
+      ],
+      "date": "2026-04-21",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "30\u00b0C",
+      "late_window_local": "2026-04-21 15:00",
+      "late_window_utc": "2026-04-21T07:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 30.5,
+      "projected_ok": false,
+      "running_c": 30.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 30.0,
+      "city": "Hong Kong",
+      "core_buckets": [
+        "76\u00b0F or above"
+      ],
+      "core_trade_ids": [
+        "paper_9e1f8cb8-bbf2-48_1776735411"
+      ],
+      "date": "2026-04-22",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "30\u00b0C",
+      "late_window_local": "2026-04-22 15:00",
+      "late_window_utc": "2026-04-22T07:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 30.5,
+      "projected_ok": false,
+      "running_c": 30.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 42.0,
+      "city": "Lucknow",
+      "core_buckets": [
+        "30\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_27e33aec-4775-46_1777055875"
+      ],
+      "date": "2026-04-25",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "42\u00b0C",
+      "late_window_local": "2026-04-25 15:00",
+      "late_window_utc": "2026-04-25T09:30:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 42.5,
+      "projected_ok": false,
+      "running_c": 42.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 22.0,
+      "city": "Milan",
+      "core_buckets": [
+        "22\u00b0C or above"
+      ],
+      "core_trade_ids": [
+        "paper_96f37049-b3c5-48_1777201672"
+      ],
+      "date": "2026-04-28",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "21\u00b0C",
+      "late_window_local": "2026-04-28 15:00",
+      "late_window_utc": "2026-04-28T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 21.5,
+      "projected_ok": false,
+      "running_c": 21.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 21.0,
+      "city": "Milan",
+      "core_buckets": [
+        "20\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_5ab736b0-b0d0-4b_1777467213"
+      ],
+      "date": "2026-05-01",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "20\u00b0C",
+      "late_window_local": "2026-05-01 15:00",
+      "late_window_utc": "2026-05-01T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 20.5,
+      "projected_ok": false,
+      "running_c": 20.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 24.0,
+      "city": "Milan",
+      "core_buckets": [
+        "23\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_9fdddf9d-50c8-4e_1777531440"
+      ],
+      "date": "2026-05-02",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "23\u00b0C",
+      "late_window_local": "2026-05-02 15:00",
+      "late_window_utc": "2026-05-02T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 23.5,
+      "projected_ok": false,
+      "running_c": 23.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 22.0,
+      "city": "Milan",
+      "core_buckets": [
+        "22\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_9df07245-37d5-40_1777844240"
+      ],
+      "date": "2026-05-04",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "21\u00b0C",
+      "late_window_local": "2026-05-04 15:00",
+      "late_window_utc": "2026-05-04T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 21.5,
+      "projected_ok": false,
+      "running_c": 21.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 20.0,
+      "city": "Milan",
+      "core_buckets": [
+        "21\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_75a9da16-0ff4-46_1778405207"
+      ],
+      "date": "2026-05-12",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "20\u00b0C",
+      "late_window_local": "2026-05-12 15:00",
+      "late_window_utc": "2026-05-12T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 20.5,
+      "projected_ok": false,
+      "running_c": 20.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 19.0,
+      "city": "Milan",
+      "core_buckets": [
+        "19\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_d9b114f7-4c0e-4c_1778534911"
+      ],
+      "date": "2026-05-13",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "19\u00b0C",
+      "late_window_local": "2026-05-13 15:00",
+      "late_window_utc": "2026-05-13T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 19.5,
+      "projected_ok": false,
+      "running_c": 19.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 13.0,
+      "city": "Milan",
+      "core_buckets": [
+        "14\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_1abb0453-afc5-46_1778788743"
+      ],
+      "date": "2026-05-15",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "13\u00b0C",
+      "late_window_local": "2026-05-15 15:00",
+      "late_window_utc": "2026-05-15T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 13.5,
+      "projected_ok": false,
+      "running_c": 13.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 21.0,
+      "city": "Munich",
+      "core_buckets": [
+        "19\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_9933be31-b949-4c_1776926359"
+      ],
+      "date": "2026-04-25",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "21\u00b0C",
+      "late_window_local": "2026-04-25 15:00",
+      "late_window_utc": "2026-04-25T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 21.5,
+      "projected_ok": false,
+      "running_c": 21.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 20.0,
+      "city": "Munich",
+      "core_buckets": [
+        "21\u00b0C or above"
+      ],
+      "core_trade_ids": [
+        "paper_95152b30-9da2-40_1777250344"
+      ],
+      "date": "2026-04-28",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "20\u00b0C",
+      "late_window_local": "2026-04-28 15:00",
+      "late_window_utc": "2026-04-28T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 20.5,
+      "projected_ok": false,
+      "running_c": 20.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 13.0,
+      "city": "Munich",
+      "core_buckets": [
+        "13\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_43749aa1-4378-4c_1778758466"
+      ],
+      "date": "2026-05-16",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "13\u00b0C",
+      "late_window_local": "2026-05-16 15:00",
+      "late_window_utc": "2026-05-16T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 13.5,
+      "projected_ok": false,
+      "running_c": 13.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 22.0,
+      "city": "Paris",
+      "core_buckets": [
+        "23\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_bea80cde-da48-46_1777098996"
+      ],
+      "date": "2026-04-27",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "21\u00b0C",
+      "late_window_local": "2026-04-27 15:00",
+      "late_window_utc": "2026-04-27T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 21.5,
+      "projected_ok": false,
+      "running_c": 21.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 20.0,
+      "city": "Paris",
+      "core_buckets": [
+        "22\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_10dfd409-b6f1-46_1777295177"
+      ],
+      "date": "2026-04-28",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "19\u00b0C",
+      "late_window_local": "2026-04-28 15:00",
+      "late_window_utc": "2026-04-28T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 19.5,
+      "projected_ok": false,
+      "running_c": 19.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 19.0,
+      "city": "Paris",
+      "core_buckets": [
+        "20\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_2d5d68aa-6d34-4c_1778166385"
+      ],
+      "date": "2026-05-08",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "19\u00b0C",
+      "late_window_local": "2026-05-08 15:00",
+      "late_window_utc": "2026-05-08T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 19.5,
+      "projected_ok": false,
+      "running_c": 19.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 14.0,
+      "city": "Paris",
+      "core_buckets": [
+        "14\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_e72e5b5a-fbb3-4d_1778419549"
+      ],
+      "date": "2026-05-11",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "13\u00b0C",
+      "late_window_local": "2026-05-11 15:00",
+      "late_window_utc": "2026-05-11T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 13.5,
+      "projected_ok": false,
+      "running_c": 13.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 15.0,
+      "city": "Paris",
+      "core_buckets": [
+        "16\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_7dbbe15f-9e40-4d_1778448535"
+      ],
+      "date": "2026-05-12",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "14\u00b0C",
+      "late_window_local": "2026-05-12 15:00",
+      "late_window_utc": "2026-05-12T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 14.5,
+      "projected_ok": false,
+      "running_c": 14.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 13.0,
+      "city": "Paris",
+      "core_buckets": [
+        "12\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_5fde6762-a7c6-48_1778595580"
+      ],
+      "date": "2026-05-14",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "11\u00b0C",
+      "late_window_local": "2026-05-14 15:00",
+      "late_window_utc": "2026-05-14T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 11.5,
+      "projected_ok": false,
+      "running_c": 11.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 13.0,
+      "city": "Paris",
+      "core_buckets": [
+        "13\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_0e7e6e84-3e32-42_1778701040"
+      ],
+      "date": "2026-05-15",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "13\u00b0C",
+      "late_window_local": "2026-05-15 15:00",
+      "late_window_utc": "2026-05-15T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 13.5,
+      "projected_ok": false,
+      "running_c": 13.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 15.0,
+      "city": "Paris",
+      "core_buckets": [
+        "15\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_88298861-8ff8-49_1778875179"
+      ],
+      "date": "2026-05-16",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "14\u00b0C",
+      "late_window_local": "2026-05-16 15:00",
+      "late_window_utc": "2026-05-16T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 14.5,
+      "projected_ok": false,
+      "running_c": 14.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 25.0,
+      "city": "Sao Paulo",
+      "core_buckets": [
+        "26\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_c3d7761a-ae50-44_1778491740"
+      ],
+      "date": "2026-05-13",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 31.25
+      },
+      "edge_qualified": true,
+      "est_prob": 0.953,
+      "late_bucket": "25\u00b0C",
+      "late_window_local": "2026-05-13 15:00",
+      "late_window_utc": "2026-05-13T18:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.603,
+        "0.50": 0.453,
+        "0.60": 0.353,
+        "0.65": 0.303,
+        "0.80": 0.153
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 25.5,
+      "projected_ok": false,
+      "running_c": 25.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 32.0,
+      "city": "Seoul",
+      "core_buckets": [
+        "27\u00b0C or above"
+      ],
+      "core_trade_ids": [
+        "paper_1f94435b-ade1-42_1778578185"
+      ],
+      "date": "2026-05-14",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "32\u00b0C",
+      "late_window_local": "2026-05-14 15:00",
+      "late_window_utc": "2026-05-14T06:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 32.5,
+      "projected_ok": false,
+      "running_c": 32.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 23.0,
+      "city": "Shanghai",
+      "core_buckets": [
+        "24\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_dc2c06d1-4c1a-4e_1777127764"
+      ],
+      "date": "2026-04-26",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 31.25
+      },
+      "edge_qualified": true,
+      "est_prob": 0.953,
+      "late_bucket": "23\u00b0C",
+      "late_window_local": "2026-04-26 15:00",
+      "late_window_utc": "2026-04-26T07:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.603,
+        "0.50": 0.453,
+        "0.60": 0.353,
+        "0.65": 0.303,
+        "0.80": 0.153
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 23.5,
+      "projected_ok": false,
+      "running_c": 23.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 23.0,
+      "city": "Shanghai",
+      "core_buckets": [
+        "23\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_9c3a0f5c-406a-43_1778186711"
+      ],
+      "date": "2026-05-09",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 31.25
+      },
+      "edge_qualified": true,
+      "est_prob": 0.953,
+      "late_bucket": "23\u00b0C",
+      "late_window_local": "2026-05-09 15:00",
+      "late_window_utc": "2026-05-09T07:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.603,
+        "0.50": 0.453,
+        "0.60": 0.353,
+        "0.65": 0.303,
+        "0.80": 0.153
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 23.5,
+      "projected_ok": false,
+      "running_c": 23.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 24.0,
+      "city": "Shanghai",
+      "core_buckets": [
+        "24\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_68812cf3-c9d4-40_1778333149"
+      ],
+      "date": "2026-05-10",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 31.25
+      },
+      "edge_qualified": true,
+      "est_prob": 0.953,
+      "late_bucket": "24\u00b0C",
+      "late_window_local": "2026-05-10 15:00",
+      "late_window_utc": "2026-05-10T07:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.603,
+        "0.50": 0.453,
+        "0.60": 0.353,
+        "0.65": 0.303,
+        "0.80": 0.153
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 24.5,
+      "projected_ok": false,
+      "running_c": 24.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 29.0,
+      "city": "Shenzhen",
+      "core_buckets": [
+        "28\u00b0C"
+      ],
+      "core_trade_ids": [
+        "manual_sz_2026-04-21_28c"
+      ],
+      "date": "2026-04-21",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "29\u00b0C",
+      "late_window_local": "2026-04-21 15:00",
+      "late_window_utc": "2026-04-21T07:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 29.5,
+      "projected_ok": false,
+      "running_c": 29.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 34.0,
+      "city": "Singapore",
+      "core_buckets": [
+        "19\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_1f5d6880-33a6-4c_1777027948"
+      ],
+      "date": "2026-04-25",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 31.25
+      },
+      "edge_qualified": true,
+      "est_prob": 0.979,
+      "late_bucket": "34\u00b0C",
+      "late_window_local": "2026-04-25 15:00",
+      "late_window_utc": "2026-04-25T07:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.629,
+        "0.50": 0.479,
+        "0.60": 0.379,
+        "0.65": 0.329,
+        "0.80": 0.179
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 34.5,
+      "projected_ok": false,
+      "running_c": 34.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 32.0,
+      "city": "Singapore",
+      "core_buckets": [
+        "32\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_856e0e5e-f444-47_1778860723"
+      ],
+      "date": "2026-05-17",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": -125.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.979,
+      "late_bucket": "31\u00b0C",
+      "late_window_local": "2026-05-17 15:00",
+      "late_window_utc": "2026-05-17T07:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.629,
+        "0.50": 0.479,
+        "0.60": 0.379,
+        "0.65": 0.329,
+        "0.80": 0.179
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 31.5,
+      "projected_ok": false,
+      "running_c": 31.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 20.0,
+      "city": "Tokyo",
+      "core_buckets": [
+        "20\u00b0C"
+      ],
+      "core_trade_ids": [
+        "manual_tokyo_2026-04-26_20c_1777026934"
+      ],
+      "date": "2026-04-26",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.816,
+      "late_bucket": "20\u00b0C",
+      "late_window_local": "2026-04-26 15:00",
+      "late_window_utc": "2026-04-26T06:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.466,
+        "0.50": 0.316,
+        "0.60": 0.216,
+        "0.65": 0.166,
+        "0.80": 0.016
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 20.5,
+      "projected_ok": false,
+      "running_c": 20.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 23.0,
+      "city": "Tokyo",
+      "core_buckets": [
+        "23\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_59fe23ab-f8e3-46_1778166398"
+      ],
+      "date": "2026-05-09",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.816,
+      "late_bucket": "23\u00b0C",
+      "late_window_local": "2026-05-09 15:00",
+      "late_window_utc": "2026-05-09T06:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.466,
+        "0.50": 0.316,
+        "0.60": 0.216,
+        "0.65": 0.166,
+        "0.80": 0.016
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 23.5,
+      "projected_ok": false,
+      "running_c": 23.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 25.0,
+      "city": "Tokyo",
+      "core_buckets": [
+        "26\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_6b4f8820-9428-4b_1778744236"
+      ],
+      "date": "2026-05-16",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.816,
+      "late_bucket": "25\u00b0C",
+      "late_window_local": "2026-05-16 15:00",
+      "late_window_utc": "2026-05-16T06:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.466,
+        "0.50": 0.316,
+        "0.60": 0.216,
+        "0.65": 0.166,
+        "0.80": 0.016
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 25.5,
+      "projected_ok": false,
+      "running_c": 25.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 12.0,
+      "city": "Toronto",
+      "core_buckets": [
+        "12\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_9ee68d33-442e-43_1777508281"
+      ],
+      "date": "2026-04-30",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": -125.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.894,
+      "late_bucket": "11\u00b0C",
+      "late_window_local": "2026-04-30 15:00",
+      "late_window_utc": "2026-04-30T19:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.544,
+        "0.50": 0.394,
+        "0.60": 0.294,
+        "0.65": 0.244,
+        "0.80": 0.094
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 11.5,
+      "projected_ok": false,
+      "running_c": 11.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 20.0,
+      "city": "Warsaw",
+      "core_buckets": [
+        "21\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_2ade08fb-a732-40_1777584660"
+      ],
+      "date": "2026-05-01",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "20\u00b0C",
+      "late_window_local": "2026-05-01 15:00",
+      "late_window_utc": "2026-05-01T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 20.5,
+      "projected_ok": false,
+      "running_c": 20.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 20.0,
+      "city": "Warsaw",
+      "core_buckets": [
+        "19\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_d9fd8f27-c6cf-49_1778288983"
+      ],
+      "date": "2026-05-10",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": -125.0,
+        "0.50": -125.0,
+        "0.60": -125.0,
+        "0.65": -125.0,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "19\u00b0C",
+      "late_window_local": "2026-05-10 15:00",
+      "late_window_utc": "2026-05-10T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 19.5,
+      "projected_ok": false,
+      "running_c": 19.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": false
+    },
+    {
+      "actual_c": 18.0,
+      "city": "Warsaw",
+      "core_buckets": [
+        "18\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_fb1f645a-47f9-48_1778578198"
+      ],
+      "date": "2026-05-14",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "18\u00b0C",
+      "late_window_local": "2026-05-14 15:00",
+      "late_window_utc": "2026-05-14T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 18.5,
+      "projected_ok": false,
+      "running_c": 18.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 20.0,
+      "city": "Warsaw",
+      "core_buckets": [
+        "20\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_908f6fb0-bdc9-49_1778744238"
+      ],
+      "date": "2026-05-15",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "20\u00b0C",
+      "late_window_local": "2026-05-15 15:00",
+      "late_window_utc": "2026-05-15T13:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 20.5,
+      "projected_ok": false,
+      "running_c": 20.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 14.0,
+      "city": "Wellington",
+      "core_buckets": [
+        "13C or above"
+      ],
+      "core_trade_ids": [
+        "paper_18060c1d-d3ae-46_1776767096"
+      ],
+      "date": "2026-04-23",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "14\u00b0C",
+      "late_window_local": "2026-04-23 15:00",
+      "late_window_utc": "2026-04-23T03:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 14.5,
+      "projected_ok": false,
+      "running_c": 14.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 14.0,
+      "city": "Wellington",
+      "core_buckets": [
+        "14\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_83aa932a-eea7-41_1778506042"
+      ],
+      "date": "2026-05-13",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "14\u00b0C",
+      "late_window_local": "2026-05-13 15:00",
+      "late_window_utc": "2026-05-13T03:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 14.5,
+      "projected_ok": false,
+      "running_c": 14.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    },
+    {
+      "actual_c": 13.0,
+      "city": "Wellington",
+      "core_buckets": [
+        "13\u00b0C"
+      ],
+      "core_trade_ids": [
+        "paper_76df4d38-6305-40_1778758467"
+      ],
+      "date": "2026-05-16",
+      "edge_c": 0.5,
+      "edge_ok": true,
+      "edge_pnl_by_price": {
+        "0.35": 232.14,
+        "0.50": 125.0,
+        "0.60": 83.33,
+        "0.65": 67.31,
+        "0.80": 0.0
+      },
+      "edge_qualified": true,
+      "est_prob": 0.77,
+      "late_bucket": "13\u00b0C",
+      "late_window_local": "2026-05-16 15:00",
+      "late_window_utc": "2026-05-16T03:00:00+00:00",
+      "metric": "high",
+      "model_edge_by_price": {
+        "0.35": 0.42,
+        "0.50": 0.27,
+        "0.60": 0.17,
+        "0.65": 0.12,
+        "0.80": -0.03
+      },
+      "pnl_by_price": {
+        "0.35": 0.0,
+        "0.50": 0.0,
+        "0.60": 0.0,
+        "0.65": 0.0,
+        "0.80": 0.0
+      },
+      "projected_c": 13.5,
+      "projected_ok": false,
+      "running_c": 13.0,
+      "strict_qualified": false,
+      "unit": "C",
+      "won": true
+    }
+  ],
+  "skip_counts": {
+    "no_core_open_at_late_window": 75
+  },
+  "source": "/home/brandon/projects/polymarket-weather-trader/data/paper_trades.jsonl",
+  "strict_scenario": {
+    "breakeven_price": null,
+    "losses": 0,
+    "pnl_totals_by_price": {
+      "0.35": 0,
+      "0.50": 0,
+      "0.60": 0,
+      "0.65": 0,
+      "0.80": 0
+    },
+    "trades": 0,
+    "trades_by_price": {
+      "0.35": 0,
+      "0.50": 0,
+      "0.60": 0,
+      "0.65": 0,
+      "0.80": 0
+    },
+    "win_rate": null,
+    "wins": 0
+  }
+}
