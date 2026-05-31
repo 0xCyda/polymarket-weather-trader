@@ -970,6 +970,45 @@ def parse_market_bucket(market: dict):
     return None, ""
 
 
+def detect_event_market_unit(event_markets: list, event_name: str = "") -> str:
+    """Infer the unit the event actually trades in from its market buckets.
+
+    Prefer parsed market buckets over location heuristics. If the bucket scan is
+    ambiguous or empty, fall back to the event/question text parser, then default
+    to °F.
+    """
+    counts = {"C": 0, "F": 0}
+    for market in event_markets or []:
+        bucket, _label = parse_market_bucket(market)
+        if bucket:
+            _lo, _hi, unit = bucket
+            if unit in counts:
+                counts[unit] += 1
+    if counts["C"] > counts["F"]:
+        return "C"
+    if counts["F"] > counts["C"]:
+        return "F"
+    info = parse_weather_event(event_name)
+    if info and info.get("unit") in {"C", "F"}:
+        return info["unit"]
+    return "F"
+
+
+def apply_location_bias_and_round_forecast(forecast_f: float, location: str, market_unit: str) -> tuple[float, str, str]:
+    """Apply LOCATION_BIAS_C in the market's native unit, then round for settlement."""
+    bias_c = float(LOCATION_BIAS_C.get(location, 0.0) or 0.0)
+    if market_unit == "C":
+        raw_c = (forecast_f - 32) * 5 / 9
+        rounded_c = round(raw_c + bias_c)
+        adjusted_f = rounded_c * 9 / 5 + 32
+        bias_str = f" (bias {bias_c:+.1f}°C)" if bias_c else ""
+        return adjusted_f, "°C", f"{rounded_c}°C{bias_str}"
+
+    rounded_f = round(forecast_f + bias_c * 9 / 5)
+    bias_str = f" (bias {bias_c:+.1f}°C)" if bias_c else ""
+    return float(rounded_f), "°F", f"{rounded_f}°F{bias_str}"
+
+
 # =============================================================================
 # Simmer API - Core
 # =============================================================================
@@ -1216,7 +1255,7 @@ def _core_low_edge_exact_carveout_allowed(rb: dict, signal_strength: str) -> tup
 
 def rank_event_buckets_by_edge(event_markets: list, forecast_f: float,
                                spread_f: float, signal_strength: str,
-                               is_international: bool = False) -> list:
+                               expected_unit: str | None = None) -> list:
     """
     Rank ALL buckets in an event by edge (bucket_probability × signal_discount − price).
 
@@ -1250,10 +1289,9 @@ def rank_event_buckets_by_edge(event_markets: list, forecast_f: float,
             continue
         lo, hi, unit = bucket
 
-        # International locations (HK, Tokyo, etc.) use Celsius markets exclusively.
-        # Reject any °F-denominated bucket to avoid matching against domestic-style
-        # events (e.g. Simmer-native Fahrenheit markets) that appear in discovery.
-        if is_international and unit == 'F':
+        # Use the event's traded unit, not location heuristics, so domestic names
+        # with configured bias still get the right rounding path.
+        if expected_unit in {'C', 'F'} and unit != expected_unit:
             continue
 
         # Convert °C bucket bounds to °F (forecast is always °F)
@@ -1289,7 +1327,7 @@ def rank_event_buckets_by_edge(event_markets: list, forecast_f: float,
 def find_punt_candidates(event_markets: list, forecast_temp: float, spread: float,
                          core_match_id: str | None, already_held: set,
                          location: str, date_str: str, metric: str,
-                         is_international: bool, signal_strength: str,
+                         expected_unit: str | None, signal_strength: str,
                          models_used: int, agreement_pct: float) -> list:
     """
     Scan all buckets in an event for tail-mispriced punt candidates.
@@ -1319,6 +1357,8 @@ def find_punt_candidates(event_markets: list, forecast_temp: float, spread: floa
         if not bucket:
             continue
         lo, hi, unit = bucket
+        if expected_unit in {'C', 'F'} and unit != expected_unit:
+            continue
         if unit == 'C':
             lo = lo * 9 / 5 + 32 if lo != -999 else -999
             hi = hi * 9 / 5 + 32 if hi != 999 else 999
@@ -2390,6 +2430,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
         log(f"\n📍 {location} {date_str} ({metric} temp)")
         is_international = location in INTERNATIONAL_LOCATIONS
+        market_unit = detect_event_market_unit(event_markets, event_name)
 
         # Ensemble forecast — in-memory cache keyed by (location, date, metric)
         cache_key_str = _cache_key_to_str((location, date_str, metric))
@@ -2419,18 +2460,9 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
 
         # Markets resolve in whole degrees. Round to the nearest integer in the
         # market's native unit so bucket selection reflects what will actually settle.
-        if is_international:
-            raw_c = (forecast_temp - 32) * 5 / 9
-            bias_c = LOCATION_BIAS_C.get(location, 0.0)
-            rounded_c = round(raw_c + bias_c)
-            forecast_temp = rounded_c * 9 / 5 + 32  # store as °F for probability math
-            unit_label = "°C"
-            bias_str = f" (bias {bias_c:+.1f}°C)" if bias_c else ""
-            display_temp = f"{rounded_c}°C{bias_str}"
-        else:
-            forecast_temp = round(forecast_temp)
-            unit_label = "°F"
-            display_temp = f"{forecast_temp}°F"
+        forecast_temp, unit_label, display_temp = apply_location_bias_and_round_forecast(
+            forecast_temp, location, market_unit
+        )
         stale_age = forecasts.get("aifs_stale_age_hours")
         stale_note = ""
         if forecasts.get("aifs_stale"):
@@ -2452,7 +2484,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             # Rank once for audit metadata, but keep CORE disabled for D+0.
             d0_ranked_buckets = rank_event_buckets_by_edge(
                 event_markets, forecast_temp, spread, signal_strength,
-                is_international=is_international,
+                expected_unit=market_unit,
             )
             d0_best_rb = d0_ranked_buckets[0] if d0_ranked_buckets else None
             _log_skip(
@@ -2473,7 +2505,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
             # (Hans323: 72% range, 22% threshold, 5% exact).
             ranked_buckets = rank_event_buckets_by_edge(
                 event_markets, forecast_temp, spread, signal_strength,
-                is_international=is_international,
+                expected_unit=market_unit,
             )
         # CORE price floor: refuse entries below PUNT_PRICE_CEILING. Cheap
         # tail-priced buckets (≤15¢) are PUNT territory — they need stricter
@@ -2523,7 +2555,7 @@ def run_weather_strategy(dry_run: bool = True, positions_only: bool = False,
                 core_match_id=_core_match_id,
                 already_held=already_held_markets,
                 location=location, date_str=date_str, metric=metric,
-                is_international=is_international,
+                expected_unit=market_unit,
                 signal_strength=signal_strength,
                 models_used=models_used,
                 agreement_pct=agreement_pct,

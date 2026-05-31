@@ -64,6 +64,9 @@ from weather_trader import (
     calculate_position_size,
     fetch_weather_markets,
     _is_polymarket_weather_market,
+    detect_event_market_unit,
+    apply_location_bias_and_round_forecast,
+    rank_event_buckets_by_edge,
 )
 
 
@@ -152,6 +155,53 @@ class TestParseMarketBucket(unittest.TestCase):
     def test_non_dict_returns_none(self):
         bucket, label = parse_market_bucket(None)
         self.assertIsNone(bucket)
+
+
+class TestBiasUnitRouting(unittest.TestCase):
+    def test_detect_event_market_unit_prefers_bucket_unit_over_location_heuristics(self):
+        seattle_markets = [
+            {"question": "Will the highest temperature in Seattle be 63°F or below on May 23?"},
+            {"question": "Will the highest temperature in Seattle be between 64-65°F on May 23?"},
+        ]
+        shenzhen_markets = [
+            {"question": "Will the highest temperature in Shenzhen be 28°C on May 14?"},
+            {"question": "Will the highest temperature in Shenzhen be 31°C or higher on May 14?"},
+        ]
+        self.assertEqual(detect_event_market_unit(seattle_markets, seattle_markets[0]["question"]), "F")
+        self.assertEqual(detect_event_market_unit(shenzhen_markets, shenzhen_markets[0]["question"]), "C")
+
+    def test_detect_event_market_unit_prefers_event_name_on_mixed_unit_tie(self):
+        mixed_markets = [
+            {"question": "Will the highest temperature in Seattle be 63°F or below on May 23?"},
+            {"question": "Will the highest temperature in Seattle be 17°C on May 23?"},
+        ]
+        event_name = "Will the highest temperature in Seattle be 63°F or below on May 23?"
+        self.assertEqual(detect_event_market_unit(mixed_markets, event_name), "F")
+
+    def test_apply_location_bias_and_round_forecast_for_fahrenheit_event(self):
+        adjusted_f, unit_label, display_temp = apply_location_bias_and_round_forecast(64.4, "Seattle", "F")
+        self.assertEqual(adjusted_f, 69.0)
+        self.assertEqual(unit_label, "°F")
+        self.assertEqual(display_temp, "69°F (bias +2.6°C)")
+
+    def test_rank_event_buckets_by_edge_filters_to_expected_unit(self):
+        mixed_markets = [
+            {
+                "question": "Will the highest temperature in Shenzhen be 28°C on May 14?",
+                "external_price_yes": 0.40,
+            },
+            {
+                "question": "Will the highest temperature in Shenzhen be 31°C or higher on May 14?",
+                "external_price_yes": 0.45,
+            },
+            {
+                "question": "Will the highest temperature in Shenzhen be 82°F on May 14?",
+                "external_price_yes": 0.10,
+            },
+        ]
+        ranked = rank_event_buckets_by_edge(mixed_markets, forecast_f=82.0, spread_f=4.0, signal_strength="strong", expected_unit="C")
+        self.assertTrue(ranked)
+        self.assertTrue(all(row["unit"] == "C" for row in ranked))
 
 
 class TestFetchWeatherMarkets(unittest.TestCase):
